@@ -76,6 +76,10 @@ extraResources:
     to: skills
   - from: dist-native/android-platform-tools
     to: android-platform-tools
+  # Pinned model data for the local voice runtime. Native inference binaries
+  # are staged separately once reviewed for every supported target.
+  - from: dist-native/speech-models
+    to: speech-models
 
 mac:
   # Two single-arch artifacts rather than one universal binary: the app is

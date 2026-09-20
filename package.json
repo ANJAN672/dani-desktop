@@ -57,7 +57,7 @@
     "build:cua:linux:offline": "node scripts/prepare-cua-linux.mjs --offline",
     "build:updater": "node scripts/bundle-updater.mjs",
     "build:browser-snapshot": "node scripts/build-browser-snapshot.mjs",
-    "package:prepare": "pnpm build && pnpm build:server && pnpm build:companion && pnpm build:updater && pnpm build:android-tools && pnpm build:cloudflared",
+    "package:prepare": "pnpm build && pnpm build:server && pnpm build:companion && pnpm build:updater && pnpm build:android-tools && pnpm build:cloudflared && pnpm build:speech-models",
     "package:mac": "pnpm package:prepare && pnpm build:speech && pnpm build:recorder && pnpm build:cua && electron-builder --mac --publish never",
     "package:win": "pnpm package:prepare && electron-builder --win --publish never",
     "package:linux": "pnpm package:prepare && pnpm build:cua:linux && electron-builder --linux --x64 --publish never",
@@ -77,7 +77,8 @@
     "control-plane:check": "pnpm --filter @danibot/control-plane check",
     "control-plane:test": "pnpm --filter @danibot/control-plane test",
     "control-plane:dry-run": "pnpm --filter @danibot/control-plane dry-run",
-    "dani-agent": "node --experimental-strip-types server/dani-agent.ts"
+    "dani-agent": "node --experimental-strip-types server/dani-agent.ts",
+    "build:speech-models": "node scripts/prepare-speech-models.mjs"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",
