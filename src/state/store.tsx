@@ -341,6 +341,8 @@ export interface ConfigStatus {
    * a voice, which is what it takes to actually speak. The key itself is
    * never echoed back. */
   tts?: { configured: boolean; ready: boolean; voice: string; provider?: "elevenlabs" | "system" };
+  /** Provider choice only. Cloud credentials stay behind the OAuth proxy. */
+  liveCall?: { provider: "local" | "openai-realtime"; proxyConfigured: boolean };
   /** Shared write-only credential for on-demand GPT Image avatars. */
   imageGen?: { configured: boolean };
   /** who's using the app — collected in onboarding, shown in the sidebar */
@@ -363,7 +365,7 @@ export interface BrowserProfile {
 
 export type ConfigStatusFrame = Pick<
   ConfigStatus,
-  "xai" | "composio" | "box" | "vps" | "rooms" | "localVm" | "opencodeGo" | "tts" | "imageGen" | "profile" | "language" | "features" | "browserProfiles"
+  "xai" | "composio" | "box" | "vps" | "rooms" | "localVm" | "opencodeGo" | "tts" | "liveCall" | "imageGen" | "profile" | "language" | "features" | "browserProfiles"
 >;
 
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {

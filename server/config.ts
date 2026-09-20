@@ -248,6 +248,12 @@ const appConfigSchema = z.object({
    * engine: "elevenlabs" (default; needs a key) or "system" (the Mac's
    * built-in voices, no key). */
   tts: z.object({ key: optionalText, voice: optionalText, provider: z.enum(["elevenlabs", "system"]).optional() }).optional(),
+  /** Live-call provider selection. OpenAI sessions are created by an OAuth
+   * proxy; no long-lived OpenAI credential is stored in the renderer. */
+  liveCall: z.object({
+    provider: z.enum(["local", "openai-realtime"]).optional(),
+    proxyUrl: optionalText,
+  }).optional(),
   /** OpenAI key used only by the in-process avatar image generator. */
   imageGen: z.object({ key: optionalText }).optional(),
   /** Non-secret profile details shown in the sidebar. */
@@ -283,6 +289,7 @@ export interface AppConfig {
   vps?: { sshAlias?: string };
   opencodeGo?: { apiKey?: string };
   tts?: { key?: string; voice?: string; provider?: "elevenlabs" | "system" };
+  liveCall?: { provider?: "local" | "openai-realtime"; proxyUrl?: string };
   imageGen?: { key?: string };
   profile?: { name?: string; email?: string };
   rooms?: { turnTimeoutMinutes: number };

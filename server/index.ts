@@ -7047,6 +7047,7 @@ function configStatus() {
     // the chosen voice is a setting, not a secret; the key is reported the
     // same configured-or-not way as every other credential
     tts: tts.describeVoice(cfg),
+    liveCall: { provider: cfg.liveCall?.provider ?? "local", proxyConfigured: Boolean(cfg.liveCall?.proxyUrl) },
     imageGen: { configured: Boolean(cfg.imageGen?.key) },
     // not a secret — the sidebar shows it
     profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
