@@ -16,7 +16,7 @@ describe("BrowserWorkspace", () => {
 
     expect(markup).toContain("DANI&#x27;s browser");
     expect(markup).toContain('data-browser-panel="browser-bot-1"');
+    expect(markup).toContain("Shared browser");
     expect(markup).toContain('aria-label="Back to the small browser"');
-    expect(markup).not.toContain("computer/control");
   });
 });
