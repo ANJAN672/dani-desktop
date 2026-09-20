@@ -1,0 +1,9 @@
+{
+  "id": "dani-goal-audit",
+  "name": "DANI Goal Audit",
+  "version": "0.1.0",
+  "description": "Audit a persistent goal for useful next actions, evidence, permissions and follow-up timing.",
+  "defaultEnabled": false,
+  "triggerTerms": ["/dani-goal-audit", "audit this goal", "proactive goal review", "check goal progress"],
+  "requiredCapabilities": []
+}
