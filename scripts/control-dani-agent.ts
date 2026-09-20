@@ -55,7 +55,7 @@ mutating (an explicit --url or OPENMAUSBOT_URL/OMB_PORT is required):
   interrupt --channel ID [--dry-run] [--url URL]
 
 isolated fixture:
-  node --experimental-strip-types scripts/control-omb.ts launch
+  node --experimental-strip-types scripts/control-dani-agent.ts launch
 
 Output is JSON. launch owns a temporary fake-engine server until interrupted.`;
 
@@ -366,10 +366,10 @@ export function controlResultSucceeded(command: string, result: unknown): boolea
 async function main() {
   const command = process.argv[2] ?? "help";
   if (command === "launch") {
-    if (process.env.npm_lifecycle_event === "control:omb") {
+    if (process.env.npm_lifecycle_event === "control:dani-agent") {
       throw new ControlOmbError(
         "launch must own the terminal directly so Ctrl-C can clean up its child",
-        "run `node --experimental-strip-types scripts/control-omb.ts launch`",
+        "run `node --experimental-strip-types scripts/control-dani-agent.ts launch`",
       );
     }
     const startup = new AbortController();

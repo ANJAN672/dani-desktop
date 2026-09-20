@@ -1,6 +1,6 @@
 # Verifying Dani Bot
 
-Dani Bot has one development control surface: `pnpm control:omb`. It is a
+Dani Bot has one development control surface: `pnpm control:dani-agent`. It is a
 thin command-line adapter over `scripts/mcp-server.ts`, so verification uses
 the same URL validation, task pinning, bounded transcripts, wait states, and
 redaction as external MCP clients.
@@ -10,7 +10,7 @@ redaction as external MCP clients.
 Start a fixture in one terminal:
 
 ```sh
-node --experimental-strip-types scripts/control-omb.ts launch
+node --experimental-strip-types scripts/control-dani-agent.ts launch
 ```
 
 Run the foreground launcher directly rather than through `pnpm`; this ensures
@@ -25,7 +25,7 @@ untouched.
 Pass the printed URL explicitly from a second terminal:
 
 ```sh
-pnpm control:omb doctor --url http://127.0.0.1:PORT
+pnpm control:dani-agent doctor --url http://127.0.0.1:PORT
 ```
 
 Mutating commands refuse silent port discovery. This prevents a verification

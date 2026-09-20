@@ -3,7 +3,7 @@
 // Run: node --experimental-strip-types scripts/verify-cloud-preview.ts
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { launchVerificationServer, runControlOmb } from "./control-omb.ts";
+import { launchVerificationServer, runControlOmb } from "./control-dani-agent.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const fixture = await launchVerificationServer();

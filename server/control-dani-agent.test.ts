@@ -7,7 +7,7 @@ import {
   controlResultSucceeded,
   launchVerificationServer,
   runControlOmb,
-} from "../scripts/control-omb.ts";
+} from "../scripts/control-dani-agent.ts";
 
 describe("control-omb command mapping", () => {
   it("treats unhealthy doctor and non-settled waits as command failures", () => {
@@ -22,7 +22,7 @@ describe("control-omb command mapping", () => {
   it("runs directly under Node's strip-only TypeScript loader", () => {
     const result = spawnSync(process.execPath, [
       "--experimental-strip-types",
-      join(process.cwd(), "scripts", "control-omb.ts"),
+      join(process.cwd(), "scripts", "control-dani-agent.ts"),
       "help",
     ], { encoding: "utf8" });
     expect(result.status).toBe(0);

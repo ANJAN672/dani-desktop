@@ -2,7 +2,7 @@
   "name": "dani-desktop",
   "private": true,
   "version": "0.1.55",
-  "description": "A local-first chat app for running a team of AI agents.",
+  "description": "Dani Bot desktop app with the Dani Agent harness.",
   "homepage": "https://github.com/somdipto/dani-desktop",
   "repository": {
     "type": "git",
@@ -30,11 +30,10 @@
     "docs:build": "pnpm --filter @danibot/docs build",
     "docs:preview": "pnpm --filter @danibot/docs preview",
     "companion": "node --experimental-strip-types companion/src/index.ts",
-    "omb": "node --experimental-strip-types server/danibot.ts",
-    "pair": "node --experimental-strip-types server/danibot.ts pair",
+    "pair": "node --experimental-strip-types server/dani-agent.ts pair",
     "dev:server": "node --experimental-strip-types server/index.ts",
     "mcp": "node --experimental-strip-types scripts/mcp-server.ts",
-    "control:omb": "node --experimental-strip-types scripts/control-omb.ts",
+    "control:dani-agent": "node --experimental-strip-types scripts/control-dani-agent.ts",
     "dev:desktop": "node scripts/prepare-cloudflared.mjs --current && electron .",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "typecheck": "tsc -b && tsc -p tsconfig.server.json",
@@ -77,7 +76,8 @@
     "control-plane:types": "pnpm --filter @danibot/control-plane types",
     "control-plane:check": "pnpm --filter @danibot/control-plane check",
     "control-plane:test": "pnpm --filter @danibot/control-plane test",
-    "control-plane:dry-run": "pnpm --filter @danibot/control-plane dry-run"
+    "control-plane:dry-run": "pnpm --filter @danibot/control-plane dry-run",
+    "dani-agent": "node --experimental-strip-types server/dani-agent.ts"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",
