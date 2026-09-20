@@ -13,7 +13,7 @@ const call = (id: string, argumentsText = '{"value":"hello"}') => ({
   type: "function" as const,
   function: { name: "record", arguments: argumentsText },
 });
-const tool = (execute = vi.fn(async () => ({ saved: true })), allow = true): NativeTool => ({
+const tool = (execute: NativeTool["execute"] = vi.fn(async () => ({ saved: true })), allow = true): NativeTool => ({
   name: "record",
   description: "Record a safe fixture action",
   parameters: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
