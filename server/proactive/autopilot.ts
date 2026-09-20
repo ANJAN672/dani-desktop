@@ -14,7 +14,7 @@ export interface GoalOutcome {
   /** Evidence must be independently checked by the execution adapter. */
   evidence: string[];
   verified: boolean;
-  /** Set only when the model or a trusted policy has requested a valid next check. */
+  /** A trusted policy, rather than the model, owns the next check. */
   nextWakeAt?: number | null;
 }
 
@@ -26,7 +26,7 @@ export interface GoalExecutor {
 
 export type WakeDispatch =
   | { status: "not-run"; reason: "duplicate" | "inactive" }
-  | { status: "blocked" | "completed" | "uncertain"; wake: Wake };
+  | { status: "blocked" | "completed" | "uncertain"; wake: Wake; followUpError?: string };
 
 /** Coordinates one wake without owning a second agent loop or second scheduler. */
 export class GoalAutopilot {
@@ -39,35 +39,43 @@ export class GoalAutopilot {
     const wake = this.ledger.enqueue(event.ownerId, goal.id, event.triggerId);
     const claim = this.ledger.claim(event.ownerId, goal.id, wake.id);
     if (!claim) return { status: "not-run", reason: "duplicate" };
+    let settled: Wake;
+    let nextWakeAt: number | null | undefined;
+    let status: "completed" | "blocked";
     try {
       if (!await this.executor.authorize(goal, claim, event)) {
-        const blocked = this.ledger.finish(event.ownerId, goal.id, claim.id, {
+        settled = this.ledger.finish(event.ownerId, goal.id, claim.id, {
           status: "blocked", result: "Goal-level authorization denied; no execution started", evidence: [],
         });
-        return { status: "blocked", wake: blocked };
+        return { status: "blocked", wake: settled };
       }
       const outcome = await this.executor.execute(goal, claim, event);
       if (!outcome || !outcome.summary.trim() || !Array.isArray(outcome.evidence)) {
         throw new Error("Executor returned an invalid result");
       }
-      const status = outcome.verified && outcome.evidence.length ? "completed" : "blocked";
-      const settled = this.ledger.finish(event.ownerId, goal.id, claim.id, {
+      status = outcome.verified && outcome.evidence.length ? "completed" : "blocked";
+      settled = this.ledger.finish(event.ownerId, goal.id, claim.id, {
         status, result: outcome.summary, evidence: outcome.evidence,
       });
-      // A completed wake is NOT a completed goal. Store another scheduled check only after verification.
-      if (status === "completed" && outcome.nextWakeAt !== undefined) {
-        const current = this.ledger.get(event.ownerId, goal.id);
-        if (current?.status === "active") {
-          this.ledger.update(event.ownerId, goal.id, current.revision, { nextWakeAt: outcome.nextWakeAt });
-        }
-      }
-      return { status, wake: settled };
+      nextWakeAt = outcome.nextWakeAt;
     } catch {
-      // The executor may have performed an external action before throwing. Fail uncertain, not automatic retry.
+      // External actions may have succeeded before an exception. Never retry automatically.
       const uncertain = this.ledger.finish(event.ownerId, goal.id, claim.id, {
         status: "uncertain", result: "Wake execution failed or its outcome could not be verified. Reconcile external state before retrying.",
       });
       return { status: "uncertain", wake: uncertain };
     }
+    // The wake's verified result is already durable. A failed follow-up write must not rewrite it as uncertain.
+    if (status === "completed" && nextWakeAt !== undefined) {
+      try {
+        const current = this.ledger.get(event.ownerId, goal.id);
+        if (current?.status === "active") {
+          this.ledger.update(event.ownerId, goal.id, current.revision, { nextWakeAt });
+        }
+      } catch {
+        return { status, wake: settled, followUpError: "Follow-up scheduling failed; the verified wake remains completed. Reschedule explicitly." };
+      }
+    }
+    return { status, wake: settled };
   }
 }
