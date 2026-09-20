@@ -1,0 +1,9 @@
+{
+  "id": "dani-engineering",
+  "name": "DANI Engineering",
+  "version": "0.1.0",
+  "description": "Investigate, specify, build, test and review engineering work with explicit evidence.",
+  "defaultEnabled": false,
+  "triggerTerms": ["/dani-engineering", "spec-driven development", "engineering architecture review", "implement with tests"],
+  "requiredCapabilities": []
+}
