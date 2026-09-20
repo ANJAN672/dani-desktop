@@ -55,4 +55,15 @@ describe("GoalAutopilot", () => {
     expect((await f.autopilot.dispatch({ ...f.event, ownerId: "attacker" })).status).toBe("not-run");
     expect(execute).not.toHaveBeenCalled();
   });
+
+  it("retains verified completion when a follow-up timestamp is invalid", async () => {
+    const f = fixture({ authorize: async () => true, execute: async () => ({
+      summary: "CI passed", evidence: ["CI job 42 succeeded"], verified: true, nextWakeAt: -100,
+    }) });
+    const result = await f.autopilot.dispatch(f.event);
+    expect(result.status).toBe("completed");
+    if (result.status === "completed") expect(result.followUpError).toMatch(/Reschedule explicitly/);
+    expect(f.ledger.wakes("u1", f.goal.id)[0]?.status).toBe("completed");
+    expect(f.ledger.get("u1", f.goal.id)?.nextWakeAt).toBeNull();
+  });
 });
