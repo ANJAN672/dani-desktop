@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, prod]
   pull_request:
 
 # least privilege: CI only reads the checkout, it never writes back
@@ -62,7 +62,7 @@ jobs:
       - run: pnpm check:electron
       - name: production UI build
         if: matrix.os == 'ubuntu-latest'
-        run: pnpm exec vite build
+        run: pnpm build
 
   control-plane:
     name: control-plane check + workerd tests + dry run

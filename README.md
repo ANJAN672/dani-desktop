@@ -16,28 +16,12 @@ Talk to them like contacts. Watch them work. Approve what matters.
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Electron](https://img.shields.io/badge/Electron-macOS%20%C2%B7%20Windows%20%C2%B7%20Ubuntu-2B2E3A?logo=electron&logoColor=9FEAF9)
 ![Agents](https://img.shields.io/badge/agents-Claude%20·%20Codex-d97757)
-[![Release](https://img.shields.io/github/v/release/somdipto/dani-desktop?label=release&color=1084fe&cacheSeconds=300)](https://github.com/somdipto/dani-desktop/releases/latest)
+![Release pipeline](https://img.shields.io/badge/releases-version%20tags-1084fe)
 ![PRs](https://img.shields.io/badge/PRs-welcome-38d591)
 
 <br>
 
-<a href="https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot.dmg">
-  <img src="https://img.shields.io/github/v/release/somdipto/dani-desktop?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20Mac%20%28Apple%20silicon%29&labelColor=070707&color=1084fe&cacheSeconds=300" alt="Download the latest Dani Bot for Mac with Apple silicon (.dmg)" height="40">
-</a>
-&nbsp;
-<a href="https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-intel.dmg">
-  <img src="https://img.shields.io/github/v/release/somdipto/dani-desktop?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20Mac%20%28Intel%29&labelColor=070707&color=2a9d8f&cacheSeconds=300" alt="Download the latest Dani Bot for Intel Macs (.dmg)" height="40">
-</a>
-&nbsp;
-<a href="https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-setup.exe">
-  <img src="https://img.shields.io/github/v/release/somdipto/dani-desktop?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20Windows&labelColor=070707&color=4cc2ff&cacheSeconds=300" alt="Download the latest Dani Bot for Windows (.exe)" height="40">
-</a>
-&nbsp;
-<a href="https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-amd64.deb">
-  <img src="https://img.shields.io/github/v/release/somdipto/dani-desktop?style=for-the-badge&label=%E2%AC%87%EF%B8%8F%20%20Download%20for%20Ubuntu&labelColor=070707&color=e95420&cacheSeconds=300" alt="Download the latest Dani Bot for Ubuntu (.deb)" height="40">
-</a>
-
-<sub>[latest release](https://github.com/somdipto/dani-desktop/releases/latest) &nbsp;·&nbsp; macOS: Apple silicon & Intel · signed & notarized .dmg &nbsp;·&nbsp; Windows: x64 installer &nbsp;·&nbsp; Ubuntu 24.04 x64: .deb or AppImage beta &nbsp;·&nbsp; [all releases](https://github.com/somdipto/dani-desktop/releases)</sub>
+> Installers are published only after a version-tag build produces and verifies the complete macOS, Windows, and Linux set. Until that release gate passes, build from source below.
 
 <br>
 
@@ -223,16 +207,9 @@ See [MCP server setup and tool reference](docs/mcp-server.md).
 
 ## Quick start
 
-**Released builds ([latest release](https://github.com/somdipto/dani-desktop/releases/latest)):** the harness server is embedded, so no separate server setup is required.
+**Installers:** release artifacts are intentionally not linked until a version-tag build passes the complete-set gate for macOS, Windows, and Linux.
 
-| | Download | Install |
-|---|---|---|
-| **macOS** (Apple silicon) | [Download](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot.dmg) | Drag it to Applications, open it. Signed & notarized. |
-| **macOS** (Intel) | [Download](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-intel.dmg) | Same app, built for Intel Macs. Signed & notarized. |
-| **Windows** (x64) | [Download](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-setup.exe) | Run it — one-click, per-user, no admin rights. The installer isn't code-signed yet, so SmartScreen shows "unknown publisher": **More info → Run anyway**. |
-| **Ubuntu 24.04** (x64) | [Download .deb](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-amd64.deb) · [Download AppImage](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot.AppImage) | Install the `.deb` with APT (recommended), or make the AppImage executable and run it. Beta; GNOME is the supported desktop. |
-
-See the [Ubuntu Desktop guide](docs/linux-desktop.md) for installation, capabilities, and troubleshooting.
+See the [Ubuntu Desktop guide](docs/linux-desktop.md) for platform notes and source-build prerequisites.
 Any desktop build can also pair as a client to another Windows, macOS, or Ubuntu host over Tailscale; see [desktop-to-desktop companion mode](docs/desktop-companion.md).
 
 

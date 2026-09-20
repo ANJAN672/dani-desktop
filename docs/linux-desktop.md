@@ -32,9 +32,7 @@ CUA supply-chain work is tracked in [issue #113](https://github.com/somdipto/dan
 
 Choose one Ubuntu 24.04 x86_64 package from the latest release:
 
-- [Debian package (`DaniBot-amd64.deb`)](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-amd64.deb) — recommended; APT installs its desktop dependencies.
-- [Portable AppImage (`DaniBot.AppImage`)](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot.AppImage) — does not install system files.
-- [SHA-256 checksums](https://github.com/somdipto/dani-desktop/releases/latest/download/SHA256SUMS-ubuntu-x64.txt)
+Release installers are published only after the version-tag pipeline verifies the complete desktop set. Until that gate passes, use the source-build steps below; do not rely on an unverified `latest/download` filename.
 
 Versioned packages and previous releases remain available on the
 [releases page](https://github.com/somdipto/dani-desktop/releases).
