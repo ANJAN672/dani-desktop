@@ -27,6 +27,10 @@ const WAIT_CHIP = (name: string) => `${name} is finishing another conversation â
 let child: ChildProcess;
 let home = "";
 let base = "";
+// 43 base64url chars satisfying OWNER_CAPABILITY_PATTERN (server/config.ts);
+// adopted by the child server as DANI_OWNER_TOKEN (security/epic-9-B).
+const OWNER_TOKEN = `e2e-owner-capability-${"0".repeat(22)}`;
+
 let stderr = "";
 let penDump = "";
 
@@ -47,7 +51,7 @@ const api = async (
 ): Promise<{ status: number; body: any }> => {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers },
+    headers: { "x-danibot-desktop-owner": OWNER_TOKEN, ...(body ? { "content-type": "application/json" } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: response.status, body: await response.json() };
@@ -97,6 +101,7 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(port),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
       OMB_WEBHOOK_PORT: String(port + 1),
       OMB_STATIC_DIR: staticDir,
       OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,

@@ -213,6 +213,13 @@ const endpointSnapshot = (options: ProxyOptions): CompanionEndpointSnapshot => {
 const forwardHeaders = (req: IncomingMessage, authenticatedDeviceId?: string): Record<string, string> => {
   const out: Record<string, string> = {
     accept: String(req.headers.accept ?? "*/*"),
+    // Loopback owner capability (security/epic-9-B): the harness gates every
+    // mutation on it. A sidecar launched by the owner (desktop-managed or
+    // operator-run) holds it in the environment like any CLI wrapper; a
+    // sidecar without it simply relays and the harness answers 403.
+    ...((process.env.DANI_OWNER_TOKEN ?? process.env.OMB_OWNER_TOKEN)?.trim()
+      ? { "x-danibot-desktop-owner": (process.env.DANI_OWNER_TOKEN ?? process.env.OMB_OWNER_TOKEN)!.trim() }
+      : {}),
     // Lets a response whose URL is intentionally loopback-only (the VPS SSH
     // viewer) fail before opening a tunnel a phone cannot reach. This header
     // carries no authority; it only narrows behavior at the harness.

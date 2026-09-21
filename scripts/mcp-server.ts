@@ -52,9 +52,14 @@ function requestTimeoutMs(): number {
 
 function requestHeaders(options: RequestInit): NonNullable<RequestInit["headers"]> {
   const token = (process.env.DANIBOT_TOKEN ?? process.env.OPENMAUSBOT_TOKEN)?.trim();
+  // Loopback owner capability (security/epic-9-B): an operator who exported
+  // the per-launch token has their writes pass the owner gate, exactly like
+  // the CLI wrapper. A paired session bearer stays the primary credential.
+  const owner = (process.env.DANI_OWNER_TOKEN ?? process.env.OMB_OWNER_TOKEN)?.trim();
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+  if (owner && !headers.has("x-danibot-desktop-owner")) headers.set("x-danibot-desktop-owner", owner);
   return headers;
 }
 

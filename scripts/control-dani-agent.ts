@@ -282,6 +282,8 @@ export async function launchVerificationServer(
   }, null, 2));
 
   const log = openSync(logPath, "a", 0o600);
+  // 43 base64url chars, satisfying OWNER_CAPABILITY_PATTERN (server/config.ts).
+  const ownerToken = `control-verify-owner-${"0".repeat(22)}`;
   const childEnv: NodeJS.ProcessEnv = {};
   const platformKeys = new Set(["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"]);
   for (const [key, value] of Object.entries(parentEnv)) {
@@ -302,6 +304,10 @@ export async function launchVerificationServer(
     HERMES_HOME: join(dataDir, ".hermes"),
     OMB_DATA_DIR: dataDir,
     OMB_PORT: String(port),
+    // Loopback owner capability (security/epic-9-B): the verification server
+    // requires it on every mutation; adopt a per-launch fixture and hold it
+    // in this process so mcp-server.ts requests present it.
+    DANI_OWNER_TOKEN: ownerToken,
     OMB_WEBHOOK_PORT: String(port + 1),
     FAKE_CLAUDE_MODE: "happy",
     FAKE_CLAUDE_DUMP: fixtureDumpPath,
@@ -316,6 +322,7 @@ export async function launchVerificationServer(
     env: childEnv,
     stdio: ["ignore", log, log],
   });
+  process.env.DANI_OWNER_TOKEN = ownerToken;
   closeSync(log);
 
   const deadline = Date.now() + 20_000;

@@ -70,6 +70,11 @@ let HARNESS = "";
 let SIDECAR = "";
 
 const TOKEN = "dani_test_token";
+// 43 base64url chars, satisfying OWNER_CAPABILITY_PATTERN (server/config.ts).
+// The harness adopts it (security/epic-9-B) and the in-process sidecar relays
+// it upstream, exactly like a desktop-managed companion.
+const OWNER_TOKEN = `companion-owner-cap-${"0".repeat(23)}`;
+process.env.DANI_OWNER_TOKEN = OWNER_TOKEN;
 let harness: ChildProcess;
 let sidecar: Server;
 let home: string;
@@ -144,6 +149,7 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(HARNESS_PORT),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
