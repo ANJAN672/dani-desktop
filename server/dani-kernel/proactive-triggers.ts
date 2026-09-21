@@ -94,7 +94,10 @@ export class ProactiveTriggerEvaluator {
 
   private propose(input: ProactiveTriggerInput, at: Date): TriggerEvaluation {
     const created = this.repository.createProactiveProposal({ ...input, createdAt: at.toISOString() });
-    if (!created.proposal) return this.rememberSuppression(input, created.suppressed ?? "suppressed", at);
+    if (!created.proposal) {
+      if (created.suppressed === "rate-limit") return this.queue(input, this.repository.nextProactiveProposalSlot(input.ownerId, input.botId, at), at);
+      return this.rememberSuppression(input, created.suppressed ?? "suppressed", at);
+    }
     if (!created.duplicate) this.emitProposal(created.proposal.id, input);
     return { state: "proposed", proposalId: created.proposal.id, duplicate: created.duplicate };
   }
@@ -111,8 +114,13 @@ export class ProactiveTriggerEvaluator {
     ) VALUES(?,?,?,?,?,?,'queued',NULL,NULL,?,?)`).run(
       id, input.ownerId, input.botId, input.triggerKey, JSON.stringify(input), notBefore.toISOString(), at.toISOString(), at.toISOString(),
     );
-    const row = this.repository.db.prepare("SELECT * FROM kernel_proactive_queue WHERE owner_id=? AND bot_id=? AND trigger_key=?")
+    let row = this.repository.db.prepare("SELECT * FROM kernel_proactive_queue WHERE owner_id=? AND bot_id=? AND trigger_key=?")
       .get(input.ownerId, input.botId, input.triggerKey) as QueueRow;
+    if (row.id !== id && row.state === "queued" && row.not_before <= at.toISOString() && row.not_before !== notBefore.toISOString()) {
+      this.repository.db.prepare("UPDATE kernel_proactive_queue SET not_before=?,updated_at=? WHERE id=? AND state='queued'")
+        .run(notBefore.toISOString(), at.toISOString(), row.id);
+      row = this.repository.db.prepare("SELECT * FROM kernel_proactive_queue WHERE id=?").get(row.id) as QueueRow;
+    }
     return { state: "queued", queueId: row.id, duplicate: row.id !== id, notBefore: row.not_before };
   }
 

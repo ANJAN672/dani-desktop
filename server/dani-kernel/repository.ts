@@ -178,6 +178,19 @@ export class DaniKernelRepository {
     } : { ownerId, botId, autonomy: "suggest-only", quietHours: null, proposalLimit: 5, proposalWindowMs: 3_600_000, updatedAt: null };
   }
 
+  nextProactiveProposalSlot(ownerId: string, botId: string, at: Date) {
+    const preferences = this.proactivePreferences(ownerId, botId);
+    const windowMs = Number(preferences.proposalWindowMs);
+    const limit = Number(preferences.proposalLimit);
+    const since = new Date(at.getTime() - windowMs).toISOString();
+    const rows = this.db.prepare(`SELECT created_at FROM kernel_proposals
+      WHERE owner_id=? AND bot_id=? AND created_at>=? AND status!='expired' ORDER BY created_at,id`)
+      .all(ownerId, botId, since) as Array<{ created_at: string }>;
+    if (rows.length < limit) return at;
+    const boundary = rows[rows.length - limit];
+    return new Date(Date.parse(boundary.created_at) + windowMs + 1);
+  }
+
   createProactiveProposal(input: ProactiveProposalInput) {
     const reason = input.reason.trim();
     if (!reason) throw new Error("proposal reason is required");

@@ -30,6 +30,24 @@ describe("serving proactive trigger evaluator", () => {
     expect(restarted.listProactiveProposals("owner")).toMatchObject([{ reason: "Your daily brief is ready", triggerSource: "schedule" }]); restarted.close();
   });
 
+  it("queues rate-capped triggers until the rolling window opens and releases once", () => {
+    const { root, repository, evaluator } = open();
+    repository.setProactivePreferences({ ownerId: "owner", botId: "bot", autonomy: "suggest-only", proposalLimit: 1, proposalWindowMs: 3_600_000 });
+    const firstAt = new Date("2026-09-21T22:01:00Z");
+    expect(evaluator.fireSchedule(input("first"), firstAt)).toMatchObject({ state: "proposed" });
+    expect(evaluator.fireSchedule(input("rate-limited"), new Date("2026-09-21T22:02:00Z"))).toMatchObject({
+      state: "queued", duplicate: false, notBefore: "2026-09-21T23:01:00.001Z",
+    });
+    repository.close();
+    const restarted = new DaniKernelRepository(join(root, "kernel.sqlite"));
+    const recovered = new ProactiveTriggerEvaluator(restarted);
+    expect(recovered.releaseDue(new Date("2026-09-21T23:00:59Z"))).toEqual([]);
+    expect(recovered.releaseDue(new Date("2026-09-21T23:01:00.001Z"))).toMatchObject([{ state: "proposed" }]);
+    expect(recovered.releaseDue(new Date("2026-09-21T23:02:00Z"))).toEqual([]);
+    expect(restarted.listProactiveProposals("owner").map(proposal => proposal.triggerKey)).toEqual(["first", "rate-limited"]);
+    restarted.close();
+  });
+
   it("fails closed for invalid quiet hours, expiry and autonomy off", () => {
     const { repository, evaluator } = open();
     repository.setProactivePreferences({ ownerId: "owner", botId: "bot", autonomy: "suggest-only", quietHours: { timezone: "Mars/Base", start: "22:00", end: "07:00" }, proposalLimit: 5, proposalWindowMs: 3_600_000 });
