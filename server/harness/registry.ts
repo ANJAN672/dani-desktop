@@ -133,7 +133,7 @@ export class ProviderRegistry {
 
   /** Live-verify a key-based engine's saved credential (spec 040 R2). */
   async verifyInstance(instanceId: InstanceId): Promise<boolean> {
-    const instance = this.live.get(instanceId);
+    const instance = this.get(instanceId);
     if (!instance?.verify) return false;
     await instance.verify();
     return true;
