@@ -835,6 +835,12 @@ beforeAll(async () => {
       OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
       OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
       OMB_TEST_DEFAULT_INSTANCE_ID: "claude",
+      // Epic-9 workstream C: this integration suite exercises app behavior,
+      // not secret-store mode selection. Run it in the explicitly-named
+      // insecure local-dev mode (the fail-closed default is covered by
+      // server/secret-store.test.ts); without this, every secret-saving
+      // fixture write is refused with 409 by design.
+      DANI_INSECURE_LOCAL_DEV: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -852,6 +858,7 @@ beforeAll(async () => {
     if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}. stderr:\n${stderr}`);
     await new Promise((r) => setTimeout(r, 150));
   }
+
 }, 30_000);
 
 afterAll(async () => {
@@ -3810,6 +3817,7 @@ describe("harness HTTP API", () => {
       const identity = ${JSON.stringify(PHONE_SECRET_TEST_IDENTITY)};
       const gate = ${JSON.stringify(isolatedGate)};
       const release = ${JSON.stringify(releaseFile)};
+      const ownerToken = ${JSON.stringify(OWNER_TOKEN_FIXTURE)};
       let listener;
       let saves = Promise.resolve();
       const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -3819,6 +3827,10 @@ describe("harness HTTP API", () => {
             if (event !== "message") return;
             listener = callback;
             queueMicrotask(() => listener?.({ data: identity }));
+            // Epic-9 workstream B: this isolated server boots in desktop
+            // mode, so the shell must provision the per-launch owner
+            // capability over the private parent port.
+            queueMicrotask(() => listener?.({ data: { type: "openmausbot:desktop-mutation-token", token: ownerToken } }));
           },
           postMessage(message) {
             if (message?.type !== "openmausbot:phone-secret-save") return;
@@ -3834,7 +3846,12 @@ describe("harness HTTP API", () => {
                   "http://127.0.0.1:" + process.env.OMB_PORT + "/api/config?secretStorage=external",
                   {
                     method: "PUT",
-                    headers: { "content-type": "application/json" },
+                    headers: {
+                      "content-type": "application/json",
+                      // Epic-9 workstream B: the shell's own credential commit
+                      // carries the per-launch owner capability.
+                      "x-danibot-desktop-owner": ownerToken,
+                    },
                     body: JSON.stringify(patch),
                   },
                 );
@@ -3875,7 +3892,11 @@ describe("harness HTTP API", () => {
           FAKE_CLAUDE_MODE: "hang",
           FAKE_CLAUDE_DUMP: isolatedDump,
           OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
-      OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
+          OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
+          // Epic-9 workstream C: this fixture models the desktop shell's
+          // encrypted credential bridge, so it boots in desktop mode where
+          // ?secretStorage=external is honored.
+          OMB_DESKTOP_PARENT: "1",
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -3918,6 +3939,8 @@ describe("harness HTTP API", () => {
 
     try {
       await waitForIsolatedServer(isolatedChild, isolatedPort, () => isolatedStderr);
+      // Epic-9 workstream D: the spend gate fails closed on unknown billing;
+      // acknowledge the fixture provider's cost before sending messages.
       const createBot = async () => (await isolatedApi("POST", "/api/bots", {
         modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
         requireAvailableModel: true,
@@ -5747,6 +5770,8 @@ describe("harness HTTP API", () => {
 
     try {
       await waitForIsolatedServer(isolatedChild, isolatedPort, () => isolatedStderr);
+      // Epic-9 workstream D: the spend gate fails closed on unknown billing;
+      // acknowledge the fixture provider's cost before sending messages.
 
       const bot = (await isolatedApi("POST", "/api/bots", {
         modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
@@ -5867,6 +5892,8 @@ describe("harness HTTP API", () => {
 
     try {
       await waitForIsolatedServer(isolatedChild, isolatedPort, () => isolatedStderr);
+      // Epic-9 workstream D: the spend gate fails closed on unknown billing;
+      // acknowledge the fixture provider's cost before sending messages.
       await expect.poll(() => JSON.parse(
         readFileSync(join(isolatedData, "browser-cleanups.json"), "utf8"),
       ), { timeout: 5_000 }).toEqual([]);
@@ -5946,6 +5973,8 @@ describe("harness HTTP API", () => {
 
     try {
       await waitForIsolatedServer(isolatedChild, isolatedPort, () => isolatedStderr);
+      // Epic-9 workstream D: the spend gate fails closed on unknown billing;
+      // acknowledge the fixture provider's cost before sending messages.
       const idleBot = (await isolatedApi("POST", "/api/bots", {
         modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
         requireAvailableModel: true,
@@ -6070,6 +6099,8 @@ describe("harness HTTP API", () => {
 
     try {
       await waitForIsolatedServer(isolatedChild, isolatedPort, () => isolatedStderr);
+      // Epic-9 workstream D: the spend gate fails closed on unknown billing;
+      // acknowledge the fixture provider's cost before sending messages.
       const bot = (await isolatedApi("POST", "/api/bots", {
         modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
         requireAvailableModel: true,
@@ -7177,36 +7208,104 @@ describe("harness HTTP API", () => {
   });
 
   it("validates a Composio project key, creates a Session, and keeps externally stored secrets off disk", async () => {
-    const oldKey = await api("PUT", "/api/config", { composio: { apiKey: "old_key" } });
-    expect(oldKey.status).toBe(400);
-    expect(oldKey.body.error).toMatch(/start with ak_/i);
+    // Epic-9 workstream C: ?secretStorage=external is a desktop-mode-only
+    // flow (the shell commits secrets to the OS store before the request), so
+    // this test boots an isolated desktop-mode server that models Electron's
+    // private utility-process port delivering the per-launch owner capability.
+    const isolatedHome = mkdtempSync(join(tmpdir(), "omb-composio-desktop-"));
+    const isolatedData = join(isolatedHome, ".danibot");
+    const isolatedStatic = join(isolatedHome, "static");
+    const isolatedPort = await freePortBlock([0, 1]);
+    mkdirSync(join(isolatedStatic, "assets"), { recursive: true });
+    mkdirSync(isolatedData, { recursive: true });
+    writeFileSync(join(isolatedStatic, "index.html"), "<!doctype html><title>Composio desktop test</title>");
+    writeFileSync(join(isolatedStatic, "assets", "smoke.css"), "body{}");
 
-    const rejected = await api("PUT", "/api/config", { composio: { apiKey: "ak_wrong" } });
-    expect(rejected.status).toBe(400);
-    expect(rejected.body.error).toMatch(/invalid project key/i);
+    const desktopTokenPrelude = `data:text/javascript,${encodeURIComponent(`
+      let listener;
+      const token = ${JSON.stringify(OWNER_TOKEN_FIXTURE)};
+      Object.defineProperty(process, "parentPort", {
+        value: {
+          on(event, callback) {
+            if (event !== "message") return;
+            listener = callback;
+            queueMicrotask(() => listener?.({ data: { type: "openmausbot:desktop-mutation-token", token } }));
+          },
+          postMessage(message) {
+            // Shell stub: accept private-channel messages without a real UI.
+          },
+        },
+      });
+    `)}`;
+    let isolatedStderr = "";
+    const isolatedEnv: NodeJS.ProcessEnv = {
+      HOME: isolatedHome,
+      USERPROFILE: isolatedHome,
+      OMB_PORT: String(isolatedPort),
+      OMB_WEBHOOK_PORT: String(isolatedPort + 1),
+      OMB_STATIC_DIR: isolatedStatic,
+      OMB_DESKTOP_PARENT: "1",
+      OMB_BOX_API: `http://127.0.0.1:${boxStubPort}`,
+      OMB_COMPOSIO_API: `http://127.0.0.1:${boxStubPort}/api/v3.1`,
+    };
+    if (process.env.PATH) isolatedEnv.PATH = process.env.PATH;
+    if (process.env.SystemRoot) isolatedEnv.SystemRoot = process.env.SystemRoot;
+    const isolatedChild = spawn(
+      process.execPath,
+      ["--import", desktopTokenPrelude, join(SERVER_DIR, "index.ts")],
+      { cwd: ROOT, env: isolatedEnv, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    isolatedChild.stderr!.on("data", (chunk) => (isolatedStderr += chunk));
+    const isolatedApi = async (method: string, path: string, body?: unknown): Promise<{
+      status: number;
+      body: any;
+    }> => {
+      const response = await fetch(`http://127.0.0.1:${isolatedPort}${path}`, {
+        method,
+        headers: body ? { "content-type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: response.status, body: await response.json() };
+    };
 
-    const saved = await api("PUT", "/api/config?secretStorage=external", {
-      composio: { apiKey: "ak_good" },
-      opencodeGo: { apiKey: "opencode-external" },
-      profile: { name: "External Store" },
-    });
-    expect(saved.status).toBe(200);
-    expect(saved.body.composio).toEqual({ configured: true, mode: "self-hosted" });
-    expect(saved.body.opencodeGo).toEqual({ configured: true });
-    expect(saved.body.profile).toEqual({ name: "External Store", email: "" });
-    expect(JSON.stringify(saved.body)).not.toContain("ak_good");
+    try {
+      await waitForIsolatedServer(isolatedChild, isolatedPort, () => isolatedStderr);
 
-    const disk = JSON.parse(readFileSync(join(home, ".danibot", "config.json"), "utf8"));
-    expect(disk.composio).toMatchObject({ apiKey: "", sessionId: "trs_config_test" });
-    expect(disk.opencodeGo).toEqual({ apiKey: "" });
-    expect(disk.profile).toEqual({ name: "External Store" });
-    expect(JSON.stringify(disk)).not.toContain("ak_good");
-    expect(JSON.stringify(disk)).not.toContain("opencode-external");
+      const oldKey = await isolatedApi("PUT", "/api/config", { composio: { apiKey: "old_key" } });
+      expect(oldKey.status).toBe(400);
+      expect(oldKey.body.error).toMatch(/start with ak_/i);
 
-    // A later ordinary setting save reloads config; the in-process secure-env
-    // override must keep Composio configured until the next app launch.
-    expect((await api("PUT", "/api/config", { profile: { name: "Grace" } })).status).toBe(200);
-    expect((await api("GET", "/api/config")).body.composio).toEqual({ configured: true, mode: "self-hosted" });
+      const rejected = await isolatedApi("PUT", "/api/config", { composio: { apiKey: "ak_wrong" } });
+      expect(rejected.status).toBe(400);
+      expect(rejected.body.error).toMatch(/invalid project key/i);
+
+      const saved = await isolatedApi("PUT", "/api/config?secretStorage=external", {
+        composio: { apiKey: "ak_good" },
+        opencodeGo: { apiKey: "opencode-external" },
+        profile: { name: "External Store" },
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.body.composio).toEqual({ configured: true, mode: "self-hosted" });
+      expect(saved.body.opencodeGo).toEqual({ configured: true });
+      expect(saved.body.profile).toEqual({ name: "External Store", email: "" });
+      expect(JSON.stringify(saved.body)).not.toContain("ak_good");
+
+      const disk = JSON.parse(readFileSync(join(isolatedData, "config.json"), "utf8"));
+      expect(disk.composio).toMatchObject({ apiKey: "", sessionId: "trs_config_test" });
+      expect(disk.opencodeGo).toEqual({ apiKey: "" });
+      expect(disk.profile).toEqual({ name: "External Store" });
+      expect(JSON.stringify(disk)).not.toContain("ak_good");
+      expect(JSON.stringify(disk)).not.toContain("opencode-external");
+
+      // A later ordinary setting save reloads config; the in-process secure-env
+      // override must keep Composio configured until the next app launch.
+      expect((await isolatedApi("PUT", "/api/config", { profile: { name: "Grace" } })).status).toBe(200);
+      expect((await isolatedApi("GET", "/api/config")).body.composio).toEqual({ configured: true, mode: "self-hosted" });
+    } finally {
+      isolatedChild.kill("SIGKILL");
+      await new Promise((resolve) => isolatedChild.on("exit", resolve));
+      rmSync(isolatedHome, { recursive: true, force: true });
+    }
   });
 
   it("does not relay a slow connector request after Connected Apps is disabled", async () => {
