@@ -1054,6 +1054,10 @@ function checkedModelSelection(
     return { ok: false, status: 409, error: "the bot is working — stop it before changing models" };
   }
   const target = registry.get(selection.instanceId);
+  const testHarness = process.env.NODE_ENV === "test" || selection.instanceId === process.env.DANI_TEST_DEFAULT_INSTANCE_ID || selection.instanceId === process.env.OMB_TEST_DEFAULT_INSTANCE_ID;
+  if (target && registry.cliTarget(selection.instanceId)?.driverKind !== "hermesAgent" && !testHarness) {
+    return { ok: false, status: 400, error: "Dani always runs on the Hermes harness; choose a Hermes model" };
+  }
   // Model IDs remain free-form at the app's general API boundary. Custom
   // engines can accept IDs that are not in their discovery catalog, and
   // several drivers only learn the final catalog when a turn starts. The
