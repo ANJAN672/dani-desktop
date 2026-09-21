@@ -30,9 +30,10 @@ For an installer to leave behind, use the table below on **that same OS**.
 Do **not** rebuild on every git push.
 
 1. Put Mac signing secrets on the repo (see `docs/releasing.md`) if you want signed macOS.
-2. **Actions → Prepare next release** (patch) → merge the PR.
-   Or bump `package.json` `version` on `main`.
-3. **Release** builds Mac + Windows + Ubuntu and opens a draft on this repo.
+2. **Actions → Prepare next release** (patch) → merge the PR into prod.
+   Or bump `package.json` `version` on prod directly.
+3. Tag `v<version>` at that prod commit (or run **Release** against it) —
+   **Release** builds Mac + Windows + Ubuntu and opens a draft on this repo.
 4. Publish the draft. Installed apps update from `latest.yml` / `latest-mac.yml` / `latest-linux.yml`.
 
 Windows and Linux CI need no signing secrets. Mac CI needs `MAC_CERT_*` and `APPLE_API_KEY_*` or the mac job fails.

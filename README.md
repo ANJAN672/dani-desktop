@@ -302,7 +302,8 @@ dedicated receiver through a hosted relay or a tool such as Tailscale Funnel.
 ## Status
 
 Early but real — the loop works end to end: message → agent → streamed reply → tools → approvals →
-computer use. macOS, Windows, and Ubuntu 24.04 x64 have released builds; Ubuntu remains a beta with the
+computer use. Installers for macOS, Windows, and Ubuntu 24.04 x64 publish together once the complete-set
+release gate passes; Ubuntu remains a beta with the
 capability limits above. Rough edges to expect: hosted/mobile connectivity is still being built, and webhook
 triggers currently use the local receiver rather than an always-on hosted relay.
 Voice needs an ElevenLabs key, and calls are macOS-only for now (they ride the same on-device dictation as
