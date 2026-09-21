@@ -10,6 +10,7 @@ import { Check, ChevronDown, Loader2, RefreshCw, TriangleAlert } from "lucide-re
 import { api, useStore, type InstanceInfo } from "@/state/store";
 import { EngineGroupLabel } from "./EngineGroupLabel";
 import { ProviderMark } from "./ProviderIcons";
+import { BillingBadge } from "./BillingBadge";
 import { splitEngineRail } from "@/lib/engine-rail";
 import { cn } from "@/lib/cn";
 
@@ -256,6 +257,7 @@ function EngineRow({ instance }: { instance: InstanceInfo }) {
         <span className={cn("size-1.5 shrink-0 rounded-full", instance.cli ? "bg-accent" : "bg-raised-hover")} />
         <ProviderMark driverKind={instance.driverKind} size={14} />
         <span className="shrink-0 text-ink">{instance.displayName}</span>
+        <BillingBadge billing={instance.billing} />
         {instance.cli ? (
           <span className="truncate font-mono text-[11.5px] text-accent" title={instance.cli}>
             {instance.cli}

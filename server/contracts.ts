@@ -417,12 +417,31 @@ export interface ProviderInstance {
  *  `custom` — no subscription catalog; Custom is the product. */
 export type EngineAccess = "subscription" | "custom";
 
+/** Spend-safety billing class for a provider (security/epic-9-D).
+ *  `free` — no per-request cost the user could be surprised by (local
+ *  engines, bundled runtimes). `metered` — usage is billed. `subscription`
+ *  — flat subscription, reported cost is notional. `unknown` — the driver
+ *  does not declare billing; treated as metered (fail closed). */
+export type BillingClass = "free" | "metered" | "subscription" | "unknown";
+
 export interface ProviderDriver<Config = unknown> {
   readonly driverKind: DriverKind;
   readonly metadata: {
     displayName: string;
     supportsMultipleInstances?: boolean;
     access?: EngineAccess;
+    /** Spend-safety billing class. Absent = `unknown`: the spend gate treats
+     * the provider as metered until the user explicitly acknowledges it. */
+    billingClass?: BillingClass;
+    /** Where the billing classification came from, e.g.
+     * "driver-declared" or "hermes-provider-policy capability table". */
+    rateSource?: string;
+    /** ISO timestamp of the last billing/rate review for this driver. */
+    rateCheckedAt?: string;
+    /** When true (default unless billingClass is `free`), a provider request
+     * is blocked until the user explicitly selects the provider/model and
+     * acknowledges the cost class. */
+    requiresExplicitSelection?: boolean;
   };
   /** How to get this engine installed. Omit for engines that need no local
    * binary (API-key drivers), which is what makes it optional. */

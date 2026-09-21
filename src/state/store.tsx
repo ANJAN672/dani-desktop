@@ -397,6 +397,15 @@ export interface EngineInstall {
   managed?: { label: string; downloadBytes: number };
 }
 
+/** Spend-safety billing for one provider instance (server/provider-billing.ts).
+ * Resolved per model for Hermes; engine-level class follows the default model. */
+export interface InstanceBilling {
+  billingClass: "free" | "metered" | "subscription" | "unknown";
+  rateSource?: string;
+  rateCheckedAt?: string;
+  requiresExplicitSelection: boolean;
+}
+
 /** One row of GET /api/instances — the model picker's data. */
 export interface InstanceInfo {
   instanceId: string;
@@ -417,7 +426,12 @@ export interface InstanceInfo {
     /** a reported cost on a subscription is notional; the UI says so */
     billing?: "metered" | "subscription";
   };
-  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string }> };
+  /** Spend-safety cost classification — shown as a badge in the picker and
+   * gated by an explicit acknowledgement before the first metered request.
+   * Optional so older cached rows still typecheck; absent means `unknown`
+   * (fail closed) everywhere it is read. */
+  billing?: InstanceBilling;
+  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string; billingClass?: InstanceBilling["billingClass"] }> };
   capabilities?: {
     computerMcp?: boolean;
     agentsMcp?: boolean;
