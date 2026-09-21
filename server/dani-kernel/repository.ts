@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AdapterEvidenceInput, AdmitJobInput, ApprovalGrantInput, KernelEffectState, KernelJobStatus, ProposeEffectInput } from "./types.ts";
+import type { AdapterEvidenceInput, AdmitJobInput, ApprovalGrantInput, KernelEffectState, KernelJobStatus, ProactivePreferencesInput, ProactiveProposalInput, ProposeEffectInput } from "./types.ts";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const TERMINAL_JOB_STATES = new Set<KernelJobStatus>(["completed", "failed", "cancelled", "uncertain"]);
 const canonical = (value: unknown): unknown => Array.isArray(value)
   ? value.map(canonical)
@@ -89,6 +89,31 @@ export class DaniKernelRepository {
         PRAGMA user_version=1;
         COMMIT;`);
     }
+    if (fromVersion < 2) {
+      this.db.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE kernel_proactive_preferences(
+          owner_id TEXT NOT NULL, bot_id TEXT NOT NULL,
+          autonomy TEXT NOT NULL CHECK(autonomy IN ('off','suggest-only','act-with-approval')),
+          quiet_hours_json TEXT, proposal_limit INTEGER NOT NULL,
+          proposal_window_ms INTEGER NOT NULL, updated_at TEXT NOT NULL,
+          PRIMARY KEY(owner_id,bot_id)
+        );
+        CREATE TABLE kernel_proposals(
+          id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, bot_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL, trigger_source TEXT NOT NULL,
+          trigger_key TEXT NOT NULL, trigger_kind TEXT NOT NULL,
+          reason TEXT NOT NULL, objective TEXT NOT NULL,
+          evidence_refs_json TEXT NOT NULL, expires_at TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('pending','snoozed','dismissed','accepted','expired')),
+          snoozed_until TEXT, accepted_job_id TEXT REFERENCES kernel_jobs(id),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          UNIQUE(owner_id,bot_id,trigger_key)
+        );
+        CREATE INDEX kernel_proposals_inbox ON kernel_proposals(owner_id,thread_id,status,created_at);
+        CREATE INDEX kernel_proposals_equivalent ON kernel_proposals(owner_id,bot_id,trigger_kind,status,updated_at);
+        PRAGMA user_version=2;
+        COMMIT;`);
+    }
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL");
   }
 
@@ -114,6 +139,125 @@ export class DaniKernelRepository {
     );
     this.event(id, null, "job.admitted", { turnId: input.turnId, provider: input.provider });
     return { ...this.job(id), id, generation: 1, duplicate: false };
+  }
+
+
+  setProactivePreferences(input: ProactivePreferencesInput) {
+    if (!Number.isInteger(input.proposalLimit) || input.proposalLimit < 1 || input.proposalLimit > 100) throw new Error("proposal limit must be an integer from 1 to 100");
+    if (!Number.isInteger(input.proposalWindowMs) || input.proposalWindowMs < 60_000) throw new Error("proposal window must be at least one minute");
+    const at = now();
+    this.db.prepare(`INSERT INTO kernel_proactive_preferences(owner_id,bot_id,autonomy,quiet_hours_json,proposal_limit,proposal_window_ms,updated_at)
+      VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,bot_id) DO UPDATE SET autonomy=excluded.autonomy,quiet_hours_json=excluded.quiet_hours_json,
+      proposal_limit=excluded.proposal_limit,proposal_window_ms=excluded.proposal_window_ms,updated_at=excluded.updated_at`).run(
+      input.ownerId, input.botId, input.autonomy, input.quietHours ? encode(input.quietHours) : null,
+      input.proposalLimit, input.proposalWindowMs, at,
+    );
+    return this.proactivePreferences(input.ownerId, input.botId);
+  }
+
+  proactivePreferences(ownerId: string, botId: string) {
+    const row = this.db.prepare("SELECT * FROM kernel_proactive_preferences WHERE owner_id=? AND bot_id=?").get(ownerId, botId) as Row | undefined;
+    return row ? {
+      ownerId, botId, autonomy: String(row.autonomy), quietHours: row.quiet_hours_json ? JSON.parse(String(row.quiet_hours_json)) : null,
+      proposalLimit: Number(row.proposal_limit), proposalWindowMs: Number(row.proposal_window_ms), updatedAt: String(row.updated_at),
+    } : { ownerId, botId, autonomy: "suggest-only", quietHours: null, proposalLimit: 5, proposalWindowMs: 3_600_000, updatedAt: null };
+  }
+
+  createProactiveProposal(input: ProactiveProposalInput) {
+    const reason = input.reason.trim();
+    if (!reason) throw new Error("proposal reason is required");
+    if (!input.triggerKey.trim() || !input.triggerKind.trim()) throw new Error("proposal trigger identity is required");
+    if (Date.parse(input.expiresAt) <= Date.now()) throw new Error("proposal is already expired");
+    const preferences = this.proactivePreferences(input.ownerId, input.botId);
+    if (preferences.autonomy === "off") return { proposal: null, suppressed: "autonomy-off", duplicate: false } as const;
+    const existing = this.db.prepare("SELECT * FROM kernel_proposals WHERE owner_id=? AND bot_id=? AND trigger_key=?")
+      .get(input.ownerId, input.botId, input.triggerKey) as Row | undefined;
+    if (existing) return { proposal: this.decodeProposal(existing), suppressed: null, duplicate: true } as const;
+    const suppressedKind = this.db.prepare(`SELECT status FROM kernel_proposals WHERE owner_id=? AND bot_id=? AND trigger_kind=?
+      AND (status='dismissed' OR (status='snoozed' AND snoozed_until>?)) LIMIT 1`)
+      .get(input.ownerId, input.botId, input.triggerKind, now()) as { status: string } | undefined;
+    if (suppressedKind) return { proposal: null, suppressed: `${suppressedKind.status}-kind`, duplicate: false } as const;
+    const at = input.createdAt ?? now();
+    const since = new Date(Date.parse(at) - Number(preferences.proposalWindowMs)).toISOString();
+    const count = Number((this.db.prepare(`SELECT COUNT(*) c FROM kernel_proposals WHERE owner_id=? AND bot_id=? AND created_at>=? AND status!='expired'`)
+      .get(input.ownerId, input.botId, since) as { c: number }).c);
+    if (count >= Number(preferences.proposalLimit)) return { proposal: null, suppressed: "rate-limit", duplicate: false } as const;
+    const id = randomUUID();
+    this.db.prepare(`INSERT INTO kernel_proposals(id,owner_id,bot_id,thread_id,trigger_source,trigger_key,trigger_kind,reason,objective,
+      evidence_refs_json,expires_at,status,snoozed_until,accepted_job_id,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending',NULL,NULL,?,?)`).run(
+      id, input.ownerId, input.botId, input.threadId, input.triggerSource, input.triggerKey, input.triggerKind, reason,
+      input.objective, encode(input.evidenceReferences ?? []), input.expiresAt, at, at,
+    );
+    return { proposal: this.proactiveProposal(id, input.ownerId), suppressed: null, duplicate: false } as const;
+  }
+
+  private decodeProposal(row: Row) {
+    return {
+      id: String(row.id), ownerId: String(row.owner_id), botId: String(row.bot_id), threadId: String(row.thread_id),
+      triggerSource: String(row.trigger_source), triggerKey: String(row.trigger_key), triggerKind: String(row.trigger_kind),
+      reason: String(row.reason), objective: String(row.objective), evidenceReferences: JSON.parse(String(row.evidence_refs_json)),
+      expiresAt: String(row.expires_at), status: String(row.status), snoozedUntil: row.snoozed_until ? String(row.snoozed_until) : null,
+      acceptedJobId: row.accepted_job_id ? String(row.accepted_job_id) : null, createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+    };
+  }
+
+  proactiveProposal(id: string, ownerId: string) {
+    const row = this.db.prepare("SELECT * FROM kernel_proposals WHERE id=? AND owner_id=?").get(id, ownerId) as Row | undefined;
+    if (!row) throw new Error("proactive proposal not found");
+    return this.decodeProposal(row);
+  }
+
+  listProactiveProposals(ownerId: string, threadId?: string) {
+    const rows = (threadId
+      ? this.db.prepare("SELECT * FROM kernel_proposals WHERE owner_id=? AND thread_id=? ORDER BY created_at,id").all(ownerId, threadId)
+      : this.db.prepare("SELECT * FROM kernel_proposals WHERE owner_id=? ORDER BY created_at,id").all(ownerId)) as Row[];
+    return rows.map(row => this.decodeProposal(row));
+  }
+
+  snoozeProactiveProposal(id: string, ownerId: string, until: string) {
+    if (Date.parse(until) <= Date.now()) throw new Error("snooze must end in the future");
+    const changed = this.db.prepare("UPDATE kernel_proposals SET status='snoozed',snoozed_until=?,updated_at=? WHERE id=? AND owner_id=? AND status='pending'")
+      .run(until, now(), id, ownerId);
+    if (changed.changes !== 1) throw new Error("proposal is not pending");
+    return this.proactiveProposal(id, ownerId);
+  }
+
+  dismissProactiveProposal(id: string, ownerId: string) {
+    const changed = this.db.prepare("UPDATE kernel_proposals SET status='dismissed',updated_at=? WHERE id=? AND owner_id=? AND status IN ('pending','snoozed')")
+      .run(now(), id, ownerId);
+    if (changed.changes !== 1) throw new Error("proposal cannot be dismissed");
+    return this.proactiveProposal(id, ownerId);
+  }
+
+  releaseSnoozedProposals(at = new Date()) {
+    return Number(this.db.prepare("UPDATE kernel_proposals SET status='pending',snoozed_until=NULL,updated_at=? WHERE status='snoozed' AND snoozed_until<=?")
+      .run(at.toISOString(), at.toISOString()).changes);
+  }
+
+  acceptProactiveProposal(id: string, ownerId: string) {
+    const proposal = this.proactiveProposal(id, ownerId);
+    if (proposal.status === "accepted" && proposal.acceptedJobId) return { proposal, job: this.job(proposal.acceptedJobId), duplicate: true };
+    if (proposal.status !== "pending") throw new Error(`proposal cannot be accepted from ${proposal.status}`);
+    if (proposal.expiresAt <= now()) {
+      this.db.prepare("UPDATE kernel_proposals SET status='expired',updated_at=? WHERE id=?").run(now(), id);
+      throw new Error("proposal expired");
+    }
+    const preferences = this.proactivePreferences(ownerId, proposal.botId);
+    if (preferences.autonomy === "off") throw new Error("proactive autonomy is off");
+    const jobId = randomUUID();
+    const at = now();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare(`INSERT INTO kernel_jobs(id,owner_id,objective,originating_request_id,turn_id,status,attempt,generation,provider,thread_id,provider_cursor,created_at,updated_at)
+        VALUES(?,?,?,?,?,'admitted',0,1,'hermes',?,NULL,?,?)`).run(jobId, ownerId, proposal.objective, `proposal:${id}`, `proposal:${id}`, proposal.threadId, at, at);
+      const changed = this.db.prepare("UPDATE kernel_proposals SET status='accepted',accepted_job_id=?,updated_at=? WHERE id=? AND owner_id=? AND status='pending'")
+        .run(jobId, at, id, ownerId);
+      if (changed.changes !== 1) throw new Error("proposal acceptance raced");
+      this.event(jobId, null, "job.admitted", { turnId: `proposal:${id}`, provider: "hermes", proactiveProposalId: id });
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+    return { proposal: this.proactiveProposal(id, ownerId), job: this.job(jobId), duplicate: false };
   }
 
   latestJobForThread(threadId: string): KernelRow | null {

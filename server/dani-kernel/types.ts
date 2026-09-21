@@ -48,3 +48,30 @@ export interface AdapterEvidenceInput {
   sourceReference: string;
   inspection: unknown;
 }
+
+
+export type ProactiveAutonomyLevel = "off" | "suggest-only" | "act-with-approval";
+export type ProactiveProposalStatus = "pending" | "snoozed" | "dismissed" | "accepted" | "expired";
+
+export interface ProactiveProposalInput {
+  ownerId: string;
+  botId: string;
+  threadId: string;
+  triggerSource: "routine" | "schedule" | "in-app-event";
+  triggerKey: string;
+  triggerKind: string;
+  reason: string;
+  objective: string;
+  evidenceReferences?: string[];
+  expiresAt: string;
+  createdAt?: string;
+}
+
+export interface ProactivePreferencesInput {
+  ownerId: string;
+  botId: string;
+  autonomy: ProactiveAutonomyLevel;
+  quietHours?: { timezone: string; start: string; end: string } | null;
+  proposalLimit: number;
+  proposalWindowMs: number;
+}
