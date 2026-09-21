@@ -132,7 +132,7 @@ import { LayaDecisionService } from "./laya/service.ts";
 import { LayaDecisionShadowScorer, routeShadowCandidates } from "./laya/shadow-scorer.ts";
 import { DaniTaskRouter } from "./laya/router.ts";
 import { LAYA_HUB_REPO, LAYA_LICENSE, LAYA_PINNED_REVISION, LAYA_TYPED_DECISIONS, layaCheckpointBySubfolder } from "./laya/manifest.ts";
-import { LayaCuaController } from "./laya/cua-controller.ts";
+import { formatCuaHandoffTranscript, LayaCuaController } from "./laya/cua-controller.ts";
 import { BoxProxyCuaDriver } from "./laya/proxy-driver.ts";
 import {
   applySecretAwareConfigSave,
@@ -518,10 +518,10 @@ executionKernel = createExecutionKernel();
 let layaService: LayaDecisionService | null = null;
 let layaShadow: LayaShadow | null = null;
 let layaRouter: DaniTaskRouter | null = null;
-let layaCua: LayaCuaController | null = null;
 // One consented install at a time; the checkpoint download is far too large
 // for a request to hold open, so the UI polls /api/laya/status instead.
 let layaInstallRun: { running: boolean; error: string | null } = { running: false, error: null };
+
 function createLayaStack(): void {
   if (!layaEnabled(cfg)) return;
   const checkpoint = layaCheckpointBySubfolder(cfg.laya?.checkpoint ?? "typed-decisions") ?? LAYA_TYPED_DECISIONS;
@@ -535,15 +535,14 @@ function createLayaStack(): void {
   });
   if (layaShadowEnabled(cfg))
     layaShadow = new LayaShadow(join(DATA_DIR, "laya-shadow.sqlite"), new LayaDecisionShadowScorer(layaService));
-  layaRouter = new DaniTaskRouter(layaService, { routingEnabled: () => layaRoutingEnabled(cfg) });
-  // No guarded CUA driver is registered yet (the computer proxy's execution
-  // path is an MCP stdio surface, not importable functions), so the
-  // controller refuses to run and every bounded_cua route falls back to
-  // Hermes. Binding a real driver is the remaining UNVERIFIED hardware slice.
-  layaCua = new LayaCuaController((req) => layaService!.decide(req), null);
+  // The turn path awaits this decision before dispatch, so cap it: a slow or
+  // wedged sidecar abstains and Hermes keeps the turn instead of stalling.
+  layaRouter = new DaniTaskRouter(layaService, { routingEnabled: () => layaRoutingEnabled(cfg), decisionTimeoutMs: 4_000 });
+  // Controllers are bound per turn (spec 100 R8): a real BoxProxyCuaDriver is
+  // constructed only when the router commits bounded_cua AND the bot has a
+  // cloud box. Any other surface has no guarded driver and refuses.
 }
 async function closeLayaStack(): Promise<void> {
-  layaCua = null;
   layaRouter = null;
   layaShadow?.close();
   layaShadow = null;
@@ -4472,7 +4471,7 @@ async function startTurn(
       };
       let kernelJob: { jobId: string; generation: number } | null = null;
       const dispatchPromise = instance.driverKind === "hermesAgent" && executionKernel
-        ? (() => {
+        ? (async () => {
             if (opts?.kernelJob) {
               kernelJob = opts.kernelJob;
             } else {
@@ -4496,33 +4495,88 @@ async function startTurn(
                 .observe(resolvedImages.text, routeShadowCandidates(computerKind != null), "hermes_general")
                 .catch(() => undefined);
             }
-            // spec 100 R7: the routing seam. The bounded CUA controller is
-            // not wired yet, so a bounded_cua decision only logs today and
-            // Hermes keeps the turn. The seam, gate, and fallback are live.
-            if (layaRouter && kernelJob && layaRoutingEnabled(cfg)) {
+            // spec 100 R8: the routing seam executes. When the router commits
+            // bounded_cua AND a guarded driver can be bound (today: the bot
+            // has a cloud box), the bounded controller run REPLACES the Hermes
+            // dispatch. Every other outcome - routing off, abstain, routing
+            // failure, no driver, controller abort - falls back to Hermes, and
+            // an abort hands Hermes its transcript as context. Hermes stays
+            // authoritative: the gates, the seam, and the fallback are live.
+            let layaHandoff: string | null = null;
+            if (layaRouter && kernelJob && layaRoutingEnabled(cfg) && layaService?.status().installed) {
               const routedJob = kernelJob;
-              void layaRouter
-                .route({
+              let route: Awaited<ReturnType<DaniTaskRouter["route"]>> | null = null;
+              try {
+                route = await layaRouter.route({
                   taskId: routedJob.jobId,
                   traceId: opts?.sendId ?? userMessage.id,
                   objective: resolvedImages.text,
                   stateSummary: `bot computer surface: ${computerKind ?? "none"}`,
                   cuaAvailable: computerKind != null,
-                })
-                .then((route) => {
-                  if (route.route === "bounded_cua")
-                    console.warn(
-                      layaCua?.driverAvailable()
-                        ? `[laya-router] bounded_cua chosen (${route.reason})`
-                        : `[laya-router] bounded_cua chosen (${route.reason}) but no guarded CUA driver is registered yet; Hermes keeps the turn`,
-                    );
-                })
-                .catch(() => undefined);
+                });
+              } catch {
+                route = null; // a routing failure must never cost the turn
+              }
+              if (route?.route === "bounded_cua") {
+                const driver =
+                  computerKind === "box" && box.boxConfigured(cfg)
+                    ? await box
+                        .findBox(cfg, bot.id)
+                        .then((existing) =>
+                          existing
+                            ? new BoxProxyCuaDriver({
+                                kind: "box",
+                                boxId: existing.id,
+                                token: cfg.box!.token!,
+                                control: controlIntegration(bot.id, threadId, dispatchClaimId),
+                              })
+                            : null,
+                        )
+                        .catch(() => null)
+                    : null;
+                if (!driver) {
+                  // Truthful refusal: no guarded execution surface for this
+                  // bot (no box, or a non-box surface with no driver yet).
+                  console.warn(`[laya-router] bounded_cua chosen (${route.reason}) but no guarded CUA driver is available for this bot; Hermes keeps the turn`);
+                } else {
+                  try {
+                    executionKernel!.repository.beginTurn(routedJob.jobId, routedJob.generation);
+                    const controller = new LayaCuaController((req2) => layaService!.decide(req2), driver);
+                    const result = await controller.run({
+                      botId: bot.id,
+                      taskId: routedJob.jobId,
+                      traceId: opts?.sendId ?? userMessage.id,
+                      objective: resolvedImages.text,
+                      isCancelled: () => !directTurnClaimExists(bot.id, dispatchClaimId, threadId),
+                    });
+                    if (result.outcome === "completed") {
+                      // The turn's real outcome, published as itself
+                      // (provider layaCua): the store fold, NDJSON log, and
+                      // kernel job settle exactly like any completed turn.
+                      const turnId = `laya-cua-${randomUUID()}`;
+                      const base = { threadId, turnId, provider: "layaCua", createdAt: new Date().toISOString() };
+                      bus.publish({ ...base, eventId: randomUUID(), type: "item.completed", itemType: "assistant_text", text: result.handoffSummary });
+                      bus.publish({ ...base, eventId: randomUUID(), type: "turn.completed", ok: true });
+                      console.warn(`[laya-router] bounded CUA completed the turn (${result.reason}, ${result.steps.length} step(s))`);
+                      return { turnId };
+                    }
+                    if (result.reason === "cancelled") {
+                      // The stop path owns this turn: guardTurnDispatch sees
+                      // the dropped claim and takes its cancelled branch.
+                      return { turnId: `laya-cua-${randomUUID()}` };
+                    }
+                    layaHandoff = formatCuaHandoffTranscript(result);
+                    console.warn(`[laya-router] bounded CUA aborted (${result.reason}); Hermes takes over with the handoff transcript`);
+                  } finally {
+                    await driver.close().catch(() => undefined);
+                  }
+                }
+              }
             }
             const { threadId: _threadId, resumeCursor: _resumeCursor, ...kernelTurn } = turnInput;
             return executionKernel!.dispatchPlan(kernelJob.jobId, kernelJob.generation, {
               text: kernelTurn.text,
-              system: kernelTurn.system,
+              system: kernelTurn.system + (layaHandoff ?? ""),
               model: kernelTurn.model,
               effort: kernelTurn.effort,
               turn: kernelTurn,
@@ -11569,9 +11623,9 @@ const server = createServer(async (req, res) => {
 
     // spec 100: one bounded CUA run against a bot's real cloud box, through
     // the existing computer proxy (same who-is-driving lease, same evidence
-    // rules). Gated on BOTH the service and routing gates. This is the
-    // verification surface for the controller until route execution is
-    // integrated into the chat-turn pipeline.
+    // rules). Gated on BOTH the service and routing gates. The chat-turn
+    // pipeline also executes committed bounded_cua routes itself (spec 100
+    // R8); this endpoint remains the isolated verification surface.
     m = path.match(/^\/api\/laya\/bots\/([A-Za-z0-9-]+)\/cua\/run$/);
     if (m && method === "POST") {
       if (!layaEnabled(cfg) || !layaRoutingEnabled(cfg))

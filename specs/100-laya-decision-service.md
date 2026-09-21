@@ -250,3 +250,31 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
   network + ~850MB download; exercise on a real host), the renderer card
   visually, and install progress byte-reporting (the sidecar reports phase
   lines only, so progress is indeterminate by design).
+
+## Slice 8 landed (2026-09-22): chat-turn handoff wiring
+
+- The routing seam executes: on a hermesAgent kernel turn, when
+  features.layaRouting is on, the checkpoint is installed, and the router
+  commits bounded_cua, a per-turn BoxProxyCuaDriver is bound (only when the
+  bot actually has a cloud box; the turn's own computer-control capability
+  mints the lease) and the bounded controller run REPLACES the Hermes
+  dispatch. Route decisions are awaited with a 4s cap - a wedged sidecar
+  abstains and Hermes keeps the turn rather than stalling it.
+- Completed run: the outcome is published as real runtime events under
+  provider "layaCua" (assistant_text + turn.completed), so the store fold,
+  canonical NDJSON log, kernel job lifecycle, and proactive reporting settle
+  exactly like any completed turn. No provider event is impersonated.
+- Aborted run: Hermes dispatches instead, with the controller's transcript
+  (reason, detail, every executed step) appended to its system context via
+  formatCuaHandoffTranscript. Cancelled runs take the normal stop path. A
+  bounded_cua commit with no bindable driver (no box, non-box surface) logs
+  a truthful refusal and Hermes keeps the turn.
+- The old module-level null-driver controller is gone; controllers are
+  constructed per turn with a real driver or not at all.
+- Tests: formatCuaHandoffTranscript unit tests (steps carried, empty-steps
+  omitted); full index.test.ts harness 190/190 (gate-off turns dispatch
+  exactly as before; two pre-existing feature-shape assertions updated for
+  the new flags). UNVERIFIED on hardware: a committed bounded_cua route has
+  not run against a real box end to end (needs the real checkpoint on a
+  >=4GB host plus a live box); the layaCua event flow through the fold is
+  exercised only by shape, not by a live run.

@@ -98,6 +98,24 @@ const DEFAULT_SETTLE_MS = 400;
 
 type DecisionFn = (req: LayaDecisionRequest) => Promise<LayaDecisionResult>;
 
+/** An aborted run's transcript, formatted for the fallback Hermes turn's
+ * system context (spec 100 R8): exactly what the bounded run observed and
+ * did, so Hermes takes over without repeating completed steps. This text is
+ * model-facing, never shown as a chat message. */
+export function formatCuaHandoffTranscript(result: CuaRunResult): string {
+  const steps = result.steps
+    .map(
+      (s) =>
+        `step ${s.step}: action=${s.selectedActionId ?? "none"} confidence=${s.confidence.toFixed(3)} actProbability=${s.actProbability.toFixed(3)}${s.evidence ? ` evidence=${s.evidence}` : ""}`,
+    )
+    .join("; ");
+  return (
+    `\n\n[Bounded CUA controller handoff] A bounded computer-use controller attempted this task on the bot's cloud computer ` +
+    `and handed it back: ${result.handoffSummary}${steps ? ` Steps taken: ${steps}.` : ""} ` +
+    `Take over from here; do not repeat steps that already succeeded.`
+  );
+}
+
 export class LayaCuaController {
   private readonly budgets: Required<CuaControllerBudgets>;
   private readonly decide: DecisionFn;

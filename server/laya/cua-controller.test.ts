@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LayaCuaController, type CuaDriver, type CuaStateSnapshot } from "./cua-controller.ts";
+import { formatCuaHandoffTranscript, LayaCuaController, type CuaDriver, type CuaStateSnapshot } from "./cua-controller.ts";
 import type { LayaDecisionResult } from "./contract.ts";
 
 /** Control-loop tests: real loop logic with the provider and driver
@@ -104,5 +104,35 @@ describe("LayaCuaController", () => {
     const r = await new LayaCuaController(async () => choose("a1"), d).run({ ...input, isCancelled: () => true });
     expect(r).toMatchObject({ outcome: "aborted", reason: "cancelled" });
     expect(d.acted).toHaveLength(0);
+  });
+});
+
+describe("formatCuaHandoffTranscript (spec 100 R8 handoff)", () => {
+  it("carries the abort reason, detail, and every executed step", () => {
+    const text = formatCuaHandoffTranscript({
+      outcome: "aborted",
+      reason: "lease_refused",
+      detail: "the person is driving this computer right now",
+      steps: [
+        { step: 1, stateVersion: "v1", candidateCount: 5, selectedActionId: "a1", confidence: 0.1234, actProbability: 0.9876, evidence: "clicked ref=3" },
+      ],
+      handoffSummary: "bounded CUA aborted: lease_refused - the person is driving this computer right now. 1 step(s) executed.",
+    });
+    expect(text).toContain("lease_refused");
+    expect(text).toContain("the person is driving");
+    expect(text).toContain("step 1: action=a1 confidence=0.123 actProbability=0.988 evidence=clicked ref=3");
+    expect(text).toContain("do not repeat steps that already succeeded");
+  });
+
+  it("omits the steps section when no step executed", () => {
+    const text = formatCuaHandoffTranscript({
+      outcome: "aborted",
+      reason: "no_driver",
+      detail: "no guarded CUA driver is registered for this bot",
+      steps: [],
+      handoffSummary: "bounded CUA aborted: no_driver - no guarded CUA driver is registered for this bot. 0 step(s) executed.",
+    });
+    expect(text).toContain("no_driver");
+    expect(text).not.toContain("Steps taken:");
   });
 });
