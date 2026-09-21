@@ -2294,6 +2294,9 @@ const watchdog = new TurnWatchdog({
     const instance = bot ? registry.get(bot.modelSelection.instanceId) : null;
     void instance?.adapter.interruptTurn(turn.threadId).catch(() => {});
     const minutes = Math.round(TURN_STALL_MS / 60_000);
+    console.error(
+      `[turn] stalled with no activity for ${minutes} minutes; stopping bot=${turn.botId} thread=${turn.threadId} engine=${bot?.modelSelection.instanceId ?? "unknown"} model=${bot?.modelSelection.model ?? "unknown"}`,
+    );
     store.appendMessage(turn.threadId, {
       role: "bot",
       kind: "activity",
@@ -5543,6 +5546,10 @@ async function runGroupMemberTurn(
         clearCancelledProviderHandshake(threadId, retirementOwner);
         if (abandoned) return;
         const message = err instanceof Error ? err.message : "turn failed";
+        // The in-thread chip is truncated for layout; the full reason lands
+        // in server.log (the desktop app shows its path in About > App logs)
+        // so a truncated chip never destroys the actionable tail.
+        console.error(`[turn] dispatch failed for bot=${bot.id} thread=${threadId}: ${message}`);
         store.appendMessage(threadId, {
           role: "bot",
           kind: "activity",

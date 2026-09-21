@@ -1,7 +1,7 @@
 // "About Dani Bot" — the version you are running and where to go next.
 // Small on purpose: the interesting settings live in the settings panel, and
-// this exists so a bug report can quote a version number.
-import { useEffect, useRef } from "react";
+// this exists so a bug report can quote a version number and reach the logs.
+import { useEffect, useRef, useState } from "react";
 
 import {
   APP_NAME,
@@ -16,6 +16,18 @@ import {
 
 export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [logsDir, setLogsDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    window.dani?.logsPath?.().then((dir) => {
+      if (active && dir) setLogsDir(dir);
+    }).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +77,23 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
           <AboutLink href={RELEASES_URL} label="Releases" />
           <AboutLink href={LICENSE_URL} label="License" />
         </div>
+        {logsDir && (
+          <div className="mt-4 rounded-xl bg-inset px-3 py-2.5 text-left">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[12px] font-medium text-ink">App logs</span>
+              <button
+                type="button"
+                onClick={() => void window.dani?.logsOpen?.()}
+                className="shrink-0 rounded-md bg-raised px-2 py-1 text-[11.5px] text-ink hover:bg-raised-hover"
+              >
+                Open folder
+              </button>
+            </div>
+            <div className="mt-1 break-all font-mono text-[10.5px] leading-relaxed text-ink-secondary">
+              {logsDir}
+            </div>
+          </div>
+        )}
         <button
           ref={closeRef}
           type="button"
