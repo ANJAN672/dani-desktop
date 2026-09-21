@@ -11479,6 +11479,7 @@ const server = createServer(async (req, res) => {
         const preferences = executionKernel.repository.setProactivePreferences({ ownerId: bot.id, botId: bot.id, autonomy, quietHours, proposalLimit, proposalWindowMs });
         return json(res, 200, { preferences });
       } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : String(error) }); }
+    }
 
     // spec 100: one bounded CUA run against a bot's real cloud box, through
     // the existing computer proxy (same who-is-driving lease, same evidence
