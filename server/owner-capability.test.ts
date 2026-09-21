@@ -150,7 +150,7 @@ describe("owner capability", () => {
   it("accepts loopback mutations presenting the token", async () => {
     const server = await bootServer();
 
-    const cliTest = await call(server, "POST", "/api/cli-test", { body: { cli: process.execPath } });
+    const cliTest = await call(server, "POST", "/api/cli-test", { body: { cli: process.execPath, explicitCustomPath: true } });
     expect(cliTest.status).toBe(200);
     expect(cliTest.body.ok).toBe(true);
 
@@ -203,7 +203,7 @@ describe("owner capability", () => {
     );
     chmodSync(script, 0o755);
     const probe = await call(server, "POST", "/api/cli-test", {
-      body: { cli: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}` },
+      body: { cli: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`, explicitCustomPath: true },
       token: supplied,
     });
     expect(probe.status).toBe(200);
