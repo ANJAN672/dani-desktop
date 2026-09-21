@@ -1,6 +1,6 @@
 ---
 name: repo-forensics
-description: "Use before making any change to the existing DANI/OpenMausBot-derived repository, to audit code, branch, features, licenses, installed tooling and baseline tests."
+description: "Use before making any change to the existing DANI repository, to audit code, branch, features, licenses, installed tooling and baseline tests."
 ---
 
 # Procedure
