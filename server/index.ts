@@ -457,9 +457,9 @@ bus.attach(registry.instances());
 // planner adapter admitted here; provider reloads replace this boundary.
 let executionKernel: DaniExecutionKernel | null = null;
 let kernelThreadJobs = new Map<string, { jobId: string; generation: number }>();
-function createExecutionKernel(): DaniExecutionKernel {
+function createExecutionKernel(): DaniExecutionKernel | null {
   const hermes = registry.instances().find((instance) => instance.driverKind === "hermesAgent");
-  if (!hermes) throw new Error("the fixed Hermes runtime is unavailable");
+  if (!hermes) return null;
   const repository = new DaniKernelRepository(join(DATA_DIR, "execution-kernel.sqlite"));
   const kernel = new DaniExecutionKernel(repository, hermes.adapter, new Map());
   const uncertain = kernel.recover();
