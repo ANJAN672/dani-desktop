@@ -8,6 +8,11 @@ describe("Dani Hermes default", () => {
       { instanceId: "hermes", driverKind: "hermesAgent", models: { default: "h" }, snapshot: { state: "available" } },
     ])).toMatchObject({ state: "ready", instanceId: "hermes", model: "h" });
   });
+  it("allows an explicit hermetic test provider without changing production selection", () => {
+    expect(selectDaniDefault([
+      { instanceId: "fixture", driverKind: "claudeAgent", models: { default: "fake" }, snapshot: { state: "available" } },
+    ], "fixture")).toMatchObject({ state: "ready", instanceId: "fixture", model: "fake" });
+  });
   it("fails closed instead of silently choosing another provider", () => {
     expect(selectDaniDefault([
       { instanceId: "other", driverKind: "grok", models: { default: "g" }, snapshot: { state: "available" } },

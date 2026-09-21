@@ -999,7 +999,7 @@ function askBotAndWait(targetBotId: string, message: string, depth: number, from
 // default selection for new bots: Dani runs the compatible Hermes runtime or fails closed
 async function defaultSelection() {
   const described = await registry.describe();
-  const selected = selectDaniDefault(described);
+  const selected = selectDaniDefault(described, process.env.OMB_TEST_DEFAULT_INSTANCE_ID);
   return { instanceId: selected.instanceId, model: selected.model };
 }
 
