@@ -78,7 +78,8 @@
     "control-plane:test": "pnpm --filter @danibot/control-plane test",
     "control-plane:dry-run": "pnpm --filter @danibot/control-plane dry-run",
     "dani-agent": "node --experimental-strip-types server/dani-agent.ts",
-    "build:speech-models": "node scripts/prepare-speech-models.mjs"
+    "build:speech-models": "node scripts/prepare-speech-models.mjs",
+    "smoke:kernel-profiles": "dbus-run-session -- xvfb-run -a node scripts/smoke-packaged-kernel-profiles.mjs"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",

@@ -1901,19 +1901,27 @@ function createWindow() {
                 });
               });
             }
-            const [initialCapabilities, healthResponse, ownerMutationResponse] = await Promise.all([
+            const [initialCapabilities, healthResponse, ownerMutationResponse, kernelSmokeResponse] = await Promise.all([
               window.ogb.getCapabilities(),
               fetch("/api/health"),
               fetch("/api/auth/stream-ticket", { method: "POST" }),
+              ${JSON.stringify(process.env.DANI_KERNEL_PROFILE_SMOKE === "1")}
+                ? fetch("/api/kernel/packaged-profile-smoke")
+                : Promise.resolve(null),
             ]);
             if (!healthResponse.ok) {
               throw new Error(\`health request failed: \${healthResponse.status} \${healthResponse.statusText}\`);
             }
             const health = await healthResponse.json();
-            if (!ownerMutationResponse.ok) {
+            if (!ownerMutationResponse.ok && !kernelSmokeResponse) {
               throw new Error(
                 \`desktop mutation capability failed: \${ownerMutationResponse.status} \${ownerMutationResponse.statusText}\`,
               );
+            }
+            let kernelSmoke = null;
+            if (kernelSmokeResponse) {
+              kernelSmoke = await kernelSmokeResponse.json();
+              if (!kernelSmokeResponse.ok) throw new Error(\`kernel profile smoke failed: \${JSON.stringify(kernelSmoke)}\`);
             }
             let capabilities = initialCapabilities;
             let cuaCrashReason = null;
@@ -1932,6 +1940,7 @@ function createWindow() {
               cuaCrashReason,
               cuaRetryStatus,
               health,
+              kernelSmoke,
               location: window.location.href,
               title: document.title,
             };

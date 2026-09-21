@@ -123,6 +123,7 @@ import {
 import { ComputerControl } from "./computer-control.ts";
 import { DaniExecutionKernel } from "./dani-kernel/kernel.ts";
 import { DaniKernelRepository } from "./dani-kernel/repository.ts";
+import { runPackagedKernelProfileSmoke } from "./dani-kernel/packaged-profile-smoke.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
@@ -470,6 +471,9 @@ function createExecutionKernel(): DaniExecutionKernel | null {
   return kernel;
 }
 executionKernel = createExecutionKernel();
+const packagedKernelSmoke = process.env.DANI_KERNEL_PROFILE_SMOKE === "1"
+  ? runPackagedKernelProfileSmoke(join(DATA_DIR, "packaged-kernel-smoke"), process.env.DANI_KERNEL_PROFILE_ID ?? "profile")
+  : null;
 async function cancelKernelThread(threadId: string, reason: string): Promise<void> {
   const active = kernelThreadJobs.get(threadId);
   if (!active || !executionKernel) return;
@@ -11242,6 +11246,12 @@ const server = createServer(async (req, res) => {
         return json(res, 400, { error: "limit must be a positive whole number" });
       }
       return json(res, 200, { decisions: readDecisions(DATA_DIR, parsedLimit ?? 200) });
+    }
+
+    if (path === "/api/kernel/packaged-profile-smoke" && req.method === "GET") {
+      if (!packagedKernelSmoke) return json(res, 404, { error: "packaged kernel smoke disabled" });
+      try { return json(res, 200, await packagedKernelSmoke); }
+      catch (error) { return json(res, 500, { error: error instanceof Error ? error.message : String(error) }); }
     }
 
     m = path.match(/^\/api\/kernel\/threads\/([A-Za-z0-9-]+)\/diagnostic$/);
