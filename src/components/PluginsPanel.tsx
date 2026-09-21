@@ -669,6 +669,14 @@ export function PluginsPanel() {
                         )}
                       </div>
                     </div>
+                    {/* The "temporarily unavailable" banner means nothing here can
+                        connect: render an inert label instead of a button so no
+                        card looks actionable. */}
+                    {!configured && !stale ? (
+                      <span className="flex min-w-[88px] cursor-default items-center justify-center rounded-full bg-raised/40 px-3 py-2 text-[12.5px] text-ink-secondary">
+                        Unavailable
+                      </span>
+                    ) : (
                     <button
                       type="button"
                       disabled={!configured || inventoryPhase !== "ready" || busy || included || Boolean(unavailableReason)}
@@ -706,6 +714,7 @@ export function PluginsPanel() {
                         })
                       )}
                     </button>
+                    )}
                   </div>
                   {accounts.length > 0 && (
                     <div className="ml-14 mt-3 space-y-2">

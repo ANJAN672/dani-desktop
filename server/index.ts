@@ -3758,7 +3758,9 @@ async function startTurn(
       new Error(
         opts?.runOn === "cloud"
           ? "the Cloud VM runner is unavailable — configure Box in App Settings"
-          : `provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`,
+          : !bot.modelSelection.instanceId
+            ? "this bot has no model selected — pick one in the bot's Agent Profile before sending"
+            : `provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`,
       ),
       { status: 409 },
     );
@@ -10692,7 +10694,9 @@ const server = createServer(async (req, res) => {
       }
       if (!registry.get(bot.modelSelection.instanceId)) {
         return json(res, 409, {
-          error: `provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`,
+          error: !bot.modelSelection.instanceId
+            ? "this bot has no model selected — pick one in the bot's Agent Profile before sending"
+            : `provider instance "${bot.modelSelection.instanceId}" is unavailable — pick another model in settings`,
         });
       }
       const message = store.branchMessage(bot.threadId, messageId, text);
