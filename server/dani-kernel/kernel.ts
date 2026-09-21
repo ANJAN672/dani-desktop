@@ -35,5 +35,9 @@ export class DaniExecutionKernel {
   reconcile(effectId: string, generation: number) { return this.effects.reconcile(effectId, generation); }
   cancel(jobId: string, reason: string) { return this.turns.cancel(jobId, reason); }
   diagnostic(jobId: string) { return kernelDiagnostic(this.repository, jobId); }
+  threadDiagnostic(threadId: string) {
+    const job = this.repository.latestJobForThread(threadId);
+    return job ? kernelDiagnostic(this.repository, String(job.id)) : null;
+  }
   async close() { await this.turns.dispose(); this.repository.close(); }
 }

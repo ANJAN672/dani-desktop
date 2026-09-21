@@ -17,7 +17,11 @@ import { formatTime, toRows, type InspectorEntry, type InspectorPage, type Inspe
 import { openLiveEvents } from "@/lib/live-events";
 import type { RuntimeEvent } from "../../server/contracts.ts";
 
-type Lens = "events" | "raw";
+type Lens = "events" | "raw" | "evidence";
+type KernelDiagnostic = {
+  job: { id: string; status: string; attempt: number; generation: number; provider: string; turnId: string; cancellationReason: string | null };
+  effects: Array<{ id: string; adapter: string; riskClass: string; resource: string; audience: string | null; state: string; externalReference: string | null; error: string | null; evidence: Array<{ sourceTimestamp: string; sourceReference: string; inspection: unknown }> }>;
+};
 
 export function InspectorPanel({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
@@ -25,6 +29,7 @@ export function InspectorPanel({ bot }: { bot: Bot }) {
   const [lens, setLens] = useState<Lens>("events");
   const [page, setPage] = useState<InspectorPage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [kernel, setKernel] = useState<KernelDiagnostic | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -41,8 +46,11 @@ export function InspectorPanel({ bot }: { bot: Bot }) {
       // SAFETY: this same-version renderer calls the harness's typed
       // inspector endpoint; malformed transport data is handled by catch.
       const next = (await res.json()) as InspectorPage;
+      const kernelRes = await fetch(`/api/kernel/threads/${encodeURIComponent(threadId)}/diagnostic`, { signal: controller.signal });
+      const kernelBody = kernelRes.ok ? await kernelRes.json() as { diagnostic?: KernelDiagnostic | null } : {};
       if (controller.signal.aborted) return false;
       setPage(next);
+      setKernel(kernelBody.diagnostic ?? null);
       setError(null);
       return true;
     } catch (e) {
@@ -177,8 +185,8 @@ export function InspectorPanel({ bot }: { bot: Bot }) {
       return next;
     });
 
-  const shown = entries.length;
-  const total = lens === "raw" ? (page?.total.native ?? 0) : (page?.total.runtime ?? 0);
+  const shown = lens === "evidence" ? (kernel?.effects.length ?? 0) : entries.length;
+  const total = lens === "evidence" ? shown : lens === "raw" ? (page?.total.native ?? 0) : (page?.total.runtime ?? 0);
 
   return (
     <aside className="animate-panel-in flex h-full w-[460px] shrink-0 flex-col border-l border-hairline/40 bg-panel">
@@ -198,7 +206,7 @@ export function InspectorPanel({ bot }: { bot: Bot }) {
 
       <div className="flex items-center gap-2 border-b border-hairline/40 px-4 pb-3">
         <div className="flex rounded-lg bg-inset p-0.5">
-          {(["events", "raw"] as const).map((l) => (
+          {(["events", "raw", "evidence"] as const).map((l) => (
             <button
               key={l}
               onClick={() => setLens(l)}
@@ -221,12 +229,30 @@ export function InspectorPanel({ bot }: { bot: Bot }) {
 
       <div ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto font-mono text-[11.5px]">
         {error && <div className="px-4 py-3 text-danger">couldn't load: {error}</div>}
-        {page && rows.length === 0 && !error && (
+        {lens === "evidence" && kernel && (
+          <div className="space-y-3 px-4 py-4 text-ink-secondary">
+            <div className="rounded-lg border border-hairline/40 bg-inset/40 p-3">
+              <div className="text-[12px] font-semibold text-ink">{kernel.job.status}</div>
+              <div className="mt-1">job {kernel.job.id.slice(0, 8)} · attempt {kernel.job.attempt} · generation {kernel.job.generation}</div>
+            </div>
+            {kernel.effects.map((effect) => (
+              <div key={effect.id} className="rounded-lg border border-hairline/40 p-3">
+                <div className="flex justify-between gap-3"><span className="text-ink">{effect.adapter} · {effect.state}</span><span>{effect.riskClass}</span></div>
+                <div className="mt-1 break-all">{effect.resource}{effect.audience ? ` → ${effect.audience}` : ""}</div>
+                {effect.externalReference && <div className="mt-1 break-all">reference: {effect.externalReference}</div>}
+                {effect.error && <div className="mt-1 text-danger">{effect.error}</div>}
+                {effect.evidence.map((evidence) => <div key={`${evidence.sourceTimestamp}:${evidence.sourceReference}`} className="mt-2 border-t border-hairline/30 pt-2 break-all">evidence: {evidence.sourceReference}<br />{evidence.sourceTimestamp}</div>)}
+              </div>
+            ))}
+          </div>
+        )}
+        {lens === "evidence" && !kernel && !error && <div className="px-4 py-6 text-ink-secondary">No kernel job recorded for this thread yet.</div>}
+        {lens !== "evidence" && page && rows.length === 0 && !error && (
           <div className="px-4 py-6 text-ink-secondary">
             {lens === "raw" ? "No native protocol messages recorded for this thread yet." : "No runtime events for this thread yet."}
           </div>
         )}
-        {rows.map((row) => (
+        {lens !== "evidence" && rows.map((row) => (
           <Row key={row.key} row={row} open={expanded.has(row.key)} onToggle={() => toggle(row.key)} />
         ))}
       </div>

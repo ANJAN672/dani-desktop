@@ -11241,6 +11241,12 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { decisions: readDecisions(DATA_DIR, parsedLimit ?? 200) });
     }
 
+    m = path.match(/^\/api\/kernel\/threads\/([A-Za-z0-9-]+)\/diagnostic$/);
+    if (m && method === "GET") {
+      if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
+      return json(res, 200, { diagnostic: executionKernel.threadDiagnostic(m[1]) });
+    }
+
     m = path.match(/^\/api\/kernel\/jobs\/([A-Za-z0-9-]+)\/diagnostic$/);
     if (m && method === "GET") {
       if (auth.kind === "session" && !auth.scopes.includes("admin")) return json(res, 403, { error: "admin scope required" });

@@ -116,6 +116,11 @@ export class DaniKernelRepository {
     return { ...this.job(id), id, generation: 1, duplicate: false };
   }
 
+  latestJobForThread(threadId: string): KernelRow | null {
+    const row = this.db.prepare("SELECT * FROM kernel_jobs WHERE thread_id=? ORDER BY created_at DESC LIMIT 1").get(threadId) as Row | undefined;
+    return row ? { ...row, id: String(row.id) } : null;
+  }
+
   job(id: string): KernelRow {
     const row = this.db.prepare("SELECT * FROM kernel_jobs WHERE id=?").get(id) as Row | undefined;
     if (!row) throw new Error("kernel job not found");
