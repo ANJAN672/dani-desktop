@@ -86,6 +86,7 @@ export class OpenAIRealtimeTransport implements LiveCallTransport {
       await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
       await channelReady;
       if (!this.isCurrent(peer, generation)) throw new DOMException("Stale Realtime connection", "AbortError");
+      this.send({ type: "session.update", session: { audio: { input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "server_vad", create_response: false, interrupt_response: false } } } } });
       this.emit({ type: "state", state: "connected" });
       return this.remote;
     } catch (error) {
@@ -140,6 +141,10 @@ export class OpenAIRealtimeTransport implements LiveCallTransport {
       this.emit({ type: "transcript", utteranceId: event.item_id, text: event.delta, final: false });
     } else if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript && event.item_id) {
       this.emit({ type: "transcript", utteranceId: event.item_id, text: event.transcript, final: true });
+    } else if (event.type === "input_audio_buffer.speech_started") {
+      this.emit({ type: "speech", active: true });
+    } else if (event.type === "input_audio_buffer.speech_stopped") {
+      this.emit({ type: "speech", active: false });
     } else if (event.type === "response.created") {
       this.activeResponseId = event.response_id;
     } else if (event.type === "response.done") {

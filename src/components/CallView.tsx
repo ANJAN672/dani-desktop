@@ -30,13 +30,9 @@ import { MausAvatar } from "./Avatar";
 import { isRoutineApproval, isSkillApproval, pendingApprovals, spokenApprovalPrompt } from "./PendingApproval";
 import { cn } from "@/lib/cn";
 import { track } from "@/lib/analytics";
+import { spokenApprovalDecision } from "@/lib/spoken-approval";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
-
-/** Spoken answers to a permission card. Anything else is read as a reply
- * to the bot, not as consent — an approval must never be granted by a
- * sentence that merely contained the word "sure". */
-const YES = /^(yes|yeah|yep|yup|sure|ok|okay|go ahead|do it|allow|approve|approved|fine|please do)\b/i;
-const NO = /^(no|nope|don'?t|do not|stop|deny|denied|cancel|never|skip it)\b/i;
+import { RealtimeCallView } from "./RealtimeCallView";
 
 type Phase = "listening" | "sending" | "working" | "speaking";
 const CALL_ENDPOINT_MS = 850;
@@ -74,15 +70,17 @@ export function CallTargetButton({
   const { state, dispatch } = useStore();
   const { capabilities, ready: capabilitiesReady } = useDesktopCapabilities();
   const active = useOnCall() === targetId;
-  const supported = capabilities.dictation.available && Boolean(window.ogb?.speechStart);
+  const realtime = state.config?.liveCall?.provider === "openai-realtime";
+  const supported = realtime ? Boolean(navigator.mediaDevices?.getUserMedia) : capabilities.dictation.available && Boolean(window.ogb?.speechStart);
   const localVoice = localSystemVoiceActive();
   const configured = localVoice || Boolean(state.config?.tts?.configured);
   const everyTargetHasVoice = voices.length > 0 && voices.every((voice) => Boolean(voice));
   const voiceReady =
     localVoice ||
     (configured && (requireExplicitVoices ? everyTargetHasVoice : Boolean(state.config?.tts?.ready || everyTargetHasVoice)));
-  const unavailable = !active && (!capabilitiesReady || !supported || !voiceReady);
-  const voiceSetupRequired = capabilitiesReady && supported && !voiceReady;
+  const providerReady = realtime ? Boolean(state.config?.liveCall?.proxyConfigured) : voiceReady;
+  const unavailable = !active && (!capabilitiesReady || !supported || !providerReady);
+  const voiceSetupRequired = capabilitiesReady && supported && !providerReady;
   const [helpOpen, setHelpOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -92,7 +90,8 @@ export function CallTargetButton({
     : !capabilitiesReady
       ? "Checking call availability"
       : !supported
-        ? "Calls currently need the macOS desktop app"
+        ? realtime ? "This device cannot open a microphone" : "Calls currently need the macOS desktop app"
+        : realtime && !providerReady ? "Set up OpenAI Live in voice settings"
         : !configured
           ? "Set up a voice in an agent profile to make calls"
           : !voiceReady
@@ -101,7 +100,11 @@ export function CallTargetButton({
 
   const reason = !capabilitiesReady
     ? "Checking whether this device can make calls."
-    : !capabilities.dictation.available
+    : realtime && !providerReady
+      ? "OpenAI Live is selected, but its short-lived credential service is not configured."
+      : realtime && !supported
+        ? "This app build cannot open a WebRTC microphone."
+        : !capabilities.dictation.available
       ? "Calls require Dani Bot for macOS because speech recognition runs on-device."
       : !window.ogb?.speechStart
         ? "The speech service is unavailable in this app build. Restart or update Dani Bot."
@@ -193,8 +196,9 @@ export function CallTargetButton({
 
 export function CallOverlay({ bot }: { bot: Bot }) {
   const active = useOnCall() === bot.id;
+  const { state } = useStore();
   if (!active) return null;
-  return <Call bot={bot} />;
+  return state.config?.liveCall?.provider === "openai-realtime" ? <RealtimeCallView bot={bot} /> : <Call bot={bot} />;
 }
 
 function Call({ bot }: { bot: Bot }) {
@@ -328,8 +332,9 @@ function Call({ bot }: { bot: Bot }) {
           hush();
           return;
         }
-        if (YES.test(said) || NO.test(said)) {
-          const allow = YES.test(said);
+        const approvalDecision = spokenApprovalDecision(said);
+        if (approvalDecision) {
+          const allow = approvalDecision === "allow";
           if (allow && open.skill) {
             setHeard("");
             void sayThenListen("Open this chat to review the complete skill before enabling it. You can say no now to deny it.");

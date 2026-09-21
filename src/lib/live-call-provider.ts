@@ -41,6 +41,7 @@ export interface LiveCallSession {
 export type LiveCallEvent =
   | { type: "state"; state: "connecting" | "connected" | "ended" }
   | { type: "transcript"; utteranceId?: string; speakerId?: string; text: string; final: boolean }
+  | { type: "speech"; active: boolean }
   | { type: "error"; message: string; retryable: boolean; code?: string };
 
 export interface LiveCallTransport {

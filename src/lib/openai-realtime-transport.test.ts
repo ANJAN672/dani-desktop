@@ -50,7 +50,7 @@ describe("OpenAIRealtimeTransport", () => {
     await transport.connect(session(), { getAudioTracks: () => [{}] } as MediaStream);
     expect(fetch).toHaveBeenCalledWith(session().endpoint, expect.objectContaining({ headers: expect.objectContaining({ authorization: "Bearer ephemeral" }), body: "offer-sdp" }));
     transport.sendText("hello");
-    expect(peer().channel.sent.map((value) => JSON.parse(value).type)).toEqual(["conversation.item.create", "response.create"]);
+    expect(peer().channel.sent.map((value) => JSON.parse(value).type)).toEqual(["session.update", "conversation.item.create", "response.create"]);
   });
 
   it("emits provider item ids with final transcripts for durable dedupe", async () => {
@@ -58,9 +58,11 @@ describe("OpenAIRealtimeTransport", () => {
     const transport = new OpenAIRealtimeTransport();
     transport.subscribe((event) => events.push(event));
     await transport.connect(session(), { getAudioTracks: () => [] } as unknown as MediaStream);
+    peer().channel.onmessage?.({ data: JSON.stringify({ type: "input_audio_buffer.speech_started" }) });
     peer().channel.onmessage?.({ data: JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", item_id: "item-1", delta: "hel" }) });
     peer().channel.onmessage?.({ data: JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", item_id: "item-1", transcript: "hello" }) });
     expect(events).toEqual(expect.arrayContaining([
+      { type: "speech", active: true },
       { type: "transcript", utteranceId: "item-1", text: "hel", final: false },
       { type: "transcript", utteranceId: "item-1", text: "hello", final: true },
     ]));
@@ -80,7 +82,7 @@ describe("OpenAIRealtimeTransport", () => {
     await transport.connect(session(), { getAudioTracks: () => [] } as unknown as MediaStream);
     peer().channel.onmessage?.({ data: JSON.stringify({ type: "response.created", response_id: "response-4" }) });
     transport.interrupt();
-    expect(peer().channel.sent.map((value) => JSON.parse(value))).toEqual([
+    expect(peer().channel.sent.map((value) => JSON.parse(value)).slice(1)).toEqual([
       { type: "response.cancel", response_id: "response-4" },
       { type: "output_audio_buffer.clear" },
     ]);
@@ -111,7 +113,7 @@ describe("OpenAIRealtimeTransport", () => {
     await expect(oldConnect).rejects.toThrow("old network failure");
     expect(current.connectionState).not.toBe("closed");
     transport.sendText("still live");
-    expect(current.channel.sent).toHaveLength(2);
+    expect(current.channel.sent).toHaveLength(3);
   });
 
   it("fail-closes on backpressure and tears down remote tracks", async () => {
