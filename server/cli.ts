@@ -14,7 +14,7 @@
 // QR code: scan it with the phone or open it on a laptop. `--tailscale` asks
 // Tailscale to terminate HTTPS for it and uses the MagicDNS name in the link.
 //
-// This module only exports; danibot.ts is the entry that runs main(), so
+// This module only exports; dani-agent.ts is the entry that runs main(), so
 // bundling this file into other entries (pair-cli.ts) never runs it twice.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";

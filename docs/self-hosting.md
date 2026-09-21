@@ -80,7 +80,7 @@ pairing code for your first device:
 
 ```sh
 docker compose exec omb claude                       # each CLI you listed in ENGINES
-docker compose exec omb node dist-server/danibot.js pair # prints a code, a link and a QR
+docker compose exec omb node dist-server/dani-agent.js pair # prints a code, a link and a QR
 ```
 
 Open the link (`https://<DOMAIN>/pair#code=…`) in a browser and it is
@@ -152,7 +152,7 @@ reach it. On the server:
 ```sh
 npx danibot pair                         # npm install
 pnpm omb pair                                # from a checkout
-docker compose exec omb node dist-server/danibot.js pair   # Docker
+docker compose exec omb node dist-server/dani-agent.js pair   # Docker
 ```
 
 It prints a 12-character code (single use, five minutes) and, when the

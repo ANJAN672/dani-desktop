@@ -43,7 +43,7 @@ const ENTRY_POINTS = [
   "index.ts",
   // the `danibot` command (serve/pair/sessions/status) for the npm
   // package, the container image and checkouts; pair-cli.ts stays as an alias
-  "danibot.ts",
+  "dani-agent.ts",
   "pair-cli.ts",
   // The packaged smoke probe imports this manifest directly. Importing the
   // shared avatar contract widens TypeScript's inferred emit root to the repo,

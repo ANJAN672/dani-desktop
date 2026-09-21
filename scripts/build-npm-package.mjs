@@ -12,7 +12,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = join(root, "release", "npm");
 const app = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 
-for (const required of ["dist-server/index.js", "dist-server/danibot.js", "dist/index.html"]) {
+for (const required of ["dist-server/index.js", "dist-server/dani-agent.js", "dist/index.html"]) {
   if (!existsSync(join(root, required))) {
     console.error(`missing ${required}: run \`pnpm build:server && pnpm exec vite build\` first`);
     process.exit(1);
@@ -27,7 +27,7 @@ if (existsSync(join(root, "skills"))) cpSync(join(root, "skills"), join(out, "sk
 cpSync(join(root, "LICENSE"), join(out, "LICENSE"));
 
 // The bin lives next to the bundle so serverEntry() finds index.js by path.
-writeFileSync(join(out, "cli.js"), `#!/usr/bin/env node\nimport "./dist-server/danibot.js";\n`);
+writeFileSync(join(out, "cli.js"), `#!/usr/bin/env node\nimport "./dist-server/dani-agent.js";\n`);
 
 writeFileSync(
   join(out, "package.json"),

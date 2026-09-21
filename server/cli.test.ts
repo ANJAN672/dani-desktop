@@ -59,7 +59,7 @@ describe("danibot command line", () => {
   it("serve: starts the server, prints the pairing link, and stops on SIGTERM", async () => {
     const home = mkdtempSync(join(tmpdir(), "omb-cli-serve-"));
     const port = 21000 + Math.floor(Math.random() * 9000);
-    const child = spawn(process.execPath, ["--experimental-strip-types", join(SERVER_DIR, "danibot.ts"), "serve", "--port", String(port), "--data-dir", join(home, "data"), "--label", "cli test", "--public-url", "https://mini.example"], {
+    const child = spawn(process.execPath, ["--experimental-strip-types", join(SERVER_DIR, "dani-agent.ts"), "serve", "--port", String(port), "--data-dir", join(home, "data"), "--label", "cli test", "--public-url", "https://mini.example"], {
       cwd: join(SERVER_DIR, ".."),
       env: { PATH: process.env.PATH ?? "", HOME: home, USERPROFILE: home, OMB_WEBHOOK_PORT: String(port + 1), OMB_BROWSER_CONNECTION: join(home, "browser-connection.json") },
       stdio: ["ignore", "pipe", "pipe"],
