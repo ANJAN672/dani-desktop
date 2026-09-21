@@ -6,7 +6,7 @@ import { CloudBackendPicker } from "./CloudBackendPicker";
 import { ModelPicker } from "./ModelPicker";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { cn } from "@/lib/cn";
-import { builtInBrowserEnabled, skillRecorderEnabled } from "@/lib/feature-flags";
+import { builtInBrowserEnabled, proactiveEnabled, skillRecorderEnabled } from "@/lib/feature-flags";
 import { requestNotificationPermission } from "@/lib/notify";
 import { botUsage, costCaption, formatTokens, formatUsd, hasFiniteCost } from "@/lib/usage";
 import { shortPath } from "@/lib/short-path";
@@ -539,6 +539,84 @@ function MemoryCard({ bot }: { bot: Bot }) {
   );
 }
 
+type ProactiveAutonomy = "off" | "suggest-only" | "act-with-approval";
+interface ProactivePreferences {
+  autonomy: ProactiveAutonomy;
+  quietHours: { timezone: string; start: string; end: string } | null;
+  proposalLimit: number;
+  proposalWindowMs: number;
+}
+
+function ProactivePreferencesCard({ bot }: { bot: Bot }) {
+  const [preferences, setPreferences] = useState<ProactivePreferences | null>(null);
+  const [draft, setDraft] = useState<ProactivePreferences | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    void api(`/api/proactive/bots/${bot.id}/preferences`)
+      .then((result: { preferences?: ProactivePreferences }) => {
+        if (cancelled || !result.preferences) return;
+        setPreferences(result.preferences);
+        setDraft(result.preferences);
+      })
+      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load proactive settings."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [bot.id]);
+
+  if (loading) return <div className="rounded-xl bg-card p-4 text-[12px] text-ink-secondary">Loading proactive settings…</div>;
+  if (!draft) return <div className="rounded-xl bg-card p-4 text-[12px] text-danger">{error || "Proactive settings are unavailable."}</div>;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(preferences);
+  const quiet = draft.quietHours;
+  const setQuietEnabled = (enabled: boolean) => setDraft({
+    ...draft,
+    quietHours: enabled ? { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, start: "22:00", end: "08:00" } : null,
+  });
+  const save = async () => {
+    setSaving(true); setError("");
+    try {
+      const result = await api(`/api/proactive/bots/${bot.id}/preferences`, { method: "PATCH", body: JSON.stringify(draft) }) as { preferences: ProactivePreferences };
+      setPreferences(result.preferences); setDraft(result.preferences);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save proactive settings."); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="rounded-xl bg-card p-4">
+      <div className="text-[15px] font-medium text-ink">Proactive work</div>
+      <div className="mt-1 text-[12px] leading-relaxed text-ink-secondary">Choose when this agent may suggest work. Actions still require your approval.</div>
+      <div className="mt-3 space-y-3">
+        <Field label="Autonomy">
+          <select className={inputCls} value={draft.autonomy} onChange={(event) => setDraft({ ...draft, autonomy: event.target.value as ProactiveAutonomy })}>
+            <option value="off">Off</option>
+            <option value="suggest-only">Suggest only</option>
+            <option value="act-with-approval">Prepare actions for approval</option>
+          </select>
+        </Field>
+        <div className="flex items-center justify-between gap-3">
+          <div><div className="text-[13px] text-ink">Quiet hours</div><div className="text-[11.5px] text-ink-secondary">Hold non-urgent proposals until this window ends.</div></div>
+          <Switch checked={Boolean(quiet)} aria-label="Quiet hours" onClick={() => setQuietEnabled(!quiet)} />
+        </div>
+        {quiet && <div className="grid grid-cols-2 gap-2">
+          <Field label="Starts"><input type="time" className={inputCls} value={quiet.start} onChange={(event) => setDraft({ ...draft, quietHours: { ...quiet, start: event.target.value } })} /></Field>
+          <Field label="Ends"><input type="time" className={inputCls} value={quiet.end} onChange={(event) => setDraft({ ...draft, quietHours: { ...quiet, end: event.target.value } })} /></Field>
+          <div className="col-span-2"><Field label="Timezone"><input className={inputCls} value={quiet.timezone} onChange={(event) => setDraft({ ...draft, quietHours: { ...quiet, timezone: event.target.value } })} /></Field></div>
+        </div>}
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Proposal limit"><input type="number" min={1} max={100} className={inputCls} value={draft.proposalLimit} onChange={(event) => setDraft({ ...draft, proposalLimit: Number(event.target.value) })} /></Field>
+          <Field label="Per window"><select className={inputCls} value={draft.proposalWindowMs} onChange={(event) => setDraft({ ...draft, proposalWindowMs: Number(event.target.value) })}><option value={3_600_000}>Hour</option><option value={21_600_000}>6 hours</option><option value={86_400_000}>Day</option></select></Field>
+        </div>
+      </div>
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+      <button type="button" disabled={!dirty || saving} onClick={() => void save()} className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40">{saving ? "Saving…" : "Save proactive settings"}</button>
+    </div>
+  );
+}
+
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
   const { capabilities } = useDesktopCapabilities();
@@ -737,6 +815,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               </button>
             </div>
           </div>
+
+          {proactiveEnabled(state.config) && <ProactivePreferencesCard bot={bot} />}
 
           <div className={cn(
             "rounded-xl border p-4",

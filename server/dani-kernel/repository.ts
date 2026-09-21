@@ -157,6 +157,7 @@ export class DaniKernelRepository {
 
 
   setProactivePreferences(input: ProactivePreferencesInput) {
+    if (input.autonomy !== "off" && input.autonomy !== "suggest-only" && input.autonomy !== "act-with-approval") throw new Error("invalid proactive autonomy");
     if (!Number.isInteger(input.proposalLimit) || input.proposalLimit < 1 || input.proposalLimit > 100) throw new Error("proposal limit must be an integer from 1 to 100");
     if (!Number.isInteger(input.proposalWindowMs) || input.proposalWindowMs < 60_000) throw new Error("proposal window must be at least one minute");
     const at = now();

@@ -7,6 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join } from "node:path";
 
 import { z } from "zod";
+import { validateQuietHours } from "./dani-policy.ts";
 import { botAvatarUrlFromStoredPath } from "../shared/bot-avatar.ts";
 import {
   approvalModeFor,
@@ -11449,6 +11450,35 @@ const server = createServer(async (req, res) => {
     if (path.startsWith("/api/proactive/") && !proactiveEnabled(cfg)) {
       return json(res, 404, { error: "proactive suggestions are disabled" });
     }
+
+    m = path.match(/^\/api\/proactive\/bots\/([A-Za-z0-9-]+)\/preferences$/);
+    if (m && (method === "GET" || method === "PATCH")) {
+      if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such bot" });
+      if (method === "GET") return json(res, 200, { preferences: executionKernel.repository.proactivePreferences(bot.id, bot.id) });
+      const body = await readBody(req, 4_096);
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "body must be a JSON object" });
+      const current = executionKernel.repository.proactivePreferences(bot.id, bot.id);
+      const autonomy = body.autonomy ?? current.autonomy;
+      const proposalLimit = body.proposalLimit ?? current.proposalLimit;
+      const proposalWindowMs = body.proposalWindowMs ?? current.proposalWindowMs;
+      let quietHours = current.quietHours;
+      if (body.quietHours === null) quietHours = null;
+      else if (body.quietHours !== undefined) {
+        if (!body.quietHours || typeof body.quietHours !== "object" || Array.isArray(body.quietHours)) return json(res, 400, { error: "quietHours must be null or an object" });
+        quietHours = { timezone: body.quietHours.timezone, start: body.quietHours.start, end: body.quietHours.end };
+      }
+      if (autonomy !== "off" && autonomy !== "suggest-only" && autonomy !== "act-with-approval") return json(res, 400, { error: "invalid proactive autonomy" });
+      if (quietHours) {
+        if (typeof quietHours.timezone !== "string" || typeof quietHours.start !== "string" || typeof quietHours.end !== "string") return json(res, 400, { error: "quietHours requires timezone, start, and end strings" });
+        const valid = validateQuietHours(quietHours);
+        if (!valid.ok) return json(res, 400, { error: `invalid quiet hours: ${valid.reason}` });
+      }
+      try {
+        const preferences = executionKernel.repository.setProactivePreferences({ ownerId: bot.id, botId: bot.id, autonomy, quietHours, proposalLimit, proposalWindowMs });
+        return json(res, 200, { preferences });
+      } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : String(error) }); }
 
     // spec 100: one bounded CUA run against a bot's real cloud box, through
     // the existing computer proxy (same who-is-driving lease, same evidence
