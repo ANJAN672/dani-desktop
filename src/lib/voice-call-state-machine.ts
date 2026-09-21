@@ -145,6 +145,12 @@ export class VoiceCallStateMachine {
     return true;
   }
 
+  markThinking(generation: number): boolean {
+    if (!this.isCurrent(generation)) return false;
+    this.transition("thinking");
+    return true;
+  }
+
   markListening(generation: number): boolean {
     if (!this.isCurrent(generation)) return false;
     this.transition("listening");

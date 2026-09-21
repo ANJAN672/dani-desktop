@@ -164,8 +164,8 @@ export class OpenAIRealtimeTransport implements LiveCallTransport {
   /** Stop provider output immediately during barge-in. Durable turn cancellation
    * is a separate required operation owned by the call state machine. */
   interrupt() {
-    if (!this.channel || this.channel.readyState !== "open") return;
-    this.send({ type: "response.cancel", ...(this.activeResponseId ? { response_id: this.activeResponseId } : {}) });
+    if (!this.channel || this.channel.readyState !== "open" || !this.activeResponseId) return;
+    this.send({ type: "response.cancel", response_id: this.activeResponseId });
     this.send({ type: "output_audio_buffer.clear" });
     this.activeResponseId = undefined;
   }

@@ -10,7 +10,8 @@ import { VoiceCallStateMachine, classifyMicrophoneError } from "@/lib/voice-call
 import { openEchoCancelledMicrophone } from "@/lib/duplex-voice";
 import { speaker } from "@/lib/tts";
 import { spokenApprovalDecision } from "@/lib/spoken-approval";
-import { pendingApprovals } from "./PendingApproval";
+import { pendingApprovals, spokenApprovalPrompt } from "./PendingApproval";
+import { shouldBargeIn, stateAfterPlayback } from "@/lib/voice-duplex-policy";
 import { DaniAvatar } from "./Avatar";
 
 export function RealtimeCallView({ bot }: { bot: Bot }) {
@@ -19,6 +20,8 @@ export function RealtimeCallView({ bot }: { bot: Bot }) {
   const approval = pendingApprovals(messages)[0];
   const approvalRef = useRef(approval);
   approvalRef.current = approval;
+  const busyRef = useRef(Boolean(bot.busy));
+  busyRef.current = Boolean(bot.busy);
   const spokenIds = useRef(new Set(messages.map((message) => message.id)));
   const [state, setState] = useState<"connecting" | "listening" | "thinking" | "speaking" | "reconnecting" | "error">("connecting");
   const [heard, setHeard] = useState("");
@@ -69,7 +72,11 @@ export function RealtimeCallView({ bot }: { bot: Bot }) {
             void machine.submitFinal(generation, { utteranceId: event.utteranceId, text: event.text });
           }
         }
-      } else if (event.type === "speech" && event.active && (machine.snapshot.state === "thinking" || machine.snapshot.state === "speaking")) {
+      } else if (event.type === "speech" && event.active && shouldBargeIn({
+        state: machine.snapshot.state,
+        botBusy: busyRef.current,
+        approvalOpen: Boolean(approvalRef.current),
+      })) {
         speaker.stop();
         transport.interrupt();
         void machine.bargeIn(generation).then((next) => { if (next) generationRef.current = next; });
@@ -115,14 +122,19 @@ export function RealtimeCallView({ bot }: { bot: Bot }) {
     for (const message of fresh) spokenIds.current.add(message.id);
     const reply = [...fresh].reverse().find((message) => message.role === "bot" && message.kind === "text" && message.text?.trim());
     const activity = [...fresh].reverse().find((message) => message.kind === "activity" && message.tool?.spoken);
-    const text = reply?.text?.trim() || activity?.tool?.spoken?.trim();
-    if (!text || approval) return;
+    const text = approval
+      ? spokenApprovalPrompt(approval, bot.name)
+      : reply?.text?.trim() || activity?.tool?.spoken?.trim();
+    if (!text) return;
     const generation = generationRef.current;
     if (!machine.markSpeaking(generation)) return;
     void speaker.speak(text, { botId: bot.id, voiceId: bot.voice }).finally(() => {
-      if (alive.current) machine.markListening(generationRef.current);
+      if (!alive.current) return;
+      const after = stateAfterPlayback(Boolean(busyRef.current));
+      if (after === "thinking") machine.markThinking(generationRef.current);
+      else machine.markListening(generationRef.current);
     });
-  }, [approval, bot.id, bot.voice, messages]);
+  }, [approval, bot.id, bot.name, bot.voice, messages]);
 
   const interrupt = useCallback(() => {
     const machine = machineRef.current;
