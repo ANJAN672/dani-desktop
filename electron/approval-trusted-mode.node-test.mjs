@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+// The coordinator deliberately unrefs its request timeout so a pending ask
+// never wedges an Electron app quit. Under bare `node --test` an unref'd
+// timer lets the event loop drain while a test is still awaiting it, and the
+// runner cancels every pending test in the file ("Promise resolution is
+// still pending but the event loop has already resolved"). Hold one ref'd
+// handle for the file's lifetime so the real timeouts can fire.
+const keepEventLoopAlive = setInterval(() => {}, 60_000);
+test.after(() => clearInterval(keepEventLoopAlive));
+
 import approvalModule from "./approval-trusted-mode.cjs";
 
 const {

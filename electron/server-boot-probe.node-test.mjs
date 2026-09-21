@@ -3,6 +3,14 @@ import test from "node:test";
 
 import { pollServerIdentity } from "./server-boot-probe.mjs";
 
+// The probe enforces its wall-clock budget with AbortSignal.timeout, whose
+// timer is unref'd, and with defaultSleep only on the retry path. A test
+// whose only pending work is that abort (e.g. a fetch that hangs until the
+// signal fires) leaves the event loop empty, and bare `node --test` then
+// cancels every pending test in the file. Keep one ref'd handle alive.
+const keepEventLoopAlive = setInterval(() => {}, 60_000);
+test.after(() => clearInterval(keepEventLoopAlive));
+
 const OUR_BODY = () => ({ app: "danibot", pid: 4242, static: true });
 
 function okFetch({ body = OUR_BODY(), status = 200 } = {}) {
