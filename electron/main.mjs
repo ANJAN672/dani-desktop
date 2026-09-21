@@ -2406,8 +2406,11 @@ async function saveWorkspaceCredential(name, value) {
   const secret = value.trim();
   const applyToHarness = async () => {
     // In development the server is a separately launched process, so it
-    // cannot receive credentials from Electron at boot. Keep its established
-    // local config path there; production always uses the encrypted store.
+    // cannot receive credentials from Electron at boot. Its established local
+    // config path now requires the explicit DANI_INSECURE_LOCAL_DEV=1 opt-in
+    // (plaintext config.json, loud warning) or env/_FD-injected secrets —
+    // without either, the server fails closed and refuses the save.
+    // Production always uses the encrypted store.
     const secretStorage = app.isPackaged ? "?secretStorage=external" : "";
     const response = await fetch(`http://127.0.0.1:${SERVER_PORT}/api/config${secretStorage}`, {
       method: "PUT",
