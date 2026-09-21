@@ -1,0 +1,61 @@
+# Android debug APK, built on the same runner image as CI and published as a
+# workflow artifact.
+#
+# Why this exists: CI proves the app compiles and its tests pass but keeps no
+# installable output, so no downloadable Android build ever existed. Like the
+# other package workflows, this deliberately produces an artifact instead of
+# publishing anything. A signed release APK/AAB stays with the unified release
+# flow: android/app/build.gradle.kts activates its v2+v3 release signing
+# config only when keystore material is provisioned, and it is not yet.
+name: Package Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit/tag/branch to build (defaults to the branch this is run from)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Debug APK (Android)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          # Same cache naming as ci.yml's Android job: Robolectric's
+          # android-all-instrumented download lives outside Gradle's cache.
+          cache-path: |
+            ~/.gradle/caches
+            ~/.m2/repository/org/robolectric
+      - name: Test and build the debug APK
+        run: |
+          cd android
+          ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug
+      - name: Record the artifact identity
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          echo "artifact-name=danibot-android-${version}-debug-apk" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.release.outputs.artifact-name }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
