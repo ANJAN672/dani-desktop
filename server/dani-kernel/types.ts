@@ -75,3 +75,8 @@ export interface ProactivePreferencesInput {
   proposalLimit: number;
   proposalWindowMs: number;
 }
+
+
+export interface ProactiveTriggerInput extends ProactiveProposalInput {
+  occurredAt: string;
+}

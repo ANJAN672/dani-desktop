@@ -3,12 +3,14 @@ import { kernelDiagnostic } from "./diagnostics.ts";
 import { DaniKernelEffectService, type KernelEffectAdapter } from "./effect-service.ts";
 import { HermesKernelTurnService, type HermesKernelTurnInput } from "./hermes-turn.ts";
 import { DaniKernelRepository } from "./repository.ts";
+import { ProactiveTriggerEvaluator } from "./proactive-triggers.ts";
 import type { AdmitJobInput, ApprovalGrantInput, ProposeEffectInput } from "./types.ts";
 
 /** One application boundary owns all writes to the execution ledgers. */
 export class DaniExecutionKernel {
   readonly turns: HermesKernelTurnService;
   readonly effects: DaniKernelEffectService;
+  readonly proactive: ProactiveTriggerEvaluator;
 
   readonly repository: DaniKernelRepository;
   constructor(
@@ -19,6 +21,7 @@ export class DaniExecutionKernel {
     this.repository = repository;
     this.turns = new HermesKernelTurnService(repository, hermes);
     this.effects = new DaniKernelEffectService(repository, adapters);
+    this.proactive = new ProactiveTriggerEvaluator(repository);
   }
 
   recover() { return this.repository.reconcileAfterRestart(); }

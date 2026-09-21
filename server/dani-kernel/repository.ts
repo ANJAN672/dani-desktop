@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AdapterEvidenceInput, AdmitJobInput, ApprovalGrantInput, KernelEffectState, KernelJobStatus, ProactivePreferencesInput, ProactiveProposalInput, ProposeEffectInput } from "./types.ts";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const TERMINAL_JOB_STATES = new Set<KernelJobStatus>(["completed", "failed", "cancelled", "uncertain"]);
 const canonical = (value: unknown): unknown => Array.isArray(value)
   ? value.map(canonical)
@@ -112,6 +112,20 @@ export class DaniKernelRepository {
         CREATE INDEX kernel_proposals_inbox ON kernel_proposals(owner_id,thread_id,status,created_at);
         CREATE INDEX kernel_proposals_equivalent ON kernel_proposals(owner_id,bot_id,trigger_kind,status,updated_at);
         PRAGMA user_version=2;
+        COMMIT;`);
+    }
+    if (fromVersion < 3) {
+      this.db.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE kernel_proactive_queue(
+          id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, bot_id TEXT NOT NULL,
+          trigger_key TEXT NOT NULL, proposal_json TEXT NOT NULL,
+          not_before TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('queued','released','suppressed')),
+          suppression_reason TEXT, proposal_id TEXT REFERENCES kernel_proposals(id),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          UNIQUE(owner_id,bot_id,trigger_key)
+        );
+        CREATE INDEX kernel_proactive_queue_due ON kernel_proactive_queue(state,not_before);
+        PRAGMA user_version=3;
         COMMIT;`);
     }
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL");

@@ -471,6 +471,10 @@ function createExecutionKernel(): DaniExecutionKernel | null {
   return kernel;
 }
 executionKernel = createExecutionKernel();
+const proactiveReleaseTimer = setInterval(() => {
+  executionKernel?.proactive.releaseDue(new Date());
+}, 60_000);
+proactiveReleaseTimer.unref?.();
 const packagedKernelSmoke = process.env.DANI_KERNEL_PROFILE_SMOKE === "1"
   ? runPackagedKernelProfileSmoke(join(DATA_DIR, "packaged-kernel-smoke"), process.env.DANI_KERNEL_PROFILE_ID ?? "profile")
   : null;
@@ -12349,7 +12353,7 @@ const gracefulShutdown = createGracefulShutdown({
       webhookIngress?.server.close();
     },
     () => releaseAllBrowserCapabilities(),
-    () => executionKernel?.close(),
+    () => { clearInterval(proactiveReleaseTimer); return executionKernel?.close(); },
     () => registry.disposeAll(),
   ],
   // Cleanup jobs run concurrently. Release only after they settle (or reach

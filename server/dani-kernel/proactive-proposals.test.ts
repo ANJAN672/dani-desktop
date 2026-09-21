@@ -59,11 +59,11 @@ describe("kernel proactive proposal ledger", () => {
 
   it("backs up and migrates a v1 kernel without losing jobs", () => {
     const { root, repo } = open(); repo.admitJob({ ownerId: "owner-1", objective: "old", originatingRequestId: "old", turnId: "old", provider: "hermes", threadId: "old" });
-    repo.db.exec("DROP TABLE kernel_proposals; DROP TABLE kernel_proactive_preferences; PRAGMA user_version=1"); repo.close();
+    repo.db.exec("DROP TABLE kernel_proactive_queue; DROP TABLE kernel_proposals; DROP TABLE kernel_proactive_preferences; PRAGMA user_version=1"); repo.close();
     const migrated = new DaniKernelRepository(join(root, "kernel.sqlite"));
     expect(migrated.backupPath && existsSync(migrated.backupPath)).toBe(true);
     expect(migrated.db.prepare("SELECT COUNT(*) c FROM kernel_jobs").get()).toEqual({ c: 1 });
-    expect(migrated.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 2 });
+    expect(migrated.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 3 });
     migrated.close();
   });
 });
