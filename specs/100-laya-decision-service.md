@@ -134,3 +134,30 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
 - Independent Hermes-only fallback with no mandatory added latency.
 - A measured end-to-end win before any execution gate defaults on - or the
   feature stays disabled and unadvertised.
+
+## Slice 2 evidence addendum (2026-09-22)
+
+- **Real download + hash verification: PASS.** The sidecar `download` method
+  fetched all five pinned typed-decisions files through `hf_hub_download` at
+  the pinned revision; the weights sha256 verified byte-exact against the pin
+  (`4fa56de7...a24e`). Repro: sidecar `download` request with the manifest
+  file list.
+- **Real checkpoint output on the DANI routing schema: PASS (vendor-hosted).**
+  The vendor demo space (`convaiinnovations/laya-demo`, `/run_playground`,
+  which runs the same pinned family) answered our exact routing question
+  shape: a clear one-action request picked the bounded-CUA option (p 0.464 vs
+  Hermes 0.146, NONE 0.390, latency 140.5 ms hosted); garbage input
+  ("hmm, whatever you think lol") picked NONE_OF_THE_ABOVE (p 0.381).
+  Abstention-by-ranking works on this probe. Confidence is normalized
+  entropy (1 - H/log k): the clear case scored 0.085, garbage 0.005, and the
+  act head returned 1.0 for both, so NONE-ranking is the primary abstain
+  signal; confidence thresholds start at 0.02 and must be re-derived from
+  shadow-ledger data before any execution gate opens.
+- **Local inference in the task sandbox: BLOCKED BY HARDWARE, not by the
+  model.** The sandbox has 2 GB RAM; loading the fp32 421M checkpoint
+  (~1.7 GB weights + torch runtime) is OOM-killed (exit 137). Download,
+  verification, SDK import, and the sidecar protocol all work; a full local
+  load+predict run needs a >=4 GB host. Exact repro for target hardware:
+  `pip install laya==0.3.5`, then the sidecar `load` + `predict` requests
+  against the verified snapshot dir. Target laptops (8-32 GB) clear this
+  easily; CPU-only is supported by the SDK with graceful device fallback.
