@@ -441,6 +441,23 @@ for (const expected of [
   if (!fields.includes(expected)) fail(`DEB metadata is missing ${JSON.stringify(expected)}`);
 }
 
+// The postinst replaces electron-builder's default after-install template, so
+// it must keep the template behaviors the default provided: without the
+// AppArmor profile install, Ubuntu 24.04 denies the app user namespaces and
+// Chromium's setuid-sandbox fallback dies on the space in /opt/Dani Bot
+// (electron/electron#44414). Check the hook here so a template regression
+// fails verification instead of the packaged launch smoke.
+const controlExtracted = mkdtempSync(path.join(tmpdir(), "omb-deb-control-"));
+try {
+  execFileSync("dpkg-deb", ["--control", deb, controlExtracted]);
+  const postinst = readFileSync(path.join(controlExtracted, "postinst"), "utf8");
+  for (const needle of ["resources/apparmor-profile", "apparmor_parser --replace"]) {
+    if (!postinst.includes(needle)) fail(`DEB postinst is missing ${JSON.stringify(needle)}`);
+  }
+} finally {
+  rmSync(controlExtracted, { recursive: true, force: true });
+}
+
 const extracted = mkdtempSync(path.join(tmpdir(), "omb-deb-verify-"));
 try {
   execFileSync("dpkg-deb", ["--extract", deb, extracted]);
@@ -450,6 +467,13 @@ try {
   // Routes the in-app updater to the package-manager hand-off.
   requirePackageType(debResources, "DEB", "deb");
   requireUpdaterTarget(debResources, "DEB");
+  const apparmorProfile = readFileSync(path.join(debResources, "apparmor-profile"), "utf8");
+  if (
+    !apparmorProfile.includes('"/opt/Dani Bot/danibot"') ||
+    !apparmorProfile.includes("userns,")
+  ) {
+    fail("DEB AppArmor profile does not grant the installed executable userns");
+  }
   const debHashes = verifyCuaResources(debResources, "DEB");
   const debCloudflaredHash = verifyCloudflaredResources(debResources, "DEB");
   if (debCloudflaredHash !== unpackedCloudflaredHash) {
