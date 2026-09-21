@@ -86,7 +86,7 @@ success_check() {
   [ -n "$artifacts" ] || fail "the build finished but no installer artifact appeared in release/" "run pnpm package:mac or pnpm package:linux by hand and read its output; nothing was installed"
   say ""
   say "SUCCESS - Dani Bot packaged. Verified artifact(s):"
-  printf '%s\n' "$artifacts" | sed 's/^/  /' 
+  printf '%s\n' "$artifacts" | sed 's/^/  /'
   say ""
   case "$(uname -s)" in
     Darwin) say "next: open the .dmg and drag Dani Bot to Applications, then launch it." ;;
