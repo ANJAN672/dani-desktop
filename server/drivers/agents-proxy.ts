@@ -212,8 +212,8 @@ const ROUTINE_FIELDS_SCHEMA = {
   schedule: ROUTINE_SCHEDULE_SCHEMA,
   run_on: {
     type: "string",
-    enum: ["maus", "cloud"],
-    description: "Where the routine runs. Defaults to maus (this Dani Bot setup).",
+    enum: ["dani", "cloud"],
+    description: "Where the routine runs. Defaults to dani (this Dani Bot setup). Legacy value maus is still accepted.",
   },
   timeout_minutes: {
     type: "integer",

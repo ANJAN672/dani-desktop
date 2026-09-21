@@ -577,7 +577,7 @@ describe("post_to_room", () => {
       name: "Nightly",
       prompt: "Handle the incoming event",
       botId: automated.id,
-      runOn: "maus",
+      runOn: "dani",
     });
     expect(hook.status).toBe(201);
     const delivered = await fetch(str(field(hook.body, "credential", "url")), {

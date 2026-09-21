@@ -53,7 +53,7 @@ describe("package export", () => {
           prompt: "Verify release readiness.",
           target: "bot",
           botId: "private-id",
-          runOn: "maus",
+          runOn: "dani",
           enabled: true,
           schedule: { type: "daily", time: "09:00", weekdays: [1] },
           durationMinutes: 30,
@@ -75,7 +75,7 @@ describe("package export", () => {
           target: "room-goal",
           groupId: "private-room-id",
           botId: "private-id",
-          runOn: "maus",
+          runOn: "dani",
           enabled: true,
           schedule: { type: "daily", time: "10:00", weekdays: [1] },
           durationMinutes: 30,
@@ -89,7 +89,7 @@ describe("package export", () => {
           prompt: "Watch release readiness.",
           target: "bot",
           botId: "private-id",
-          runOn: "maus",
+          runOn: "dani",
           enabled: true,
           schedule: { type: "interval", everyMinutes: 15, anchorAt: 1_788_254_400_000 },
           durationMinutes: 30,
@@ -109,7 +109,7 @@ describe("package export", () => {
     expect(exported.package.routines?.[1]?.timeoutMinutes).toBe(20);
 
     expect(exported).toMatchObject({
-      format: "openmaus.package",
+      format: "dani.package",
       package: {
         chiefOfStaff: "lead",
         requirements: { apps: [{ slug: "github" }] },

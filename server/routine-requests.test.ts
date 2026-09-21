@@ -399,7 +399,7 @@ describe("RoutineRequestService", () => {
     await service.propose({
       botId: "bot-a",
       threadId: "thread-a",
-      proposal: { action: "update", routineId: routine.id, changes: { runOn: "maus" } },
+      proposal: { action: "update", routineId: routine.id, changes: { runOn: "dani" } },
     });
     await service.propose({
       botId: "bot-a",
@@ -515,7 +515,7 @@ describe("RoutineRequestService", () => {
       botId: "bot-a",
       name: "Morning brief",
       prompt: "Summarize the overnight support queue.",
-      runOn: "maus",
+      runOn: "dani",
       enabled: true,
       schedule: { type: "daily", time: "09:00", weekdays: [1, 3] },
       durationMinutes: 5,

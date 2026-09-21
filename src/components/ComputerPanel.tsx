@@ -1617,7 +1617,7 @@ export function ComputerPanel({
         <RoutineEditor
           bots={[bot]}
           lockedBotId={bot.id}
-          defaultRunOn={cloudRoutineReady ? "cloud" : "maus"}
+          defaultRunOn={cloudRoutineReady ? "cloud" : "dani"}
           onClose={() => setCreatingRoutine(false)}
         />
       )}

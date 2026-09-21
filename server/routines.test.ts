@@ -706,7 +706,7 @@ describe("RoutineManager", () => {
       webhookName: "Incoming delivery",
       prompt: "Handle the delivery",
       botId: "maus-webhook",
-      runOn: "maus",
+      runOn: "dani",
       deliveryId: "delivery-exact",
       receivedAt: start,
     });
@@ -761,7 +761,7 @@ describe("RoutineManager", () => {
       webhookName: "Capacity check",
       prompt: "Keep active receipts",
       botId: "maus-capacity",
-      runOn: "maus",
+      runOn: "dani",
       deliveryId: "delivery-capacity",
       receivedAt: 2_001,
     });
@@ -797,7 +797,7 @@ describe("RoutineManager", () => {
       finishedAt: startedAt! + 5 * 60_000,
     });
     expect(h.interruptedTurns).toEqual([
-      { botId: "maus-timeout", threadId: "thread-1", runOn: "maus" },
+      { botId: "maus-timeout", threadId: "thread-1", runOn: "dani" },
     ]);
   });
 
@@ -1177,12 +1177,12 @@ describe("RoutineManager", () => {
       name: "Local review",
       prompt: "Review this",
       botId: "maus-local",
-      runOn: "maus",
+      runOn: "dani",
       schedule: { type: "daily", time: "09:00", weekdays: [1] },
       attachments: [attachment],
     });
     expect(() => h.manager.update(local.id, { runOn: "cloud" })).toThrow(/cloud file staging/i);
-    expect(h.manager.listRoutines()[0]).toMatchObject({ runOn: "maus", attachments: [attachment] });
+    expect(h.manager.listRoutines()[0]).toMatchObject({ runOn: "dani", attachments: [attachment] });
   });
 
   it("keeps room goals local and attachment-free", () => {
@@ -1244,14 +1244,14 @@ describe("RoutineManager", () => {
     });
     h.setNow(routine.nextRunAt!);
     await h.manager.tick();
-    h.manager.update(routine.id, { runOn: "maus" });
+    h.manager.update(routine.id, { runOn: "dani" });
 
     h.setBot("ready");
     await h.manager.tick();
 
     expect(h.runOns).toEqual(["cloud"]);
     expect(h.manager.listRuns()[0]).toMatchObject({ runOn: "cloud" });
-    expect(h.manager.listRoutines()[0]).toMatchObject({ runOn: "maus" });
+    expect(h.manager.listRoutines()[0]).toMatchObject({ runOn: "dani" });
   });
 
   it("opens webhook jobs in the assigned bot's live chat", async () => {

@@ -3,7 +3,7 @@ export type RoutineSchedule =
   | { type: "daily"; time: string; weekdays: number[] }
   | { type: "interval"; everyMinutes: number; anchorAt: number };
 
-export type RoutineRunOn = "maus" | "cloud";
+export type RoutineRunOn = "dani" | "cloud";
 
 export type RoutineTarget = "bot" | "room-goal";
 export type RoutineGoalStatus =

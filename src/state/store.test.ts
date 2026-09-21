@@ -772,7 +772,7 @@ describe("routine receipt retention", () => {
     routineName: "Check inbox",
     target: "bot",
     botId: "echo",
-    runOn: "maus",
+    runOn: "dani",
     scheduledFor,
     status,
     manual: false,

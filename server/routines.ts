@@ -15,10 +15,15 @@ export type RoutineSchedule =
   | { type: "daily"; time: string; weekdays: number[] }
   | { type: "interval"; everyMinutes: number; anchorAt: number };
 
-/** `cloud` runs the agent itself inside the bot's Box VM. `maus` keeps
+/** `cloud` runs the agent itself inside the bot's Box VM. `dani` keeps
  * using the provider selected on the MAUS and only borrows its configured
  * computer tools, if any. */
-export type RoutineRunOn = "maus" | "cloud";
+export type RoutineRunOn = "dani" | "cloud";
+/** Routine rows written before the rebrand persist runOn "maus"; accept it
+ * everywhere a stored or inbound value is read. */
+export function normalizeRoutineRunOn(value: string | undefined | null): RoutineRunOn {
+  return value === "cloud" ? "cloud" : "dani";
+}
 export type RoutineTarget = "bot" | "room-goal";
 export type RoutineGoalStatus = Exclude<GroupGoalRunStatus, "working">;
 
@@ -432,8 +437,9 @@ function sanitizeInput(input: RoutineInput): Omit<Routine, "id" | "createdAt" | 
   if (target !== "bot" && target !== "room-goal") throw new Error("Choose a valid routine target");
   const groupId = typeof input.groupId === "string" ? input.groupId.trim() : "";
   if (target === "room-goal" && !groupId) throw new Error("Choose a room for this goal");
-  const runOn = input.runOn ?? "maus";
-  if (runOn !== "maus" && runOn !== "cloud") throw new Error("Choose where this routine runs");
+  const runOn = normalizeRoutineRunOn(input.runOn);
+  const requestedRunOn = input.runOn as string | undefined;
+  if (requestedRunOn !== undefined && requestedRunOn !== "maus" && requestedRunOn !== "dani" && requestedRunOn !== "cloud") throw new Error("Choose where this routine runs");
   const attachments = cleanAttachments(input.attachments);
   const timeoutMinutes = cleanTimeoutMinutes(input.timeoutMinutes);
   if (target === "room-goal" && runOn === "cloud") {
@@ -486,7 +492,7 @@ export class RoutineManager {
               schedule,
               target,
               groupId: loadGroupId(routine.groupId, target),
-              runOn: routine.runOn ?? "maus",
+              runOn: normalizeRoutineRunOn(routine.runOn),
               timeoutMinutes: loadTimeoutMinutes(routine.timeoutMinutes),
               attachments: loadAttachments(routine.attachments),
               sourceThreadId: persistedSourceThreadId.parse(routine.sourceThreadId),
@@ -503,7 +509,7 @@ export class RoutineManager {
               target,
               goalStatus: loadGoalStatus(run.goalStatus, target),
               groupId: loadGroupId(run.groupId, target),
-              runOn: run.runOn ?? "maus",
+              runOn: normalizeRoutineRunOn(run.runOn),
               timeoutMinutes: loadTimeoutMinutes(run.timeoutMinutes),
               attachments: loadAttachments(run.attachments),
               sourceThreadId: persistedSourceThreadId.parse(run.sourceThreadId),
@@ -775,7 +781,7 @@ export class RoutineManager {
         if (run.target === "room-goal" && run.groupId) {
           void this.options.interruptGoal?.(run.groupId, run.threadId).catch(() => {});
         } else {
-          void this.options.interruptTurn?.(run.botId, run.threadId, run.runOn ?? "maus").catch(() => {});
+          void this.options.interruptTurn?.(run.botId, run.threadId, normalizeRoutineRunOn(run.runOn)).catch(() => {});
         }
       }
       changed = true;
@@ -909,7 +915,7 @@ export class RoutineManager {
       if (run.target === "room-goal" && run.groupId) {
         await this.options.interruptGoal?.(run.groupId, run.threadId).catch(() => {});
       } else {
-        await this.options.interruptTurn?.(run.botId, run.threadId, run.runOn ?? "maus").catch(() => {});
+        await this.options.interruptTurn?.(run.botId, run.threadId, normalizeRoutineRunOn(run.runOn)).catch(() => {});
       }
     }
     queueMicrotask(() => void this.tick());
@@ -962,7 +968,7 @@ export class RoutineManager {
             detail,
           }).catch(() => {});
         } else {
-          await this.options.interruptTurn?.(run.botId, threadId, run.runOn ?? "maus").catch(() => {});
+          await this.options.interruptTurn?.(run.botId, threadId, normalizeRoutineRunOn(run.runOn)).catch(() => {});
         }
       }
       let changed = false;
@@ -1077,7 +1083,7 @@ export class RoutineManager {
               run.botId,
               task.threadId,
               composeExecutionPrompt(prompt, run.attachments),
-              run.runOn ?? "maus",
+              normalizeRoutineRunOn(run.runOn),
               triggerSource,
               (message) => this.failThread(task.threadId, message),
             );
@@ -1229,7 +1235,7 @@ export class RoutineManager {
       target: routine.target,
       groupId: routine.groupId,
       botId: routine.botId,
-      runOn: routine.runOn ?? "maus",
+      runOn: normalizeRoutineRunOn(routine.runOn),
       scheduledFor,
       status: "queued",
       manual,

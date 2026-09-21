@@ -8,7 +8,7 @@
  * app restart without asking the model to interpret the request again.
  */
 
-export type RoutineRequestRunOn = "maus" | "cloud";
+export type RoutineRequestRunOn = "dani" | "cloud";
 
 export type RoutineRequestSchedule =
   | { type: "once"; at: number }

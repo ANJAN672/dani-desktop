@@ -561,7 +561,7 @@ describe("goal-driven channel runs", () => {
         target: "room-goal",
         groupId: room.id,
         botId: lead.id,
-        runOn: "maus",
+        runOn: "dani",
         schedule: { type: "once", at: Date.now() + 60_000 },
         durationMinutes: 30,
       });
@@ -656,7 +656,7 @@ describe("goal-driven channel runs", () => {
         target: "room-goal",
         groupId: room.id,
         botId: lead.id,
-        runOn: "maus",
+        runOn: "dani",
         schedule: { type: "once", at: Date.now() + 60_000 },
         durationMinutes: 30,
       });
@@ -759,7 +759,7 @@ describe("goal-driven channel runs", () => {
         target: "room-goal",
         groupId: room.id,
         botId: lead.id,
-        runOn: "maus",
+        runOn: "dani",
         schedule: { type: "once", at: Date.now() + 60_000 },
         durationMinutes: 30,
       });
@@ -892,7 +892,7 @@ describe("goal-driven channel runs", () => {
         target: "room-goal",
         groupId: room.id,
         botId: lead.id,
-        runOn: "maus",
+        runOn: "dani",
         schedule: { type: "once", at: Date.now() + 60_000 },
         durationMinutes: 30,
       });

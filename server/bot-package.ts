@@ -94,7 +94,7 @@ const packageSchema = z.object({
       name: requiredText(80),
       agent: key,
       prompt: requiredText(20_000),
-      runOn: z.enum(["maus", "cloud"]),
+      runOn: z.enum(["dani", "cloud", "maus"]).transform((v) => (v === "maus" ? "dani" : v) as "dani" | "cloud"),
       schedule: z.discriminatedUnion("type", [
         z.object({ type: z.literal("once"), at: z.number().int() }),
         z.object({
