@@ -229,6 +229,37 @@ export class DaniKernelRepository {
     return this.effect(effectId);
   }
 
+  markDispatchUncertain(effectId: string, generation: number, reason: string) {
+    const effect = this.effect(effectId);
+    const job = this.job(String(effect.job_id));
+    if (Number(job.generation) !== generation || Number(effect.generation) !== generation) throw new Error("stale cancellation generation");
+    const at = now();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const changed = this.db.prepare("UPDATE kernel_effects SET state='uncertain',error=?,updated_at=? WHERE id=? AND state IN ('dispatching','verifying')")
+        .run(reason, at, effectId);
+      if (changed.changes !== 1) throw new Error("effect is not in an uncertain dispatch window");
+      this.db.prepare("UPDATE kernel_jobs SET status='uncertain',updated_at=? WHERE id=? AND status!='cancelled'").run(at, String(effect.job_id));
+      this.event(String(effect.job_id), effectId, "effect.uncertain", { reason, retrySuppressed: true });
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  resumeUncertainForInspection(effectId: string, generation: number, externalReference: string) {
+    const effect = this.effect(effectId);
+    const job = this.job(String(effect.job_id));
+    if (Number(job.generation) !== generation || Number(effect.generation) !== generation) throw new Error("stale cancellation generation");
+    const at = now();
+    const changed = this.db.prepare("UPDATE kernel_effects SET state='verifying',external_reference=?,error=NULL,updated_at=? WHERE id=? AND state='uncertain'")
+      .run(externalReference, at, effectId);
+    if (changed.changes !== 1) throw new Error("effect is not uncertain");
+    this.db.prepare("UPDATE kernel_jobs SET status='verifying',updated_at=? WHERE id=? AND status='uncertain'").run(at, String(effect.job_id));
+    this.event(String(effect.job_id), effectId, "recovery.effect_reconciled", { externalReference });
+  }
+
   recordAdapterEvidence(input: AdapterEvidenceInput) {
     const effect = this.effect(input.effectId);
     if (String(effect.adapter) !== input.adapter) throw new Error("evidence adapter does not match effect adapter");
