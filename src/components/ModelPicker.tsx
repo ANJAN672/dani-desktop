@@ -3,7 +3,8 @@
 // engines that need setup show one focused action instead of a disabled wall.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search } from "lucide-react";
-import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
+import { api, useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
+import { BillingBadge, BILLING_LABEL, billingTitle, needsSpendAck } from "./BillingBadge";
 import { filterCustomModels, partitionCustomModels, suggestedModels } from "@/lib/custom-models";
 import { isCustomOnly, splitEngineRail } from "@/lib/engine-rail";
 import { ProviderMark } from "./ProviderIcons";
@@ -33,11 +34,13 @@ function ModelRow({
   option,
   current,
   defaultId,
+  billingTitle: rowBillingTitle,
   onPick,
 }: {
   option: ModelOption;
   current: boolean;
   defaultId: string;
+  billingTitle: string | undefined;
   onPick: () => void;
 }) {
   return (
@@ -64,6 +67,14 @@ function ModelRow({
         )}
         {option.loaded && (
           <span className="shrink-0 rounded bg-accent/10 px-1.5 py-px text-[10px] text-accent">Loaded</span>
+        )}
+        {option.billingClass && option.billingClass !== "free" && (
+          <span
+            className="shrink-0 rounded bg-inset px-1.5 py-px text-[10px] text-ink-secondary"
+            title={rowBillingTitle ?? BILLING_LABEL[option.billingClass]}
+          >
+            {BILLING_LABEL[option.billingClass]}
+          </span>
         )}
       </span>
       {current && <Check size={14} className="shrink-0 text-accent" />}
@@ -125,6 +136,14 @@ export function ModelPicker({
   const [refreshing, setRefreshing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const refreshingRef = useRef(false);
+  // Spend-safety acknowledgements (security/epic-9-D): recorded per
+  // (instanceId, model) on the server. A gated pick opens the inline
+  // confirmation instead of selecting immediately.
+  const [spendAcks, setSpendAcks] = useState<Array<{ instanceId: string; model: string }> | null>(null);
+  const [ackTarget, setAckTarget] = useState<{ instance: InstanceInfo; option: ModelOption } | null>(null);
+  const [ackChecked, setAckChecked] = useState(false);
+  const [ackBusy, setAckBusy] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
 
   const selection = bot.modelSelection;
   const active = state.instances.find((instance) => instance.instanceId === selection.instanceId);
@@ -163,7 +182,17 @@ export function ModelPicker({
 
   useEffect(() => {
     if (open) refreshLocalInstances();
+    else setAckTarget(null);
   }, [open, refreshLocalInstances]);
+
+  // Load recorded cost acknowledgements once per picker open; a failed fetch
+  // fails closed (no acks known ⇒ the confirm panel shows).
+  useEffect(() => {
+    if (!open || spendAcks !== null) return;
+    api("/api/spend-acknowledgements")
+      .then((r: any) => setSpendAcks(Array.isArray(r?.acknowledgements) ? r.acknowledgements : []))
+      .catch(() => setSpendAcks([]));
+  }, [open, spendAcks]);
 
   useEffect(() => {
     if (bot.busy) setOpen(false);
@@ -210,7 +239,10 @@ export function ModelPicker({
     resetList();
   };
 
-  const pick = (instance: InstanceInfo, model: string) => {
+  const hasSpendAck = (instanceId: string, model: string) =>
+    (spendAcks ?? []).some((ack) => ack.instanceId === instanceId && ack.model === model);
+
+  const applyPick = (instance: InstanceInfo, model: string) => {
     if (bot.busy) return;
     const sameInstance = instance.instanceId === selection.instanceId;
     const nextSelection: ModelSelection = {
@@ -224,6 +256,41 @@ export function ModelPicker({
       selection: nextSelection,
     });
     setOpen(false);
+  };
+
+  const pick = (instance: InstanceInfo, option: ModelOption) => {
+    if (bot.busy) return;
+    // Spend gate (security/epic-9-D): a metered/unknown-cost model needs an
+    // explicit cost acknowledgement before it can be selected. The server
+    // enforces the same gate on every turn; this just surfaces it early.
+    if (needsSpendAck(instance.billing, option.billingClass) && !hasSpendAck(instance.instanceId, option.id)) {
+      setAckTarget({ instance, option });
+      setAckChecked(false);
+      setAckError(null);
+      return;
+    }
+    applyPick(instance, option.id);
+  };
+
+  const confirmSpendAck = () => {
+    if (!ackTarget || !ackChecked || ackBusy) return;
+    const { instance, option } = ackTarget;
+    setAckBusy(true);
+    setAckError(null);
+    // The server re-resolves the billing class and rejects a mismatch, so
+    // the client can only echo what the picker already showed.
+    const billingClass = option.billingClass ?? instance.billing?.billingClass ?? "unknown";
+    api(`/api/instances/${encodeURIComponent(instance.instanceId)}/spend-acknowledgement`, {
+      method: "POST",
+      body: JSON.stringify({ model: option.id, billingClass }),
+    })
+      .then(() => {
+        setSpendAcks((prev) => [...(prev ?? []), { instanceId: instance.instanceId, model: option.id }]);
+        setAckTarget(null);
+        applyPick(instance, option.id);
+      })
+      .catch((error) => setAckError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setAckBusy(false));
   };
 
   const official = railInstance?.models.options.filter((option) => !option.custom) ?? [];
@@ -250,7 +317,17 @@ export function ModelPicker({
       option={option}
       current={selection.instanceId === railInstance?.instanceId && selection.model === option.id}
       defaultId={railInstance?.models.default ?? ""}
-      onPick={() => railInstance && pick(railInstance, option.id)}
+      billingTitle={
+        railInstance
+          ? billingTitle({
+              billingClass: option.billingClass ?? railInstance.billing?.billingClass ?? "unknown",
+              rateSource: railInstance.billing?.rateSource,
+              rateCheckedAt: railInstance.billing?.rateCheckedAt,
+              requiresExplicitSelection: railInstance.billing?.requiresExplicitSelection ?? true,
+            })
+          : undefined
+      }
+      onPick={() => railInstance && pick(railInstance, option)}
     />
   );
 
@@ -402,6 +479,7 @@ export function ModelPicker({
                       >
                         {pane === "custom" && !blocked ? "Local models" : engineStatus(railInstance)}
                       </span>
+                      <BillingBadge billing={railInstance.billing} />
                     </div>
                   </div>
                   <div className="mt-0.5 text-[11.5px] text-ink-secondary">
@@ -424,7 +502,62 @@ export function ModelPicker({
                   </button>
                 )}
 
-                {blocked ? (
+                {ackTarget ? (
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                    <div className="text-[14px] font-semibold text-ink">Acknowledge cost</div>
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-ink-secondary">
+                      <span className="font-medium text-ink">{ackTarget.option.label}</span> on{" "}
+                      {ackTarget.instance.displayName} is{" "}
+                      <span className="font-medium text-ink">
+                        {BILLING_LABEL[ackTarget.option.billingClass ?? ackTarget.instance.billing?.billingClass ?? "unknown"].toLowerCase()}
+                      </span>
+                      . Using it may incur charges outside Dani.
+                    </p>
+                    {ackTarget.instance.billing?.rateSource && (
+                      <p className="mt-1 text-[11.5px] text-ink-secondary/80">
+                        Source: {ackTarget.instance.billing.rateSource}
+                        {ackTarget.instance.billing.rateCheckedAt
+                          ? ` · reviewed ${ackTarget.instance.billing.rateCheckedAt}`
+                          : ""}
+                      </p>
+                    )}
+                    <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-[12.5px] text-ink">
+                      <input
+                        type="checkbox"
+                        checked={ackChecked}
+                        onChange={(event) => setAckChecked(event.target.checked)}
+                        className="mt-0.5 size-4 shrink-0 accent-[var(--color-accent)]"
+                      />
+                      <span>
+                        I understand this provider may cost money, and I am explicitly choosing it for
+                        this bot.
+                      </span>
+                    </label>
+                    {ackError && (
+                      <div role="alert" className="mt-2 text-[12px] text-danger">
+                        {ackError}
+                      </div>
+                    )}
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAckTarget(null)}
+                        className="rounded-lg px-3 py-1.5 text-[12.5px] text-ink-secondary hover:bg-control/60 hover:text-ink"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!ackChecked || ackBusy}
+                        onClick={confirmSpendAck}
+                        className="flex items-center gap-1.5 rounded-lg bg-raised px-3 py-1.5 text-[12.5px] text-ink hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {ackBusy && <Loader2 size={13} className="animate-spin" />}
+                        Acknowledge &amp; select
+                      </button>
+                    </div>
+                  </div>
+                ) : blocked ? (
                   <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
                     <EngineSetup instance={railInstance} intent={pane === "custom" ? "inject" : "cloud"} />
                     <p className="mt-2 text-center text-[11.5px] text-ink-secondary/70">

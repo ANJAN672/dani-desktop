@@ -28,6 +28,8 @@ import {
 
 import { autoVerdict, rememberableApprovalKey } from "./auto-approve.ts";
 import { selectDaniDefault } from "./dani-default-runtime.ts";
+import { resolveProviderBilling } from "./provider-billing.ts";
+import { SpendAckStore, checkSpendGate } from "./provider-spend-gate.ts";
 import { requestReview, resolveAutoReviewMode, shouldReview } from "./auto-review.ts";
 import { updateClaudeCli } from "./claude-update.ts";
 import {
@@ -397,6 +399,10 @@ scrubPlaintextSecretsAtBoot({ dataDir: DATA_DIR, store: SECRET_STORE, env: proce
 const cfg = loadConfig();
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
+// Spend-safety acknowledgements (security/epic-9-D): durable per
+// (instanceId, model) records. Missing file = fresh install = gate fails
+// closed. OMB_DATA_DIR isolates test rigs via config.ts.
+const spendAcks = new SpendAckStore(DATA_DIR);
 const bundledSkills = loadBundledSkills();
 const availableSkills = () => mergeSkills(bundledSkills, loadUserSkills(join(DATA_DIR, "skills")));
 
@@ -1029,7 +1035,13 @@ function askBotAndWait(targetBotId: string, message: string, depth: number, from
 // default selection for new bots: Dani runs the compatible Hermes runtime or fails closed
 async function defaultSelection() {
   const described = await registry.describe();
-  const selected = selectDaniDefault(described, process.env.OMB_TEST_DEFAULT_INSTANCE_ID);
+  const selected = selectDaniDefault(
+    described,
+    process.env.OMB_TEST_DEFAULT_INSTANCE_ID,
+    // the real spend-safety resolver: a metered/unknown-cost Hermes default
+    // fails closed here (see the invariant in dani-default-runtime.ts)
+    (driverKind, modelId) => resolveProviderBilling({ driverKind, modelId }).billingClass,
+  );
   return { instanceId: selected.instanceId, model: selected.model };
 }
 
@@ -3824,6 +3836,22 @@ async function startTurn(
       { status: 409 },
     );
   }
+  // ── SPEND GATE (security/epic-9-D) ──────────────────────────────────
+  // A fresh install cannot make a metered (or unknown-cost) provider request
+  // until the user explicitly chose this provider/model and acknowledged the
+  // cost class. Credential presence never satisfies this gate — only a
+  // recorded acknowledgement does. This is the single choke point for turns;
+  // the default-selection invariant in dani-default-runtime.ts is the
+  // complementary pin for implicit defaults.
+  const spendBilling = resolveProviderBilling({ driverKind: instance.driverKind, modelId: model });
+  const spendCheck = checkSpendGate({
+    billing: spendBilling,
+    ack: spendAcks.find(instanceId, model),
+    instanceId,
+    model,
+    displayName: instance.displayName ?? undefined,
+  });
+  if (!spendCheck.ok) throw Object.assign(new Error(spendCheck.error), { status: 402 });
 
   // an edit hands us its already-branched user message; a plain send appends
   let userMessage = opts?.userMessage;
@@ -11273,6 +11301,47 @@ const server = createServer(async (req, res) => {
           : 500;
         return json(res, status, { error: error instanceof Error ? error.message : String(error) });
       }
+    }
+
+    // ── spend-safety acknowledgements (security/epic-9-D) ──
+    // A metered/unknown-cost provider needs one recorded acknowledgement per
+    // (instanceId, model) before the first request. The picker POSTs here
+    // after the user explicitly picks the model and ticks the cost box; the
+    // server re-resolves the billing class itself — a client claim of "free"
+    // for a metered provider is rejected.
+    if (method === "GET" && path === "/api/spend-acknowledgements") {
+      return json(res, 200, { acknowledgements: spendAcks.all() });
+    }
+    const spendAckMatch = /^\/api\/instances\/([\w.-]+)\/spend-acknowledgement$/.exec(path);
+    if (method === "POST" && spendAckMatch) {
+      if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
+        return json(res, 415, { error: "content-type must be application/json" });
+      }
+      const instanceId = spendAckMatch[1];
+      const instance = registry.get(instanceId);
+      if (!instance) return json(res, 404, { error: "unknown provider instance" });
+      const body = await readBody(req);
+      const model = typeof body?.model === "string" ? body.model.trim() : "";
+      if (!model) return json(res, 400, { error: "model is required" });
+      const billing = resolveProviderBilling({ driverKind: instance.driverKind, modelId: model });
+      if (!billing.requiresExplicitSelection) {
+        return json(res, 400, { error: `${instance.displayName ?? instanceId} is ${billing.billingClass} — no cost acknowledgement needed` });
+      }
+      const claimed = typeof body?.billingClass === "string" ? body.billingClass : "";
+      if (claimed !== billing.billingClass) {
+        return json(res, 409, {
+          error: `billing class mismatch: this model resolves to "${billing.billingClass}" — acknowledge the current cost class`,
+          billing,
+        });
+      }
+      const acknowledgement = spendAcks.record({
+        instanceId,
+        model,
+        billingClass: billing.billingClass,
+        rateSource: billing.rateSource,
+        acknowledgedAt: "",
+      });
+      return json(res, 200, { ok: true, acknowledgement });
     }
 
     // ── CLI binary discovery for the Engines "detected" dropdown ──

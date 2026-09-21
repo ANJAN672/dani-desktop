@@ -13,6 +13,7 @@ import type {
   ProviderInstance,
   ProviderSnapshot,
 } from "../contracts.ts";
+import { resolveProviderBilling, type ProviderBilling } from "../provider-billing.ts";
 
 export interface ShadowInstance {
   instanceId: InstanceId;
@@ -188,6 +189,12 @@ export class ProviderRegistry {
             displayName: entry.shadow.displayName ?? entry.shadow.driverKind,
             snapshot: { state: "unavailable", reason: entry.shadow.reason } satisfies ProviderSnapshot,
             models: { default: "", options: [] },
+            // shadow rows carry no catalog; billing still resolves so the
+            // picker can label the engine honestly (unknown → fail closed)
+            billing: resolveProviderBilling({
+              driverKind: entry.shadow.driverKind,
+              metadata: driver?.metadata,
+            }) satisfies ProviderBilling,
             capabilities: { computerMcp: false, agentsMcp: false, localComputerMcp: false },
             // an unknown driver has no driver record, hence no install path
             access: driver?.metadata.access ?? "subscription",
@@ -206,12 +213,29 @@ export class ProviderRegistry {
         } catch (e) {
           snapshot = { state: "unavailable", reason: e instanceof Error ? e.message : String(e) };
         }
+        // Spend-safety billing (security/epic-9-D): engine-level class from
+        // the default model, plus a per-model class on every option so the
+        // picker can label metered models before the user picks one.
+        const billingOf = (modelId: string) =>
+          resolveProviderBilling({
+            driverKind: inst.driverKind,
+            modelId,
+            metadata: driver?.metadata,
+            snapshotBilling: snapshot.billing,
+          });
         return {
           instanceId: inst.instanceId,
           driverKind: inst.driverKind,
           displayName: inst.displayName ?? inst.driverKind,
           snapshot,
-          models: inst.models,
+          models: {
+            default: inst.models.default,
+            options: inst.models.options.map((option) => ({
+              ...option,
+              billingClass: billingOf(option.id).billingClass,
+            })),
+          },
+          billing: billingOf(inst.models.default),
           capabilities: {
             computerMcp: inst.adapter.capabilities.computerMcp === true,
             agentsMcp: inst.adapter.capabilities.agentsMcp === true,
