@@ -121,6 +121,13 @@ import {
   customMcpServers,
 } from "./config.ts";
 import { ComputerControl } from "./computer-control.ts";
+import {
+  applySecretAwareConfigSave,
+  importFdInjectedSecrets,
+  refusedSecretsMessage,
+  resolveSecretStore,
+  scrubPlaintextSecretsAtBoot,
+} from "./secret-store.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
@@ -378,6 +385,15 @@ function resolveOwnerCapability(): string {
 }
 // Where remote clients reach this server (a proxy's public address); pairing URLs use it.
 const PUBLIC_URL = process.env.OMB_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
+// SecretStore boot: file-descriptor-injected secrets must land in env before
+// loadConfig() (which prefers env), then the plaintext migration / fail-closed
+// gate runs before anything reads the config. See server/secret-store.ts.
+importFdInjectedSecrets(process.env);
+const SECRET_STORE = resolveSecretStore(process.env, DATA_DIR);
+if (SECRET_STORE.warning) {
+  for (const line of SECRET_STORE.warning.split("\n")) console.error(line);
+}
+scrubPlaintextSecretsAtBoot({ dataDir: DATA_DIR, store: SECRET_STORE, env: process.env });
 const cfg = loadConfig();
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
@@ -11743,32 +11759,27 @@ const server = createServer(async (req, res) => {
       let configWriteCommitted = false;
       const externalSecretStorage = url.searchParams.get("secretStorage") === "external";
       try {
-        if (externalSecretStorage) {
-          // The packaged Electron caller commits supplied credentials to the
-          // OS-encrypted store before entering this route. Persist every
-          // non-secret sibling in the same request, but replace each supplied
-          // credential with an empty tombstone so an older plaintext value can
-          // never survive the merge in config.json.
-          const persisted = structuredClone(patch);
-          if (persisted.xai?.key !== undefined) persisted.xai.key = "";
-          if (persisted.composio?.apiKey !== undefined) persisted.composio.apiKey = "";
-          if (persisted.box?.token !== undefined) persisted.box.token = "";
-          if (persisted.opencodeGo?.apiKey !== undefined) persisted.opencodeGo.apiKey = "";
-          if (persisted.tts?.key !== undefined) persisted.tts.key = "";
-          if (persisted.imageGen?.key !== undefined) persisted.imageGen.key = "";
-          saveConfig(persisted);
-          configWriteCommitted = true;
-          syncCredentialEnv(patch);
-          Object.assign(cfg, loadConfig());
-        } else {
-          saveConfig(patch);
-          configWriteCommitted = true;
-          // loadConfig prefers env over the file for credentials, so the env
-          // must follow the save — otherwise the value injected at boot would
-          // shadow the new key until the next launch
-          syncCredentialEnv(patch);
-          Object.assign(cfg, loadConfig());
+        // SecretStore routing (server/secret-store.ts): credential fields in
+        // the patch never land as plaintext in config.json except under the
+        // explicit insecure-local-dev opt-in. In fail-closed headless mode the
+        // non-secret siblings still persist and the refused fields surface as
+        // a 409 naming them and the remediation.
+        const secretSave = applySecretAwareConfigSave({
+          patch: patch as Record<string, unknown>,
+          store: SECRET_STORE,
+          externalSecretStorage,
+          saveConfig,
+        });
+        configWriteCommitted = true;
+        // loadConfig prefers env over the file for credentials, so the env
+        // must follow the save — otherwise the value injected at boot would
+        // shadow the new key until the next launch. Refused fields stay out
+        // of env: their save did not happen.
+        syncCredentialEnv(secretSave.envPatch as Parameters<typeof syncCredentialEnv>[0]);
+        if (secretSave.refused.length > 0) {
+          throw Object.assign(new Error(refusedSecretsMessage(secretSave.refused)), { status: 409 });
         }
+        Object.assign(cfg, loadConfig());
       } catch (error) {
         if (configWriteCommitted) {
           for (const request of browserCleanupRequests) {
