@@ -78,6 +78,7 @@ import {
   vpsAliasResourceChangeError,
 } from "./cloud-backend.ts";
 import * as composio from "./composio.ts";
+import { createOpenAIRealtimeSession } from "./live-call-proxy.ts";
 import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts";
 import { peerAllowed, peerRosterSystemPrompt, reachablePeers } from "./peer-roster.ts";
 import { openMausStatusSystemPrompt } from "./openmaus-status-capsule.ts";
@@ -11850,6 +11851,20 @@ const server = createServer(async (req, res) => {
         for (const provider of transitioningProviders) computerProviderConfigTransitions.delete(provider);
         if (changingLocalVmMode) localVmModeChangeBusy = false;
         providerConfigBusy = false;
+      }
+    }
+
+    if (method === "POST" && path === "/api/live-call/session") {
+      if ((cfg.liveCall?.provider ?? "local") !== "openai-realtime") {
+        return json(res, 409, { error: "OpenAI Realtime is not selected" });
+      }
+      const proxyUrl = cfg.liveCall?.proxyUrl?.trim();
+      if (!proxyUrl) return json(res, 409, { error: "OpenAI Realtime OAuth proxy is not configured" });
+      try {
+        return json(res, 201, await createOpenAIRealtimeSession(proxyUrl, await readBody(req, 32_768)));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Live-call session failed";
+        return json(res, /invalid|expected|must|required/i.test(message) ? 400 : 502, { error: message });
       }
     }
 

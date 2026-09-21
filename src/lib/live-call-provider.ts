@@ -75,3 +75,20 @@ export function validateLiveCallSession(value: LiveCallSession, now = Date.now()
   }
   return value;
 }
+
+/** Renderer provider for the optional OAuth proxy. Long-lived credentials
+ * stay outside the app; this call returns only one short-lived session. */
+export class OpenAIRealtimeProvider implements LiveCallProvider {
+  readonly descriptor: LiveCallProviderDescriptor;
+  constructor(private proxyConfigured: boolean, private transportFactory: () => LiveCallTransport) {
+    this.descriptor = { id: "openai-realtime", label: "OpenAI Live (OAuth proxy)", privacy: "cloud", available: proxyConfigured, ...(!proxyConfigured ? { unavailableReason: "Configure the OpenAI Realtime OAuth proxy first." } : {}) };
+  }
+  async createSession(request: LiveCallSessionRequest, signal?: AbortSignal): Promise<LiveCallSession> {
+    if (!this.proxyConfigured) throw new Error(this.descriptor.unavailableReason);
+    const response = await fetch("/api/live-call/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request), signal });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : `Live-call proxy returned ${response.status}`);
+    return validateLiveCallSession(body);
+  }
+  createTransport() { return this.transportFactory(); }
+}
