@@ -36,6 +36,18 @@ function runCheck(env) {
 }
 
 describe("spec 080 one-command install", () => {
+  it("failure and success text names the real app log locations, never a logs dir under the data dir", () => {
+    // The desktop app writes logs to the Electron logs path (pinned in
+    // electron/main.mjs: ~/Library/Logs/Dani Bot on macOS, appData/Dani
+    // Bot/logs elsewhere). Nothing writes ~/.danibot/logs - the scripts must
+    // not send users to a directory that never exists.
+    expect(installSh).not.toContain("$DATA_DIR/logs");
+    expect(installPs1).not.toContain("$DataDir\\logs");
+    expect(installSh).toContain("Library/Logs/Dani Bot");
+    expect(installSh).toContain(".config/Dani Bot/logs");
+    expect(installPs1).toContain("APPDATA\\Dani Bot\\logs");
+  });
+
   it("documents exactly one command per platform at the top of Quick start", () => {
     expect(readme).toContain(SH_COMMAND);
     expect(readme).toContain(PS_COMMAND);

@@ -143,17 +143,31 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [instances, setInstances] = useState<InstanceRow[] | null>(null);
   const [perms, setPerms] = useState<{ mic: string } | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
-  const saveProfile = () => {
-    identifyEmail(email.trim().toLowerCase());
+  const saveProfile = async () => {
+    if (savingProfile) return;
+    setSavingProfile(true);
+    setProfileError(null);
     // persisted server-side (~/.danibot/config.json) — the sidebar
     // footer reads it back through /api/config
-    void fetch("/api/config", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ profile: { name: name.trim(), email: email.trim().toLowerCase() } }),
-    }).catch(() => {});
+    try {
+      const res = await fetch("/api/config", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile: { name: name.trim(), email: email.trim().toLowerCase() } }),
+      });
+      if (!res.ok) throw new Error(`save failed (${res.status})`);
+    } catch {
+      // R5: a first-run save failure says so and keeps the user on the step;
+      // silently advancing would lose the profile without a word.
+      setProfileError("Could not save your profile - check the app is running, then try again.");
+      setSavingProfile(false);
+      return;
+    }
+    identifyEmail(email.trim().toLowerCase());
     setStep(1);
   };
 
@@ -242,17 +256,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && valid && saveProfile()}
+              onKeyDown={(e) => e.key === "Enter" && valid && void saveProfile()}
               placeholder="you@example.com"
               className="mt-3 w-full rounded-lg border border-hairline/40 bg-inset px-3 py-2.5 text-[15px] text-ink placeholder:text-ink-secondary focus:border-hairline focus:outline-none"
             />
             <button
-              onClick={saveProfile}
-              disabled={!valid}
+              onClick={() => void saveProfile()}
+              disabled={!valid || savingProfile}
               className="mt-3 w-full rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white disabled:opacity-40"
             >
-              Continue
+              {savingProfile ? "Saving..." : "Continue"}
             </button>
+            {profileError && <p className="mt-2 text-center text-[12px] text-danger">{profileError}</p>}
             <button
               onClick={() => {
                 track("email_skipped");

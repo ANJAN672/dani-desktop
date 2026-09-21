@@ -19,7 +19,7 @@ say() { printf '%s\n' "$*"; }
 fail() {
   printf 'install failed: %s\n' "$1" >&2
   printf 'what to do: %s\n' "$2" >&2
-  printf 'logs: the step above printed its own output; app logs live in %s/logs after first launch.\n' "$DATA_DIR" >&2
+  printf 'logs: the failing step printed its own output above. After first launch, app logs are in ~/Library/Logs/Dani Bot (macOS) or ~/.config/Dani Bot/logs (Linux) - About > App logs in the app opens that folder.\n' >&2
   exit 1
 }
 
@@ -92,7 +92,10 @@ success_check() {
     Darwin) say "next: open the .dmg and drag Dani Bot to Applications, then launch it." ;;
     Linux)  say "next: sudo apt install ./<file>.deb   (or chmod +x the .AppImage and run it)" ;;
   esac
-  say "first launch opens the setup wizard; app data lives in $DATA_DIR and logs in $DATA_DIR/logs."
+  case "$(uname -s)" in
+    Darwin) say "first launch opens the setup wizard; app data lives in $DATA_DIR, app logs in ~/Library/Logs/Dani Bot (About > App logs)." ;;
+    Linux)  say "first launch opens the setup wizard; app data lives in $DATA_DIR, app logs in ~/.config/Dani Bot/logs (About > App logs)." ;;
+  esac
 }
 
 check_prereqs

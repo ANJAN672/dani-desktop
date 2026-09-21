@@ -16,7 +16,7 @@ $DataDir = if ($env:DANI_DATA_DIR) { $env:DANI_DATA_DIR } else { Join-Path $HOME
 function Fail([string]$what, [string]$todo) {
   Write-Host "install failed: $what" -ForegroundColor Red
   Write-Host "what to do: $todo"
-  Write-Host "logs: the step above printed its own output; app logs live in $DataDir\logs after first launch."
+  Write-Host "logs: the failing step printed its own output above. After first launch, app logs are in `$env:APPDATA\Dani Bot\logs - About > App logs in the app opens that folder."
   exit 1
 }
 
@@ -64,4 +64,4 @@ Write-Host "SUCCESS - Dani Bot packaged. Verified artifact(s):" -ForegroundColor
 $artifacts | ForEach-Object { Write-Host "  $($_.FullName)" }
 Write-Host ""
 Write-Host "next: run the installer (.exe), then launch Dani Bot."
-Write-Host "first launch opens the setup wizard; app data lives in $DataDir and logs in $DataDir\logs."
+Write-Host "first launch opens the setup wizard; app data lives in $DataDir, app logs in `$env:APPDATA\Dani Bot\logs (About > App logs)."
