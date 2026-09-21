@@ -122,6 +122,7 @@ import {
 import { ComputerControl } from "./computer-control.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
+import { classifyCliProbe } from "./cli-probe-guard.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
 import { blockedTarget, buildNotification, type Notification } from "./notify.ts";
 import {
@@ -11257,6 +11258,14 @@ const server = createServer(async (req, res) => {
     // turn itself would use. A miss here (typo, missing exec bit, a binary
     // the GUI app can't see) means every turn would fail, so the UI asks
     // before saving rather than registering a dead engine.
+    //
+    // Owner authentication comes from the request-auth mutation guard above
+    // (x-danibot-desktop-owner): loopback + JSON are not authentication
+    // against another local process, so an untrusted local caller without
+    // the token never reaches this handler. The executable itself is
+    // additionally constrained by server/cli-probe-guard.ts: discovered
+    // adapter binaries probe freely, anything else needs an explicitly
+    // user-selected custom path.
     if (method === "POST" && path === "/api/cli-test") {
       // same gate as the local-VM lifecycle routes: this executes a local
       // binary, so a hostile page must not be able to submit it as a simple
@@ -11266,11 +11275,19 @@ const server = createServer(async (req, res) => {
       }
       const body = await readBody(req);
       const cli = typeof body?.cli === "string" ? body.cli.trim() : "";
-      if (!cli || /[\n\r]/.test(cli)) return json(res, 400, { error: "cli must be a non-empty path" });
+      // Set only by the Engines panel's manual-path field: the user typed or
+      // pasted this path themselves. A probe of a detected (allowlisted)
+      // binary never carries it.
+      const explicitCustomPath = body?.explicitCustomPath === true;
+      const verdict = classifyCliProbe(cli, explicitCustomPath);
+      if (verdict.kind === "rejected") {
+        return json(res, verdict.status, { error: verdict.reason });
+      }
       const driver = typeof body?.driver === "string" ? BUILT_IN_DRIVERS.find((d) => d.driverKind === body.driver) : undefined;
       // Probe the exact configured wrapper plus --version. testCliBinary uses
       // a credential-redacted environment, so fixed wrapper arguments cannot
-      // turn this endpoint into an inherited-secret reader.
+      // turn this endpoint into an inherited-secret reader. Execution is
+      // execFile with a fixed ["--version"] argv — never shell:true.
       const probe = await testCliBinary(cli, driver);
       return json(res, 200, probe);
     }
