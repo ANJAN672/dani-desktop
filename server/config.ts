@@ -90,6 +90,20 @@ interface StoredBrowserProfileMigration {
   aliases: ReadonlyMap<string, string>;
 }
 
+/** Upgrade rule (spec 080): a write that migrates persisted state first
+ * leaves a one-time sibling backup of the pre-migration file. An existing
+ * backup is never overwritten - it is the true pre-upgrade original - and a
+ * failed backup only logs, never blocks the write. */
+export function backupPreMigrationFile(p: string): void {
+  try {
+    const backup = `${p}.pre-migration-backup`;
+    if (existsSync(backup) || !existsSync(p)) return;
+    writeFileAtomic(backup, readFileSync(p, "utf8"));
+  } catch (error) {
+    console.error(`[migrate] could not write a pre-migration backup of ${p}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 function suffixedBrowserProfileId(base: string, unavailable: ReadonlySet<string>): string {
   for (let suffix = 2; ; suffix += 1) {
     const ending = `-${suffix}`;
@@ -661,8 +675,19 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   // A write is the durable migration point. Preserve every other raw key in
   // config.json, but never write #567's mixed-case or duplicate profile ids
   // back after we have successfully recognized the legacy list.
-  const storedProfiles = storedBrowserProfilesSchema.safeParse(disk.browserProfiles);
-  if (storedProfiles.success) disk.browserProfiles = storedProfiles.data;
+  const legacyProfiles = legacyBrowserProfilesSchema.safeParse(disk.browserProfiles);
+  let storedProfiles: { success: true; data: BrowserProfile[] } | { success: false };
+  if (legacyProfiles.success) {
+    const migration = migrateStoredBrowserProfiles(legacyProfiles.data);
+    // A write is the durable migration point: when the migration rewrites
+    // anything (ids, partitions, trimmed names), back up the pre-migration
+    // file first. An unchanged section is not a migration.
+    if (JSON.stringify(migration.profiles) !== JSON.stringify(legacyProfiles.data)) backupPreMigrationFile(p);
+    disk.browserProfiles = migration.profiles;
+    storedProfiles = { success: true, data: migration.profiles };
+  } else {
+    storedProfiles = { success: false };
+  }
   for (const key of ["xai", "openaiCompat", "composio", "box", "opencodeGo", "tts", "imageGen", "profile", "rooms", "localVm", "features"] as const) {
     const section = checkedPatch[key];
     if (!section) continue;

@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
 import { peerAllowKey, type PeerAction } from "./peer-approval-key.ts";
-import { DATA_DIR, loadBrowserProfileIdAliases } from "./config.ts";
+import { DATA_DIR, loadBrowserProfileIdAliases, backupPreMigrationFile } from "./config.ts";
 import * as mdb from "./message-db.ts";
 import { workspaceDir } from "./workspace.ts";
 import { newId, type CloudBackend, type ModelSelection, type ThreadId } from "./contracts.ts";
@@ -674,6 +674,7 @@ export class Store {
     // busy never survives a restart — no turn does either. Rooms saved
     // before default responders existed adopt their first member as lead.
     let botsMigrated = false;
+    let browserProfilesMigrated = false;
     const browserProfileAliases = loadBrowserProfileIdAliases();
     const chiefSectionsSeen = new Set<string>();
     let groupsMigrated = false;
@@ -689,6 +690,7 @@ export class Store {
         if (browserProfile && browserProfile !== b.browserProfile) {
           b.browserProfile = browserProfile;
           botsMigrated = true;
+          browserProfilesMigrated = true;
         }
       }
       if (b.cloudBackend !== undefined && b.cloudBackend !== "box" && b.cloudBackend !== "vps") {
@@ -792,7 +794,12 @@ export class Store {
       g.pinnedCwd = active.pinnedCwd;
       g.pinnedMessageId = active.pinnedMessageId;
     }
-    if (botsMigrated) this.saveBots();
+    if (botsMigrated) {
+      // An upgrade rewriting durable bot references first leaves a one-time
+      // backup of the pre-migration file (spec 080 upgrade rule).
+      if (browserProfilesMigrated) backupPreMigrationFile(BOTS_FILE);
+      this.saveBots();
+    }
     if (groupsMigrated) this.saveGroups();
     // bots saved before tasks existed have one endless thread; adopt it as
     // their first task so nothing is lost and nothing special-cases it

@@ -61,8 +61,12 @@ R6. Uninstall leaves no residue beyond the documented data directory.
 - [ ] No surface shows "Connected"/"installed" without live verification.
 - [ ] A metered provider cannot be used before explicit consent.
 - [ ] Mic-denied path: text works, voice labeled truthfully.
-- [ ] Upgrade install over an existing data directory preserves data and runs
-      migrations with backup.
+- [~] Upgrade install over an existing data directory preserves data and runs
+      migrations with backup. Migration writes (config browser-profile
+      canonicalization, bots.json reference rewrite) now leave a one-time
+      pre-migration sibling backup, covered by real filesystem fixture tests
+      (server/upgrade-migration.test.ts). The packaged-installer upgrade run
+      itself remains a physical clean-VM check.
 - [ ] Uninstall verification: no residue beyond the documented data directory.
 
 ## Test gates
