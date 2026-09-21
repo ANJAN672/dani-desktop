@@ -17,7 +17,7 @@ Truth labels: `VERIFIED` requires current test evidence on the named platform; `
 | RC-011 cancellation fencing | spec 001 | incomplete | cancellation/dispatch concurrency | NOT DONE |
 | RC-012 broker + desktop lease | ADR-001, spec 001 | typed boundary partial | broker bypass + durable fenced physical lease | NOT DONE |
 | RC-013 fresh effect verification | constitution §3, spec 001 | evidence presence only | verifier rejects stale/unlinked evidence | NOT DONE |
-| HA-001/003 Hermes lifecycle | spec 002 | `server/hermes-runtime.ts` | lifecycle/restart integration | PARTIAL |
+| HA-001/003 Hermes lifecycle | spec 002 | `server/dani-kernel/hermes-turn.ts` | lifecycle/restart integration | PARTIAL |
 | HA-002 typed provider boundary | spec 002 | Hermes ACP + typed bridge | provider contract suite | PARTIAL |
 | HA-004 untrusted outputs | constitution §2/9 | quarantine partial | page/tool/file provenance + broker bypass gauntlet | NOT DONE |
 | HA-005/007 provider claims | spec 002 | catalog partial | capability/quota/error matrix; no `dani-free` claim | NOT DONE |

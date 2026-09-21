@@ -9,7 +9,7 @@ Status: evidence snapshot, 2026-09-21. Baseline: `prod` at `11c5f3f3a5f681c4841a
 | Hermes default | `server/index.ts` prefers available `hermesAgent`; Hermes adapter tests passed in focused verification | CONFIRMED_BY_TEST |
 | Durable DANI ledger | `server/dani-control-plane.ts` persists events, jobs, effects, evidence, grants, approvals and audit in SQLite | CONFIRMED_BY_TEST |
 | Typed tool boundary | `shared/dani-runtime.ts`, `server/dani-tools.ts`, `server/dani-tool-bridge.ts` | CONFIRMED_BY_TEST |
-| Durable Hermes sessions | `server/hermes-runtime.ts` persists native cursors and interrupt state | CONFIRMED_BY_TEST |
+| Durable Hermes sessions | `server/dani-kernel/hermes-turn.ts` persists native cursors and interrupt state | CONFIRMED_BY_TEST |
 | Delegation | Existing `server/delegations.ts` plus new typed `server/dani-delegations.ts` | CONFIRMED_BY_TEST |
 | Memory sidecar | SQLite/FTS, provenance and conflict reconciliation in `server/memory-sidecar.ts` | CONFIRMED_BY_TEST |
 | Laya | Shadow recorder only; no execution authority in `server/laya-shadow.ts` | CONFIRMED_BY_TEST |
