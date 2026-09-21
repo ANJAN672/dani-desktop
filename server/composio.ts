@@ -9,11 +9,11 @@ import { managedConnectorUnavailableReason } from "../shared/connector-availabil
 const DEFAULT_BACKEND_ORIGIN = "https://backend.composio.dev";
 
 function apiBase() {
-  return (process.env.OMB_COMPOSIO_API ?? `${DEFAULT_BACKEND_ORIGIN}/api/v3.1`).replace(/\/$/, "");
+  return ((process.env.DANI_COMPOSIO_API ?? process.env.OMB_COMPOSIO_API) ?? `${DEFAULT_BACKEND_ORIGIN}/api/v3.1`).replace(/\/$/, "");
 }
 
 function toolkitBase() {
-  return (process.env.OMB_COMPOSIO_TOOLKITS_API ?? `${DEFAULT_BACKEND_ORIGIN}/api/v3`).replace(/\/$/, "");
+  return ((process.env.DANI_COMPOSIO_TOOLKITS_API ?? process.env.OMB_COMPOSIO_TOOLKITS_API) ?? `${DEFAULT_BACKEND_ORIGIN}/api/v3`).replace(/\/$/, "");
 }
 
 const sessionResponseSchema = z.object({
@@ -186,8 +186,8 @@ export function setManagedBrokerAccess(access: unknown): void {
 
 function brokerAccess(): { url: string; token: string } | null {
   if (managedBrokerAccess !== undefined) return managedBrokerAccess;
-  const url = process.env.OMB_COMPOSIO_BROKER_URL?.trim();
-  const token = process.env.OMB_COMPOSIO_BROKER_TOKEN?.trim();
+  const url = (process.env.DANI_COMPOSIO_BROKER_URL ?? process.env.OMB_COMPOSIO_BROKER_URL)?.trim();
+  const token = (process.env.DANI_COMPOSIO_BROKER_TOKEN ?? process.env.OMB_COMPOSIO_BROKER_TOKEN)?.trim();
   if (!url || !token) return null;
   if (!managedBrokerToken.test(token)) throw new Error("The connected-apps service token is invalid");
   return { url: normalizeManagedBrokerUrl(url), token };

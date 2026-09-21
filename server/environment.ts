@@ -101,7 +101,7 @@ export function loadEnvironmentId(dataDir: string): string {
 /** The desktop app passes its own version; a checkout reads package.json;
  * an image sets OMB_APP_VERSION at build time. */
 export function serverVersion(): string {
-  const fromEnv = process.env.OMB_APP_VERSION?.trim();
+  const fromEnv = (process.env.DANI_APP_VERSION ?? process.env.OMB_APP_VERSION)?.trim();
   if (fromEnv) return fromEnv;
   try {
     const pkg: unknown = JSON.parse(readFileSync(join(SERVER_ROOT, "..", "package.json"), "utf8"));

@@ -47,8 +47,8 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
   }
   const options: CliOptions = {
     command: command === "--help" || command === "-h" ? "help" : (command as CliOptions["command"]),
-    port: Number(env.OMB_PORT || 8799),
-    dataDir: env.OMB_DATA_DIR || join(homedir(), ".danibot"),
+    port: Number(env.DANI_PORT || env.OMB_PORT || 8799),
+    dataDir: env.DANI_DATA_DIR || env.OMB_DATA_DIR || join(homedir(), ".danibot"),
     tailscale: false,
     client: false,
     pair: true,
@@ -151,7 +151,7 @@ async function mintPairing(port: number, options: { label?: string; client?: boo
 // ── commands ───────────────────────────────────────────────────────────
 export async function runPair(options: CliOptions): Promise<number> {
   if (!(await serverUp(options.port))) {
-    console.error(`no Dani Bot server on http://127.0.0.1:${options.port}; start one with \`danibot serve\` or set OMB_PORT`);
+    console.error(`no Dani Bot server on http://127.0.0.1:${options.port}; start one with \`danibot serve\` or set DANI_PORT`);
     return 1;
   }
   console.log(await mintPairing(options.port, { label: options.label, client: options.client, publicUrl: options.publicUrl }));

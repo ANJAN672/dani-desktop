@@ -47,7 +47,7 @@ export interface BrandStatus {
 }
 
 export function brandFile(): string {
-  return process.env.OMB_BRAND_FILE || join(DATA_DIR, "brand.json");
+  return (process.env.DANI_BRAND_FILE ?? process.env.OMB_BRAND_FILE) || join(DATA_DIR, "brand.json");
 }
 
 /** Resolve the brand for this server right now. Never throws. */

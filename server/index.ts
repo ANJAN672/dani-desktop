@@ -82,7 +82,7 @@ import * as composio from "./composio.ts";
 import { createOpenAIRealtimeSession } from "./live-call-proxy.ts";
 import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts";
 import { peerAllowed, peerRosterSystemPrompt, reachablePeers } from "./peer-roster.ts";
-import { openMausStatusSystemPrompt } from "./openmaus-status-capsule.ts";
+import { openMausStatusSystemPrompt } from "./dani-status-capsule.ts";
 import {
   containerComputerAction,
   containerComputerExists,
@@ -318,11 +318,11 @@ import {
   type PhoneSecretContext,
 } from "./phone-secret.ts";
 
-const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
-const WEBHOOK_PORT = Number(process.env.OMB_WEBHOOK_PORT || PORT + 1);
+const PORT = Number(process.env.DANI_PORT || process.env.OMB_PORT || process.env.OGB_PORT || 8799);
+const WEBHOOK_PORT = Number(process.env.DANI_WEBHOOK_PORT || process.env.OMB_WEBHOOK_PORT || PORT + 1);
 // Behind a proxy or tunnel, the base URL senders should use (docs/self-hosting.md).
-const WEBHOOK_PUBLIC_URL = process.env.OMB_WEBHOOK_PUBLIC_URL || undefined;
-const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
+const WEBHOOK_PUBLIC_URL = process.env.DANI_WEBHOOK_PUBLIC_URL || process.env.OMB_WEBHOOK_PUBLIC_URL || undefined;
+const STATIC_DIR = process.env.DANI_STATIC_DIR || process.env.OMB_STATIC_DIR || null;
 const MIME: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -359,7 +359,7 @@ process.once("exit", releaseDataDirLeaseAtExit);
 const ENVIRONMENT_ID = loadEnvironmentId(DATA_DIR);
 const sessions = new SessionRegistry({ file: join(DATA_DIR, "sessions.json") });
 const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID);
-const DESKTOP_MANAGED = process.env.OMB_DESKTOP_PARENT === "1";
+const DESKTOP_MANAGED = (process.env.DANI_DESKTOP_PARENT ?? process.env.OMB_DESKTOP_PARENT) === "1";
 // Empty is deliberately a deny-all bootstrap state. Only Electron's private
 // utility-process port can replace it with the per-launch owner capability.
 let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : undefined;
@@ -874,7 +874,8 @@ async function browserIntegration(
 function phoneIntegration() {
   const env: Record<string, string> = { ...AGENTS_NODE_FLAG };
   if (process.env.OMB_ADB_PATH) env.OMB_ADB_PATH = process.env.OMB_ADB_PATH;
-  if (process.env.OMB_RESOURCES_PATH) env.OMB_RESOURCES_PATH = process.env.OMB_RESOURCES_PATH;
+  const resourcesPath = process.env.DANI_RESOURCES_PATH ?? process.env.OMB_RESOURCES_PATH;
+  if (resourcesPath) { env.DANI_RESOURCES_PATH = resourcesPath; env.OMB_RESOURCES_PATH = resourcesPath; }
   if (process.env.PH_ANDROID_SERIAL) env.PH_ANDROID_SERIAL = process.env.PH_ANDROID_SERIAL;
   return { command: process.execPath, args: [phoneProxyPath], env };
 }
@@ -3942,7 +3943,7 @@ async function startTurn(
           : null;
       const cwd = pinnedCwd ?? undefined;
       // Checkpoint explicit project folders, where a bot can overwrite the
-      // user's work. Its private OpenMaus workspace is app-owned and changes
+      // user's work. Its private Dani workspace is app-owned and changes
       // on nearly every ordinary chat; snapshotting it would add hidden disk
       // and process overhead without a user project to restore.
       const checkpointCwd = cwd && cwd !== privateWorkspace ? cwd : undefined;

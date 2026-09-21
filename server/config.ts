@@ -438,7 +438,7 @@ export function builtInBrowserEnabled(cfg: AppConfig): boolean {
 }
 
 // OMB_DATA_DIR isolates test/soak rigs from the user's real fleet.
-export const DATA_DIR = process.env.OMB_DATA_DIR ?? join(homedir(), ".danibot");
+export const DATA_DIR = process.env.DANI_DATA_DIR ?? process.env.OMB_DATA_DIR ?? join(homedir(), ".danibot");
 const LEGACY_DATA_DIRS = [join(homedir(), ".openmausbot"), join(homedir(), ".opengrokbot")];
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
@@ -488,9 +488,11 @@ export function loadConfig(): AppConfig {
   cfg.opencodeGo = { ...cfg.opencodeGo };
   if (process.env.OPENCODE_API_KEY !== undefined) cfg.opencodeGo.apiKey = process.env.OPENCODE_API_KEY;
   cfg.tts = { ...cfg.tts };
-  if (process.env.OMB_TTS_KEY !== undefined) cfg.tts.key = process.env.OMB_TTS_KEY;
+  const ttsKey = process.env.DANI_TTS_KEY ?? process.env.OMB_TTS_KEY;
+  if (ttsKey !== undefined) cfg.tts.key = ttsKey;
   cfg.imageGen = { ...cfg.imageGen };
-  if (process.env.OMB_OPENAI_IMAGE_KEY !== undefined) cfg.imageGen.key = process.env.OMB_OPENAI_IMAGE_KEY;
+  const imageKey = process.env.DANI_OPENAI_IMAGE_KEY ?? process.env.OMB_OPENAI_IMAGE_KEY;
+  if (imageKey !== undefined) cfg.imageGen.key = imageKey;
   return cfg;
 }
 
@@ -508,7 +510,9 @@ export function syncCredentialEnv(patch: Partial<AppConfig>): void {
     [patch.composio?.apiKey, "COMPOSIO_API_KEY"],
     [patch.box?.token, "BOX_TOKEN"],
     [patch.opencodeGo?.apiKey, "OPENCODE_API_KEY"],
+    [patch.tts?.key, "DANI_TTS_KEY"],
     [patch.tts?.key, "OMB_TTS_KEY"],
+    [patch.imageGen?.key, "DANI_OPENAI_IMAGE_KEY"],
     [patch.imageGen?.key, "OMB_OPENAI_IMAGE_KEY"],
   ];
   for (const [value, name] of secrets) {
@@ -541,14 +545,19 @@ export const WORKSPACE_CREDENTIAL_ENV = [
   "OPENAI_COMPAT_URL",
   "BOX_TOKEN",
   "OPENCODE_API_KEY",
+  "DANI_TTS_KEY",
   "OMB_TTS_KEY",
+  "DANI_OPENAI_IMAGE_KEY",
   "OMB_OPENAI_IMAGE_KEY",
   "COMPOSIO_API_KEY",
+  "DANI_COMPOSIO_BROKER_TOKEN",
   "OMB_COMPOSIO_BROKER_TOKEN",
   // Harness-private filesystem hints are not credentials themselves, but
   // exposing them to a shell-capable agent points straight at app-owned
   // state. The built-in browser master is delivered privately in memory.
+  "DANI_BROWSER_CONNECTION",
   "OMB_BROWSER_CONNECTION",
+  "DANI_USER_DATA",
   "OMB_USER_DATA",
 ] as const;
 
