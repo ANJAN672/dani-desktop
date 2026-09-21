@@ -34,6 +34,71 @@ export function needsCli(instance: InstanceInfo | undefined): boolean {
   return instance?.snapshot.state !== "available";
 }
 
+/** A key is saved but has not passed a live probe yet (spec 040 R2): this
+ * is its own state, not "install" and not "sign in". */
+export function needsVerification(instance: InstanceInfo | undefined): boolean {
+  const verification = instance?.snapshot.verification;
+  return instance?.snapshot.state === "available" && Boolean(verification) && verification!.status !== "verified";
+}
+
+/** The saved-key path: run the live probe, show the truthful outcome. */
+function VerifyCard({ instance }: { instance: InstanceInfo }) {
+  const { refreshInstances } = useStore();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const verification = instance.snapshot.verification!;
+
+  const verify = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/instances/${encodeURIComponent(instance.instanceId)}/verify`, { method: "POST" });
+      await refreshInstances();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title =
+    verification.status === "failed"
+      ? verification.errorClass === "auth"
+        ? "Saved key was rejected"
+        : verification.errorClass === "quota"
+          ? "Account credit or rate limit"
+          : verification.errorClass === "network"
+            ? "Can't reach the provider"
+            : "Verification failed"
+      : "Key saved - not verified yet";
+
+  return (
+    <div className="mt-3">
+      <div className="text-[13px] font-semibold text-ink">{title}</div>
+      <p className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+        {verification.status === "failed"
+          ? (verification.reason ?? "The saved key could not be verified. Try again.")
+          : `A key is saved for ${instance.displayName}, but keys only count once they pass a live check.`}
+      </p>
+      <button
+        type="button"
+        disabled={busy || verification.status === "verifying"}
+        onClick={() => void verify()}
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-[12.5px] font-semibold text-white hover:brightness-110 disabled:cursor-wait disabled:opacity-70"
+      >
+        {busy || verification.status === "verifying" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+        {busy || verification.status === "verifying" ? "Checking the saved key…" : verification.status === "failed" ? "Try again" : "Verify connection"}
+      </button>
+      {verification.checkedAt && (
+        <p className="mt-1.5 text-center text-[11px] text-ink-secondary/70">
+          Last checked {new Date(verification.checkedAt).toLocaleString()}
+        </p>
+      )}
+      {error && <p className="mt-2 text-[11.5px] text-danger">{error}</p>}
+    </div>
+  );
+}
+
 export function CommandRow({
   command,
   actionLabel,
@@ -315,6 +380,27 @@ export function EngineSetup({
       : install?.managed
         ? "Dani Bot installs its own verified Antigravity runtime. It is separate from the Antigravity app and agy CLI; install it here, sign in with Google, and this model list will refresh from your account."
       : `Install the command-line app once. Models will appear here as soon as it’s ready${signInCommand ? "; sign-in may follow" : ""}.`;
+
+  // Key saved but not live-verified: its own card, independent of whether
+  // the engine also carries an install descriptor (grok has none).
+  if (needsVerification(instance)) {
+    return (
+      <div className={cn("rounded-xl border border-hairline/40 bg-control/30 p-3", className)}>
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-inset text-ink-secondary">
+            <Check size={14} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-ink">Verify {instance.displayName}</div>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+              The saved key has not passed a live check, so this engine is not connected yet.
+            </p>
+          </div>
+        </div>
+        <VerifyCard instance={instance} />
+      </div>
+    );
+  }
 
   // Some engines are configured elsewhere (for example, a cloud computer
   // token) and intentionally have no install descriptor.

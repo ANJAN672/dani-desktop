@@ -11278,7 +11278,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { instances: await registry.describe() });
     }
 
-    const instanceAction = /^\/api\/instances\/([\w.-]+)\/(refresh-models|install|auth\/start|auth\/complete|auth\/cancel)$/.exec(path);
+    const instanceAction = /^\/api\/instances\/([\w.-]+)\/(refresh-models|install|auth\/start|auth\/complete|auth\/cancel|verify)$/.exec(path);
     if (method === "POST" && instanceAction) {
       if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
         return json(res, 415, { error: "content-type must be application/json" });
@@ -11286,6 +11286,10 @@ const server = createServer(async (req, res) => {
       const instanceId = instanceAction[1];
       const action = instanceAction[2];
       try {
+        if (action === "verify") {
+          if (!(await registry.verifyInstance(instanceId))) return json(res, 404, { error: "verification is unavailable for this engine" });
+          return json(res, 200, { instances: await registry.describe() });
+        }
         if (action === "refresh-models") {
           if (!(await registry.refreshModels(instanceId))) return json(res, 404, { error: "unknown instance" });
           return json(res, 200, { instances: await registry.describe() });

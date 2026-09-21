@@ -131,6 +131,14 @@ export class ProviderRegistry {
     return [...this.byId.values()].flatMap((e) => (e.live ? [e.live] : []));
   }
 
+  /** Live-verify a key-based engine's saved credential (spec 040 R2). */
+  async verifyInstance(instanceId: InstanceId): Promise<boolean> {
+    const instance = this.live.get(instanceId);
+    if (!instance?.verify) return false;
+    await instance.verify();
+    return true;
+  }
+
   async refreshModels(instanceId: InstanceId): Promise<boolean> {
     const instance = this.get(instanceId);
     if (!instance) return false;

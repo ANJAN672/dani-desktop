@@ -406,6 +406,14 @@ export interface InstanceInfo {
     state: "available" | "unavailable";
     reason?: string;
     authenticated?: boolean;
+    /** Live key verification (spec 040): a stored key is unverified until a
+     * real probe succeeds; absent on CLI engines that probe the binary. */
+    verification?: {
+      status: "unverified" | "verifying" | "verified" | "failed";
+      checkedAt?: string;
+      errorClass?: "auth" | "quota" | "network" | "version" | "unknown";
+      reason?: string;
+    };
     version?: string | null;
     /** A newer provider version unlocks capabilities, but this installed
      * version and its current models remain usable. */

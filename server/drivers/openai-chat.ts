@@ -2,6 +2,7 @@ import type {
   DriverCreateInput,
   ModelCatalog,
   ProviderInstance,
+  ProviderVerification,
   RuntimeEvent,
   RuntimeEventListener,
   SendTurnInput,
@@ -266,6 +267,52 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     return { turnId };
   };
 
+  // A stored key proves nothing by itself (spec 040): it starts unverified
+  // and only a successful authenticated probe moves it to verified. The
+  // probe hits the OpenAI-standard models listing with the bearer key - the
+  // cheapest call every compatible endpoint already exposes for catalogs.
+  let verification: ProviderVerification = { status: "unverified" };
+  let verifyInflight: Promise<ProviderVerification> | null = null;
+
+  const verify = (): Promise<ProviderVerification> => {
+    if (!options.apiKey) {
+      verification = { status: "failed", checkedAt: new Date().toISOString(), errorClass: "auth", reason: options.unavailableReason };
+      return Promise.resolve(verification);
+    }
+    if (verifyInflight) return verifyInflight;
+    verification = { ...verification, status: "verifying" };
+    const checkedAt = new Date().toISOString();
+    verifyInflight = (async () => {
+      try {
+        const response = await fetch(`${options.apiUrl}/models`, {
+          headers: { authorization: `Bearer ${options.apiKey}` },
+          signal: AbortSignal.timeout(Math.min(options.timeoutMs, 15_000)),
+        });
+        if (response.ok) {
+          verification = { status: "verified", checkedAt };
+          return verification;
+        }
+        const status = response.status;
+        const failure: Pick<ProviderVerification, "errorClass" | "reason"> =
+          status === 401 || status === 403
+            ? { errorClass: "auth", reason: `${options.httpErrorLabel} rejected the saved key. Enter a fresh key to reconnect.` }
+            : status === 402 || status === 429
+              ? { errorClass: "quota", reason: `${options.httpErrorLabel} says the account is out of credit or rate-limited. Check the provider's billing page.` }
+              : status === 404
+                ? { errorClass: "unknown", reason: `${options.httpErrorLabel} does not offer a verification endpoint, so the saved key cannot be checked here.` }
+                : { errorClass: "unknown", reason: `${options.httpErrorLabel} verification failed (HTTP ${status}). Try again.` };
+        verification = { status: "failed", checkedAt, ...failure };
+        return verification;
+      } catch {
+        verification = { status: "failed", checkedAt, errorClass: "network", reason: `Could not reach ${options.httpErrorLabel}. Check the network connection and try again.` };
+        return verification;
+      }
+    })().finally(() => {
+      verifyInflight = null;
+    });
+    return verifyInflight;
+  };
+
   return {
     instanceId: input.instanceId,
     driverKind: options.driverKind,
@@ -276,8 +323,9 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     },
     ...(options.refreshModels ? { refreshModels: options.refreshModels } : {}),
     snapshot: async () => options.apiKey
-      ? { state: "available", authenticated: true, version: null, ...(options.billing ? { billing: options.billing } : {}) }
+      ? { state: "available", authenticated: true, version: null, verification, ...(options.billing ? { billing: options.billing } : {}) }
       : { state: "unavailable", reason: options.unavailableReason },
+    verify,
     adapter: {
       provider: options.driverKind,
       capabilities: { sessionModelSwitch: "in-session" },

@@ -62,11 +62,14 @@ interface EngineEntry {
   readyNote: string;
 }
 
-function engineReady(instance: InstanceRow): boolean {
-  return (
-    instance.snapshot.state === "available" &&
-    (instance.access === "custom" || instance.snapshot.authenticated !== false)
-  );
+export function engineReady(instance: InstanceRow): boolean {
+  if (instance.snapshot.state !== "available") return false;
+  if (instance.access === "custom") return true;
+  // Key-based engines carry a live verification state (spec 040 R2): only a
+  // successful probe counts as ready - a stored key alone never does.
+  const verification = instance.snapshot.verification;
+  if (verification) return verification.status === "verified";
+  return instance.snapshot.authenticated !== false;
 }
 
 /** The one-liner under a ready engine. Cost class comes from the live

@@ -307,6 +307,21 @@ export interface ProviderAdapter {
 }
 
 // ── provider snapshot (upstream ServerProviderShape, reduced) ────────────
+
+/** Live credential verification for key-based engines (spec 040 R1/R2): a
+ * stored key is "unverified" until a real authenticated probe succeeds, so
+ * the UI never shows Connected from config presence alone. CLI engines probe
+ * the binary instead and omit this. */
+export interface ProviderVerification {
+  status: "unverified" | "verifying" | "verified" | "failed";
+  /** ISO time the last probe completed (any outcome). */
+  checkedAt?: string;
+  /** Spec 040 R3 class for the last failure. */
+  errorClass?: "auth" | "quota" | "network" | "version" | "unknown";
+  /** Safe user-facing reason; never carries the key or request detail. */
+  reason?: string;
+}
+
 export interface ProviderSnapshot {
   state: "available" | "unavailable";
   reason?: string;
@@ -319,6 +334,8 @@ export interface ProviderSnapshot {
     message: string;
     command: string;
   };
+  /** Live key verification state; present on key-based engines. */
+  verification?: ProviderVerification;
   /** How this instance is paid for, when the driver can tell: a reported
    * cost on a subscription is notional and the UI labels it as such. */
   billing?: "metered" | "subscription";
@@ -403,6 +420,8 @@ export interface ProviderInstance {
   readonly cancelAuthentication?: () => Promise<void>;
   readonly adapter: ProviderAdapter;
   snapshot(): Promise<ProviderSnapshot>;
+  /** Run the live credential probe now; resolves with the new state. */
+  verify?(): Promise<ProviderVerification>;
   /** Cheap one-shot text call (upstream TextGeneration) — titles, summaries. */
   generateText?(prompt: string): Promise<string>;
   /** Isolated, tool-free permission review on this same provider. Kept
