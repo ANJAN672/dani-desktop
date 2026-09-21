@@ -50,13 +50,15 @@ interface PendingRpc {
 
 export class BoxProxyCuaDriver implements CuaDriver {
   private child: ChildProcessWithoutNullStreams | null = null;
+  private readonly computer: BoxComputerIntegration;
+  private readonly logger: (line: string) => void;
   private readonly pending = new Map<string, PendingRpc>();
   private closed = false;
 
-  constructor(
-    private readonly computer: BoxComputerIntegration,
-    private readonly logger: (line: string) => void = () => undefined,
-  ) {}
+  constructor(computer: BoxComputerIntegration, logger: (line: string) => void = () => undefined) {
+    this.computer = computer;
+    this.logger = logger;
+  }
 
   private ensureChild(): ChildProcessWithoutNullStreams {
     if (this.closed) throw new Error("driver is closed");

@@ -100,12 +100,12 @@ type DecisionFn = (req: LayaDecisionRequest) => Promise<LayaDecisionResult>;
 
 export class LayaCuaController {
   private readonly budgets: Required<CuaControllerBudgets>;
+  private readonly decide: DecisionFn;
+  private readonly driver: CuaDriver | null;
 
-  constructor(
-    private readonly decide: DecisionFn,
-    private readonly driver: CuaDriver | null,
-    budgets: CuaControllerBudgets = {},
-  ) {
+  constructor(decide: DecisionFn, driver: CuaDriver | null, budgets: CuaControllerBudgets = {}) {
+    this.decide = decide;
+    this.driver = driver;
     this.budgets = {
       maxSteps: budgets.maxSteps ?? DEFAULT_MAX_STEPS,
       maxDurationMs: budgets.maxDurationMs ?? DEFAULT_MAX_DURATION_MS,
