@@ -106,6 +106,9 @@ posixOnly("unattended turns keep asking", () => {
         HOME: home,
         USERPROFILE: home,
         OMB_PORT: String(PORT),
+        // Hermetic fixture provider. Production has no override and remains
+        // fail-closed when Hermes is unavailable.
+        OMB_TEST_DEFAULT_INSTANCE_ID: "grok",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

@@ -305,6 +305,7 @@ export async function launchVerificationServer(
     OMB_WEBHOOK_PORT: String(port + 1),
     FAKE_CLAUDE_MODE: "happy",
     FAKE_CLAUDE_DUMP: fixtureDumpPath,
+    OMB_TEST_DEFAULT_INSTANCE_ID: "claude",
     // Keep the environment hermetic while allowing POSIX to resolve the
     // fake CLI's `#!/usr/bin/env node` shebang. Windows resolves that same
     // fixture through spawnCli without a shell.

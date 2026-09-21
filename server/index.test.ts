@@ -805,6 +805,7 @@ beforeAll(async () => {
       FAKE_CLAUDE_MODE: "hang",
       FAKE_CLAUDE_DUMP: fakeClaudeDump,
       OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
+      OMB_TEST_DEFAULT_INSTANCE_ID: "claude",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
