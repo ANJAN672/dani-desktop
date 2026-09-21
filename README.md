@@ -213,7 +213,27 @@ See the [Ubuntu Desktop guide](docs/linux-desktop.md) for platform notes and sou
 Any desktop build can also pair as a client to another Windows, macOS, or Ubuntu host over Tailscale; see [desktop-to-desktop companion mode](docs/desktop-companion.md).
 
 
-**From source:**
+**One command, from nothing to a running app** (idempotent - safe to re-run; prints a verified success check):
+
+macOS / Ubuntu:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/somdipto/dani-desktop/prod/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/somdipto/dani-desktop/prod/install.ps1 | iex
+```
+
+The script clones (or reuses) the repo, installs dependencies, packages the
+desktop app for your platform, and prints the verified installer path and how
+to launch it. First launch opens the setup wizard. These exact commands are
+tested against `install.sh` / `install.ps1` in CI, so this block cannot drift
+from the scripts it documents.
+
+**Or step by step, from source:**
 
 ```sh
 git clone https://github.com/somdipto/dani-desktop && cd dani-desktop

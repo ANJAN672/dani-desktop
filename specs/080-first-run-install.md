@@ -7,8 +7,14 @@ first try"). Phase P6. NEW SPEC.
 
 - Done: partial substrate - README install/build-from-source section exists and
   legacy download links were stripped (rebrand slices); bundled speech models
-  ship checksum-pinned with the app.
-- Remaining: this spec's verified one-command flow and clean-machine matrix.
+  ship checksum-pinned with the app. R1 landed: root install.sh / install.ps1
+  (idempotent, --check gate, printed verified success check + actionable
+  failures) documented verbatim at the top of README Quick start and pinned by
+  scripts/install-commands.test.mjs, including stubbed-toolchain behavior tests.
+- Remaining: clean-VM execution of those commands per platform (needs physical
+  machines - the harness and drift tests are in place, real artifact builds on
+  clean macOS/Windows/Linux VMs are not yet run); R2-R6 wizard, consent, mic,
+  upgrade and uninstall work.
 
 ## Requirements
 
