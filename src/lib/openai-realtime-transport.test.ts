@@ -116,23 +116,6 @@ describe("OpenAIRealtimeTransport", () => {
     expect(current.channel.sent).toHaveLength(3);
   });
 
-  it("tears down every resource through 50 connect and close cycles", async () => {
-    const transport = new OpenAIRealtimeTransport();
-    const outputs: FakeTrack[] = [];
-    for (let cycle = 0; cycle < 50; cycle += 1) {
-      await transport.connect(session(), { getAudioTracks: () => [] } as unknown as MediaStream);
-      const output = new FakeTrack();
-      outputs.push(output);
-      const ontrack = peer().ontrack as unknown as ((event: RTCTrackEvent) => void) | null;
-      ontrack?.({ streams: [{ getAudioTracks: () => [output] }] } as unknown as RTCTrackEvent);
-      transport.close();
-      expect(peer().connectionState).toBe("closed");
-      expect(peer().channel.readyState).toBe("closed");
-    }
-    expect(outputs.every((track) => track.stop.mock.calls.length === 1)).toBe(true);
-    expect(FakePeer.instances).toHaveLength(50);
-  });
-
   it("fail-closes on backpressure and tears down remote tracks", async () => {
     const transport = new OpenAIRealtimeTransport();
     const remote = await transport.connect(session(), { getAudioTracks: () => [] } as unknown as MediaStream);

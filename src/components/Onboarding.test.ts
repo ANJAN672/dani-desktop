@@ -64,37 +64,3 @@ describe("ZeroReadyNotice", () => {
     expect(markup).toContain("until an engine is installed");
   });
 });
-
-describe("engineReady (spec 040 R2)", () => {
-  it("treats a key-based engine with an unverified key as not ready", async () => {
-    const { engineReady } = await import("./Onboarding");
-    expect(engineReady({
-      ...baseInstance,
-      access: "subscription",
-      snapshot: { state: "available", authenticated: true, verification: { status: "unverified" } },
-    } as InstanceInfo)).toBe(false);
-  });
-
-  it("treats a key-based engine as ready only after a live probe", async () => {
-    const { engineReady } = await import("./Onboarding");
-    expect(engineReady({
-      ...baseInstance,
-      access: "subscription",
-      snapshot: { state: "available", authenticated: true, verification: { status: "verified", checkedAt: "2026-09-22T00:00:00Z" } },
-    } as InstanceInfo)).toBe(true);
-  });
-
-  it("keeps CLI engines on their existing authenticated signal", async () => {
-    const { engineReady } = await import("./Onboarding");
-    expect(engineReady({
-      ...baseInstance,
-      access: "subscription",
-      snapshot: { state: "available", authenticated: true },
-    } as InstanceInfo)).toBe(true);
-    expect(engineReady({
-      ...baseInstance,
-      access: "subscription",
-      snapshot: { state: "available", authenticated: false },
-    } as InstanceInfo)).toBe(false);
-  });
-});

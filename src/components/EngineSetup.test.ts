@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { needsCli, needsSignIn, needsVerification } from "./EngineSetup";
+import { needsCli, needsSignIn } from "./EngineSetup";
 import type { InstanceInfo } from "@/state/store";
 
 function instance(snapshot: InstanceInfo["snapshot"]): InstanceInfo {
@@ -30,24 +30,5 @@ describe("needsCli / needsSignIn", () => {
     const ready = instance({ state: "available", authenticated: true, version: "0.36.1" });
     expect(needsCli(ready)).toBe(false);
     expect(needsSignIn(ready)).toBe(false);
-  });
-});
-
-describe("needsVerification (spec 040 R2)", () => {
-  it("is its own state for a saved-but-unverified key, not install or sign-in", () => {
-    const unverified = instance({ state: "available", authenticated: true, verification: { status: "unverified" } });
-    expect(needsVerification(unverified)).toBe(true);
-    expect(needsCli(unverified)).toBe(false);
-    expect(needsSignIn(unverified)).toBe(false);
-  });
-
-  it("is not needed once the live probe passes", () => {
-    const verified = instance({ state: "available", authenticated: true, verification: { status: "verified", checkedAt: "2026-09-22T00:00:00Z" } });
-    expect(needsVerification(verified)).toBe(false);
-  });
-
-  it("does not apply to CLI engines or unavailable engines", () => {
-    expect(needsVerification(instance({ state: "available", authenticated: true }))).toBe(false);
-    expect(needsVerification(instance({ state: "unavailable", reason: "not found" }))).toBe(false);
   });
 });

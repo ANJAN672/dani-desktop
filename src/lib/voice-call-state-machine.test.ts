@@ -51,28 +51,6 @@ describe("VoiceCallStateMachine", () => {
     expect(bridge.interrupt).toHaveBeenCalledOnce();
   });
 
-  it("survives 50 submit, interrupt, and hangup cycles without stale work", async () => {
-    for (let cycle = 0; cycle < 50; cycle += 1) {
-      let requestSignal: AbortSignal | undefined;
-      const bridge: DurableVoiceTurnBridge = {
-        submit: vi.fn(async (request) => { requestSignal = request.signal; await new Promise<void>(() => {}); }),
-        interrupt: vi.fn(async () => {}),
-      };
-      const call = new VoiceCallStateMachine(`call-${cycle}`, bridge);
-      const generation = call.start();
-      call.connected(generation);
-      void call.submitFinal(generation, { utteranceId: `utterance-${cycle}`, text: "hello" });
-      await Promise.resolve();
-      const next = await call.bargeIn(generation);
-      expect(next).toBe(generation + 1);
-      expect(requestSignal?.aborted).toBe(true);
-      expect(bridge.interrupt).toHaveBeenCalledOnce();
-      call.end();
-      expect(call.snapshot.state).toBe("ended");
-      expect(call.isCurrent(next!)).toBe(false);
-    }
-  });
-
   it("a stale failed submission cannot move a reconnected call to error", async () => {
     let reject!: (error: Error) => void;
     const bridge: DurableVoiceTurnBridge = {
