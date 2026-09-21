@@ -181,3 +181,24 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
   bounded controller itself (state -> enumerated candidates -> Laya score ->
   guarded computer adapter -> verify), hardware-verified CUA loop, and
   shadow-data-derived thresholds.
+
+## Slice 5 landed (2026-09-22): bounded CUA controller
+
+- `server/laya/cua-controller.ts`: the bounded executor behind the router's
+  bounded_cua route. Loop: observe real state -> enumerate candidates from
+  that state -> Laya scores -> re-observe (state moved = abort) -> act
+  through the guarded driver boundary -> verify completion from FRESH state
+  (never the action's own report). Budgets: 4 steps / 60 s / per-decision
+  timeout, cancellation fence at every step. Every abort returns a truthful
+  handoff transcript for Hermes.
+- 8 control-loop tests (no-driver refusal, no candidates, abstain,
+  state-changed, verified completion, budget exhaustion, typed failure,
+  cancellation). Provider and driver boundaries are scripted; no real-model
+  or real-hardware claim is made.
+- UNVERIFIED: no guarded CuaDriver is bound. The computer proxy's execution
+  path is an MCP stdio server (`server/computer-proxy.ts`), not importable
+  functions, so a real driver adapter needs either an extracted shared
+  execution module or a stdio client; it must enforce the computer-control
+  lease ("who is driving") and adapter evidence rules. Until one is
+  registered the controller refuses to run and bounded_cua falls back to
+  Hermes. End-to-end CUA verification needs real hardware/a real box.

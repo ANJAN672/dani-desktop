@@ -129,6 +129,7 @@ import { LayaDecisionService } from "./laya/service.ts";
 import { LayaDecisionShadowScorer, routeShadowCandidates } from "./laya/shadow-scorer.ts";
 import { DaniTaskRouter } from "./laya/router.ts";
 import { LAYA_TYPED_DECISIONS, layaCheckpointBySubfolder } from "./laya/manifest.ts";
+import { LayaCuaController } from "./laya/cua-controller.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
@@ -483,6 +484,7 @@ executionKernel = createExecutionKernel();
 let layaService: LayaDecisionService | null = null;
 let layaShadow: LayaShadow | null = null;
 let layaRouter: DaniTaskRouter | null = null;
+let layaCua: LayaCuaController | null = null;
 function createLayaStack(): void {
   if (!layaEnabled(cfg)) return;
   const checkpoint = layaCheckpointBySubfolder(cfg.laya?.checkpoint ?? "typed-decisions") ?? LAYA_TYPED_DECISIONS;
@@ -497,8 +499,14 @@ function createLayaStack(): void {
   if (layaShadowEnabled(cfg))
     layaShadow = new LayaShadow(join(DATA_DIR, "laya-shadow.sqlite"), new LayaDecisionShadowScorer(layaService));
   layaRouter = new DaniTaskRouter(layaService, { routingEnabled: () => layaRoutingEnabled(cfg) });
+  // No guarded CUA driver is registered yet (the computer proxy's execution
+  // path is an MCP stdio surface, not importable functions), so the
+  // controller refuses to run and every bounded_cua route falls back to
+  // Hermes. Binding a real driver is the remaining UNVERIFIED hardware slice.
+  layaCua = new LayaCuaController((req) => layaService!.decide(req), null);
 }
 async function closeLayaStack(): Promise<void> {
+  layaCua = null;
   layaRouter = null;
   layaShadow?.close();
   layaShadow = null;
@@ -4467,7 +4475,9 @@ async function startTurn(
                 .then((route) => {
                   if (route.route === "bounded_cua")
                     console.warn(
-                      `[laya-router] bounded_cua chosen (${route.reason}) but the bounded CUA controller is not wired yet; Hermes keeps the turn`,
+                      layaCua?.driverAvailable()
+                        ? `[laya-router] bounded_cua chosen (${route.reason})`
+                        : `[laya-router] bounded_cua chosen (${route.reason}) but no guarded CUA driver is registered yet; Hermes keeps the turn`,
                     );
                 })
                 .catch(() => undefined);
