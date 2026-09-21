@@ -5,7 +5,14 @@ import { readSessionState, takePairingCodeFromLocation } from "./lib/session";
 import { bootstrapBrand } from "./lib/brand";
 import { applySkin, readSkin } from "./lib/skins";
 import { PairPage } from "./pair/PairPage";
+import { installOwnerTokenFetch } from "./lib/owner-token";
 import "./styles.css";
+
+// Browser/dev UI: provision the per-launch owner capability the server
+// prints on boot (localStorage "danibot.ownerToken") so loopback mutations
+// carry it. Packaged desktop is unaffected — Electron's webRequest hook
+// overwrites the header below JavaScript.
+installOwnerTokenFetch();
 
 // Before the first paint, not inside a component: stamping the skin during
 // render would show one frame of the default palette first. The brand (window
