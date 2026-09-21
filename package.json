@@ -25,6 +25,7 @@
     "lint": "oxlint .",
     "check:contrast": "node scripts/check-skin-contrast.mjs",
     "i18n:check": "node scripts/generate-locale.mjs --check",
+    "dev:gooey": "vite --open /ide",
     "dev": "vite",
     "docs:dev": "pnpm --filter @danibot/docs dev",
     "docs:build": "pnpm --filter @danibot/docs build",

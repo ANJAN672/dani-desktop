@@ -1,8 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { IdeWorkspace } from "./components/IdeWorkspace";
+import { StoreProvider } from "./state/store";
 import { readSessionState, takePairingCodeFromLocation } from "./lib/session";
-import { bootstrapBrand } from "./lib/brand";
+import { applyBrand } from "./lib/brand";
 import { applySkin, readSkin } from "./lib/skins";
 import { PairPage } from "./pair/PairPage";
 import "./styles.css";
@@ -19,11 +21,26 @@ applySkin(readSkin());
  * check is a single fast request. */
 async function chooseRoot(): Promise<React.ReactNode> {
   if (location.pathname === "/pair") return <PairPage initialCode={takePairingCodeFromLocation()} />;
+  if (location.pathname === "/ide") {
+    applyBrand({
+      brand: { name: "Gooey pi", tagline: "Gooey workspace", accent: "#7dd3fc" },
+      source: "default",
+      file: "",
+    });
+    const session = await readSessionState();
+    if (session.kind === "unauthenticated") return <PairPage initialCode={null} reason={session.error} />;
+    return (
+      <StoreProvider>
+        <IdeWorkspace />
+      </StoreProvider>
+    );
+  }
   const session = await readSessionState();
   if (session.kind === "unauthenticated") return <PairPage initialCode={null} reason={session.error} />;
   return <App />;
 }
 
-void Promise.all([bootstrapBrand(), chooseRoot()]).then(([, root]) => {
+void chooseRoot().then((root) => {
   createRoot(document.getElementById("root")!).render(<StrictMode>{root}</StrictMode>);
 });
+
