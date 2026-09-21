@@ -357,11 +357,6 @@ function guardSync(channel, handler, denied) {
 
 module.exports = {
   CHANNEL_POLICY,
-  // Test seam: under vitest's split ESM/CJS caches a test's own import of
-  // local-origin.cjs is a different instance from the one this module
-  // requires, so the origin must be set through the guard's instance.
-  // Production Node shares one CJS cache and never sees the split.
-  setLocalOrigin: localOriginModule.setLocalOrigin,
   arrayOf,
   boolean,
   checkArgs,
@@ -377,3 +372,13 @@ module.exports = {
   any,
   validateValue,
 };
+
+// Test seam: under vitest's split ESM/CJS caches a test's own import of
+// local-origin.cjs is a different instance from the one this module
+// requires, so the origin must be set through the guard's instance.
+// Production Node shares one CJS cache and never sees the split.
+// Assigned after the literal: a keyed property whose value is not a plain
+// identifier inside `module.exports = {...}` makes cjs-module-lexer drop
+// EVERY named export, breaking `import { guard } from "./ipc-guard.cjs"`
+// in the .mjs main-process modules.
+module.exports.setLocalOrigin = localOriginModule.setLocalOrigin;
