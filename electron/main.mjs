@@ -471,7 +471,11 @@ import {
  * android-device.mjs. Declared before any handler registration below: a
  * const declared later would be in its temporal dead zone at module load.
  */
-const { isLocalSender: senderIsLocal, localOnly, localOnlySync, setLocalOrigin } = localOriginModule;
+const { isLocalSender: senderIsLocal, setLocalOrigin } = localOriginModule;
+// IPC guard: schema validation + origin enforcement + capability classification
+// for every exposed channel (see electron/ipc-guard.cjs). Declared here, next
+// to the local-origin wall, because handler registrations below run at load.
+const { guard, guardSync } = require("./ipc-guard.cjs");
 
 let companionPowerBlocker = null;
 
@@ -1516,9 +1520,9 @@ function browserSurfaceForEvent(event) {
   return browserSurface;
 }
 
-ipcMain.handle("browser:available", localOnly("browser:available", () => Boolean(browserSurface && browserHost?.url)));
-ipcMain.handle("browser:state", localOnly("browser:state", (event, botId) => browserSurfaceForEvent(event).state(botId)));
-ipcMain.handle("browser:layout", localOnly("browser:layout", (event, botId, bounds, profile, mode, layoutOwner) =>
+ipcMain.handle("browser:available", guard("browser:available", () => Boolean(browserSurface && browserHost?.url)));
+ipcMain.handle("browser:state", guard("browser:state", (event, botId) => browserSurfaceForEvent(event).state(botId)));
+ipcMain.handle("browser:layout", guard("browser:layout", (event, botId, bounds, profile, mode, layoutOwner) =>
   browserSurfaceForEvent(event).layout(
     botId,
     bounds ?? null,
@@ -1532,23 +1536,23 @@ ipcMain.handle("browser:layout", localOnly("browser:layout", (event, botId, boun
 const browserProfileFromRenderer = (profile) =>
   Object.prototype.toString.call(profile) === "[object String]" ? profile : undefined;
 
-ipcMain.handle("browser:forward", localOnly("browser:forward", async (event, botId, profile) => {
+ipcMain.handle("browser:forward", guard("browser:forward", async (event, botId, profile) => {
   const result = await browserSurfaceForEvent(event).forward(botId, browserProfileFromRenderer(profile), { source: "user" });
   return { url: result.url, title: result.title };
 }));
-ipcMain.handle("browser:reload", localOnly("browser:reload", async (event, botId, profile) => {
+ipcMain.handle("browser:reload", guard("browser:reload", async (event, botId, profile) => {
   const result = await browserSurfaceForEvent(event).reload(botId, browserProfileFromRenderer(profile), { source: "user" });
   return { url: result.url, title: result.title };
 }));
-ipcMain.handle("browser:navigate", localOnly("browser:navigate", async (event, botId, url, profile) => {
+ipcMain.handle("browser:navigate", guard("browser:navigate", async (event, botId, url, profile) => {
   const result = await browserSurfaceForEvent(event).navigate(botId, url, browserProfileFromRenderer(profile), { source: "user" });
   return { url: result.url, title: result.title };
 }));
-ipcMain.handle("browser:back", localOnly("browser:back", async (event, botId, profile) => {
+ipcMain.handle("browser:back", guard("browser:back", async (event, botId, profile) => {
   const result = await browserSurfaceForEvent(event).back(botId, browserProfileFromRenderer(profile), { source: "user" });
   return { url: result.url, title: result.title };
 }));
-ipcMain.handle("browser:set-human-control", localOnly("browser:set-human-control", (event, botId, held, profile) => {
+ipcMain.handle("browser:set-human-control", guard("browser:set-human-control", (event, botId, held, profile) => {
   const owner = mainWindow;
   if (!owner || owner.isDestroyed() || event.sender !== owner.webContents) {
     throw new Error("The browser is available only to the main app window");
@@ -1569,12 +1573,12 @@ ipcMain.handle("browser:set-human-control", localOnly("browser:set-human-control
   else browserControlHolds.delete(id);
   return applied;
 }));
-ipcMain.handle("browser:close", localOnly("browser:close", (event, botId) => browserSurfaceForEvent(event).close(botId)));
+ipcMain.handle("browser:close", guard("browser:close", (event, botId) => browserSurfaceForEvent(event).close(botId)));
 // Deleting a profile: every bot's view on it goes, then its cookies, storage
 // and cache. The partition directory itself is left for Chromium to reuse
 // (removing it while the session object lives is the EBUSY trap every
 // Electron app with profiles has hit); nothing identifying remains in it.
-ipcMain.handle("browser:forget-profile", localOnly("browser:forget-profile", async (event, partitionId) => {
+ipcMain.handle("browser:forget-profile", guard("browser:forget-profile", async (event, partitionId) => {
   const surface = browserSurfaceForEvent(event);
   const id = String(partitionId ?? "");
   if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || id === "guest") throw new Error("That browser partition id is invalid");
@@ -1584,7 +1588,7 @@ ipcMain.handle("browser:forget-profile", localOnly("browser:forget-profile", asy
   return { dropped };
 }));
 
-ipcMain.on("screen:preview-intent", localOnlySync("screen:preview-intent", (event) => {
+ipcMain.on("screen:preview-intent", guardSync("screen:preview-intent", (event) => {
   event.returnValue = displayMediaGuard.begin(event.senderFrame);
 }));
 
@@ -1787,7 +1791,12 @@ function createWindow() {
     autoHideMenuBar: process.platform !== "darwin",
     ...windowChromeOptions(process.platform),
     webPreferences: {
+      // Every renderer is untrusted: sandbox the main window exactly like the
+      // desktop viewer (the in-repo secure reference). The preload bridge is
+      // the renderer's only API; Node and ipcRenderer stay out of its reach.
+      sandbox: true,
       contextIsolation: true,
+      nodeIntegration: false,
       preload: path.join(__dirname, "preload.cjs"),
       // The preload exposes the full bridge only to this origin (see preload.cjs).
       // Companion client mode still serves the bundled UI from its own
@@ -2010,7 +2019,7 @@ function createWindow() {
 
 // Local-control screen preview — served from the main process so the Screen
 // Recording permission prompt attributes to the app, never the server
-ipcMain.handle("screen:frame", localOnly("screen:frame", async () => {
+ipcMain.handle("screen:frame", guard("screen:frame", async () => {
   if (process.platform !== "darwin") return null;
   const sources = await desktopCapturer.getSources({
     types: ["screen"],
@@ -2036,7 +2045,7 @@ ipcMain.handle("screen:frame", localOnly("screen:frame", async () => {
 // Copy the engine command, then open a blank terminal. Renderer-controlled
 // text must never become a process argument: the user reviews and pastes it.
 // Returns false when the renderer should show the clipboard fallback.
-ipcMain.handle("engine:open-terminal", localOnly("engine:open-terminal", async (_event, command) => {
+ipcMain.handle("engine:open-terminal", guard("engine:open-terminal", async (_event, command) => {
   if (typeof command !== "string" || !command.trim()) return false;
   clipboard.writeText(command);
   return openBlankTerminal();
@@ -2048,7 +2057,7 @@ ipcMain.handle("engine:open-terminal", localOnly("engine:open-terminal", async (
 // renderer sandboxed and let the main process open only ordinary web links.
 // A bot's working folder: the native picker, so the path is real and the
 // user never types one. Returns null when they cancel.
-ipcMain.handle("desktop:pick-folder", localOnly("desktop:pick-folder", async (event, current) => {
+ipcMain.handle("desktop:pick-folder", guard("desktop:pick-folder", async (event, current) => {
   const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
   const result = await dialog.showOpenDialog(win, {
     title: "Choose a working folder",
@@ -2061,7 +2070,7 @@ ipcMain.handle("desktop:pick-folder", localOnly("desktop:pick-folder", async (ev
 // One-click bug-report bundle. Secrets are never read; the report is
 // redacted again on the way out (diagnostics.mjs). null means the user
 // cancelled the save dialog.
-ipcMain.handle("desktop:export-diagnostics", localOnly("desktop:export-diagnostics", async (event) => {
+ipcMain.handle("desktop:export-diagnostics", guard("desktop:export-diagnostics", async (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
   const report = await gatherDiagnostics();
   const result = await dialog.showSaveDialog(owner, {
@@ -2094,7 +2103,7 @@ ipcMain.handle("desktop:export-diagnostics", localOnly("desktop:export-diagnosti
 // where, which a silent copy into ~/Downloads does not. The path is
 // renderer-controlled, so it must resolve inside ~/.danibot and be a
 // regular file — never a symlink escape or directory.
-ipcMain.handle("desktop:save-file", localOnly("desktop:save-file", async (event, rawPath) => {
+ipcMain.handle("desktop:save-file", guard("desktop:save-file", async (event, rawPath) => {
   return withSavableFile(rawPath, { home: os.homedir() }, async ({ defaultName, copyTo }) => {
     const parent = BrowserWindow.fromWebContents(event.sender);
     const defaultPath = await defaultSaveName(app.getPath("downloads"), defaultName);
@@ -2116,12 +2125,12 @@ ipcMain.handle("desktop:save-file", localOnly("desktop:save-file", async (event,
 // The renderer owns the skin. Native Windows/Linux chrome is intentionally
 // outside that surface; acknowledge the renderer handshake without creating
 // a frameless caption overlay that can cover page controls.
-ipcMain.handle("desktop:skin", (_event, skin) => {
+ipcMain.handle("desktop:skin", guard("desktop:skin", (_event, skin) => {
   if (!isKnownSkin(skin)) return false;
   return true;
-});
+}));
 
-ipcMain.handle("desktop:open-external", async (_event, rawUrl) => {
+ipcMain.handle("desktop:open-external", guard("desktop:open-external", async (_event, rawUrl) => {
   if (typeof rawUrl !== "string") throw new Error("A web address is required");
   let url;
   try {
@@ -2134,12 +2143,12 @@ ipcMain.handle("desktop:open-external", async (_event, rawUrl) => {
   }
   await shell.openExternal(url.toString());
   return true;
-});
+}));
 
 // The Box VNC viewer must be a top-level page for its token exchange. A
 // sandboxed modal BrowserWindow satisfies that requirement while keeping the
 // live desktop inside Dani Bot instead of sending the person to a browser.
-ipcMain.handle("desktop-viewer:open", localOnly("desktop-viewer:open", (event, rawUrl, title, contextId) => {
+ipcMain.handle("desktop-viewer:open", guard("desktop-viewer:open", (event, rawUrl, title, contextId) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   return openDesktopViewer(owner, rawUrl, title, contextId);
 }));
@@ -2147,20 +2156,20 @@ ipcMain.handle("desktop-viewer:open", localOnly("desktop-viewer:open", (event, r
 // Two Local VM desktops share the existing app BrowserWindow. The renderer
 // supplies only layout and intent; URL validation, sandboxing, session
 // isolation and the one-interactive-pane invariant stay in the main process.
-ipcMain.handle("desktop-workspace:open", localOnly("desktop-workspace:open", (event, input) =>
+ipcMain.handle("desktop-workspace:open", guard("desktop-workspace:open", (event, input) =>
   desktopWorkspaceForEvent(event, true).open(input),
 ));
-ipcMain.handle("desktop-workspace:layout", localOnly("desktop-workspace:layout", (event, items) => {
+ipcMain.handle("desktop-workspace:layout", guard("desktop-workspace:layout", (event, items) => {
   const manager = desktopWorkspaceForEvent(event);
   if (!manager) return false;
   return manager.layout(items);
 }));
-ipcMain.handle("desktop-workspace:set-interactive", localOnly("desktop-workspace:set-interactive", (event, contextId) => {
+ipcMain.handle("desktop-workspace:set-interactive", guard("desktop-workspace:set-interactive", (event, contextId) => {
   const manager = desktopWorkspaceForEvent(event);
   if (!manager) return contextId == null;
   return manager.setInteractive(contextId);
 }));
-ipcMain.handle("desktop-workspace:close", localOnly("desktop-workspace:close", (event, contextId) => {
+ipcMain.handle("desktop-workspace:close", guard("desktop-workspace:close", (event, contextId) => {
   const manager = desktopWorkspaceForEvent(event);
   if (!manager) return true;
   return manager.close(contextId);
@@ -2168,7 +2177,7 @@ ipcMain.handle("desktop-workspace:close", localOnly("desktop-workspace:close", (
 
 // Close only when the caller owns the current viewer — otherwise one bot's
 // "Hand control back" would close (and release) another bot's viewer.
-ipcMain.handle("desktop-viewer:close", localOnly("desktop-viewer:close", (_event, contextId) => {
+ipcMain.handle("desktop-viewer:close", guard("desktop-viewer:close", (_event, contextId) => {
   const scoped = Object.prototype.toString.call(contextId) === "[object String]" ? contextId : null;
   if (scoped !== desktopViewerContextId) return false;
   if (desktopViewerWindow && !desktopViewerWindow.isDestroyed()) desktopViewerWindow.close();
@@ -2176,18 +2185,18 @@ ipcMain.handle("desktop-viewer:close", localOnly("desktop-viewer:close", (_event
 }));
 
 // Lets a (re)mounted panel seed viewer-open state instead of defaulting to false.
-ipcMain.handle("desktop-viewer:state-now", localOnly("desktop-viewer:state-now", () => ({
+ipcMain.handle("desktop-viewer:state-now", guard("desktop-viewer:state-now", () => ({
   open: Boolean(desktopViewerWindow && !desktopViewerWindow.isDestroyed()),
   contextId: desktopViewerContextId,
 })));
 
-ipcMain.handle("perm:status", () => ({
+ipcMain.handle("perm:status", guard("perm:status", () => ({
   mic:
     nativeActions.appleMediaPermissions
       ? systemPreferences.getMediaAccessStatus?.("microphone") ?? "unknown"
       : "unsupported",
-}));
-ipcMain.handle("perm:request-mic", localOnly("perm:request-mic", async () => {
+})));
+ipcMain.handle("perm:request-mic", guard("perm:request-mic", async () => {
   if (!nativeActions.appleMediaPermissions) return false;
   try {
     return await systemPreferences.askForMediaAccess("microphone");
@@ -2208,7 +2217,7 @@ ipcMain.handle("logs:open", localOnly("logs:open", () => {
 
 // macOS never re-prompts a denied permission — the only path is System
 // Settings; deep-link straight to the right privacy pane.
-ipcMain.handle("perm:open-settings", localOnly("perm:open-settings", (_event, pane) => {
+ipcMain.handle("perm:open-settings", guard("perm:open-settings", (_event, pane) => {
   if (!nativeActions.applePrivacySettings) return false;
   const panes = {
     mic: "Privacy_Microphone",
@@ -2222,7 +2231,7 @@ ipcMain.handle("perm:open-settings", localOnly("perm:open-settings", (_event, pa
   return shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`);
 }));
 
-ipcMain.handle("speech:start", localOnly("speech:start", (event, options) => {
+ipcMain.handle("speech:start", guard("speech:start", (event, options) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return;
   if (!nativeActions.appleSpeech) {
@@ -2231,21 +2240,21 @@ ipcMain.handle("speech:start", localOnly("speech:start", (event, options) => {
   }
   startSpeech(win, options);
 }));
-ipcMain.handle("speech:stop", localOnly("speech:stop", () => {
+ipcMain.handle("speech:stop", guard("speech:stop", () => {
   if (nativeActions.appleSpeech) stopSpeech();
 }));
-ipcMain.handle("speech:finish", localOnly("speech:finish", () => {
+ipcMain.handle("speech:finish", guard("speech:finish", () => {
   if (nativeActions.appleSpeech) finishSpeech();
 }));
 
-ipcMain.handle("skill-recorder:permissions", localOnly("skill-recorder:permissions", () => recorderPermissionStatus()));
-ipcMain.handle("skill-recorder:start", localOnly("skill-recorder:start", (event) => {
+ipcMain.handle("skill-recorder:permissions", guard("skill-recorder:permissions", () => recorderPermissionStatus()));
+ipcMain.handle("skill-recorder:start", guard("skill-recorder:start", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) throw new Error("The recorder window is unavailable");
   return startRecorder(win);
 }));
-ipcMain.handle("skill-recorder:stop", localOnly("skill-recorder:stop", () => stopRecorder()));
-ipcMain.handle("skill-recorder:save", localOnly("skill-recorder:save", (_event, payload) => (
+ipcMain.handle("skill-recorder:stop", guard("skill-recorder:stop", () => stopRecorder()));
+ipcMain.handle("skill-recorder:save", guard("skill-recorder:save", (_event, payload) => (
   saveSkillRecording(payload, { dataRoot: desktopDataDir() })
 )));
 
@@ -2253,21 +2262,21 @@ ipcMain.handle("skill-recorder:save", localOnly("skill-recorder:save", (_event, 
 // The renderer gets these five and nothing else: it can turn the companion
 // on and off, look at it, open or cancel a pairing window, and remove a
 // device. It cannot reach the sidecar's control port itself.
-ipcMain.handle("companion:state", localOnly("companion:state", () => desktopCompanionState()));
-ipcMain.handle("companion:start", localOnly("companion:start", () => startDesktopCompanion()));
-ipcMain.handle("companion:stop", localOnly("companion:stop", () => stopDesktopCompanion()));
-ipcMain.handle("companion:keep-awake", localOnly("companion:keep-awake", async (_event, enabled) => {
+ipcMain.handle("companion:state", guard("companion:state", () => desktopCompanionState()));
+ipcMain.handle("companion:start", guard("companion:start", () => startDesktopCompanion()));
+ipcMain.handle("companion:stop", guard("companion:stop", () => stopDesktopCompanion()));
+ipcMain.handle("companion:keep-awake", guard("companion:keep-awake", async (_event, enabled) => {
   rememberCompanionKeepAwake(Boolean(enabled));
   return desktopCompanionState();
 }));
-ipcMain.handle("companion:refresh-tailscale", localOnly("companion:refresh-tailscale", () => refreshDesktopCompanionTailscale()));
-ipcMain.handle("companion:pairing", localOnly("companion:pairing", (_event, open, expectedToken) =>
+ipcMain.handle("companion:refresh-tailscale", guard("companion:refresh-tailscale", () => refreshDesktopCompanionTailscale()));
+ipcMain.handle("companion:pairing", guard("companion:pairing", (_event, open, expectedToken) =>
   companionPairing(Boolean(open), expectedToken).then(decorateDesktopCompanionState),
 ));
-ipcMain.handle("companion:cloud-desktop", localOnly("companion:cloud-desktop", (_event, deviceId, allowed) =>
+ipcMain.handle("companion:cloud-desktop", guard("companion:cloud-desktop", (_event, deviceId, allowed) =>
   companionCloudDesktopAccess(deviceId, Boolean(allowed)).then(() => desktopCompanionState()),
 ));
-ipcMain.handle("companion:revoke", localOnly("companion:revoke", (_event, deviceId) =>
+ipcMain.handle("companion:revoke", guard("companion:revoke", (_event, deviceId) =>
   companionRevoke(deviceId).then(() => desktopCompanionState()),
 ));
 
@@ -2297,8 +2306,8 @@ function relaunchAfterDesktopRemoteChange() {
   timer.unref?.();
 }
 
-ipcMain.handle("desktop-remote:state", () => publicDesktopRemoteState());
-ipcMain.handle("desktop-remote:pair", localOnly("desktop-remote:pair", async (event, endpoint, code) => {
+ipcMain.handle("desktop-remote:state", guard("desktop-remote:state", () => publicDesktopRemoteState()));
+ipcMain.handle("desktop-remote:pair", guard("desktop-remote:pair", async (event, endpoint, code) => {
   requireMainWindowSender(event);
   const access = await pairDesktopCompanion({
     endpoint,
@@ -2310,7 +2319,7 @@ ipcMain.handle("desktop-remote:pair", localOnly("desktop-remote:pair", async (ev
   relaunchAfterDesktopRemoteChange();
   return publicDesktopRemoteState();
 }));
-ipcMain.handle("desktop-remote:disconnect", localOnly("desktop-remote:disconnect", async (event) => {
+ipcMain.handle("desktop-remote:disconnect", guard("desktop-remote:disconnect", async (event) => {
   requireMainWindowSender(event);
   await updateSecureCredentialDocument(withoutDesktopCompanionAccess);
   desktopRemoteAccess = null;
@@ -2320,32 +2329,32 @@ ipcMain.handle("desktop-remote:disconnect", localOnly("desktop-remote:disconnect
 
 // Auth and connector credentials never cross this boundary. Every handler
 // returns the same deliberately tiny, secret-free public account state.
-ipcMain.handle("companion-account:state", localOnly("companion-account:state", () => ensureCompanionAccountService().state()));
-ipcMain.handle("companion-account:request-code", localOnly("companion-account:request-code", (_event, email) =>
+ipcMain.handle("companion-account:state", guard("companion-account:state", () => ensureCompanionAccountService().state()));
+ipcMain.handle("companion-account:request-code", guard("companion-account:request-code", (_event, email) =>
   ensureCompanionAccountService().requestCode(email),
 ));
-ipcMain.handle("companion-account:verify-code", localOnly("companion-account:verify-code", (_event, email, code) =>
+ipcMain.handle("companion-account:verify-code", guard("companion-account:verify-code", (_event, email, code) =>
   ensureCompanionAccountService().verifyCode(email, code),
 ));
-ipcMain.handle("companion-account:retry", localOnly("companion-account:retry", () => ensureCompanionAccountService().retry()));
-ipcMain.handle("companion-account:sign-out", localOnly("companion-account:sign-out", () => ensureCompanionAccountService().signOut()));
+ipcMain.handle("companion-account:retry", guard("companion-account:retry", () => ensureCompanionAccountService().retry()));
+ipcMain.handle("companion-account:sign-out", guard("companion-account:sign-out", () => ensureCompanionAccountService().signOut()));
 
-ipcMain.handle("environments:state", (event) => ({
+ipcMain.handle("environments:state", guard("environments:state", (event) => ({
   localOrigin: rendererOrigin(),
   remote: !senderIsLocal(event),
   activeId: environmentsState.activeId,
   environments: environmentsState.environments,
-}));
-ipcMain.handle("environments:switch", localOnly("environments:switch", (_event, id) => switchEnvironment(typeof id === "string" ? id : LOCAL_ID)));
-ipcMain.handle("environments:add-from-link", localOnly("environments:add-from-link", async (_event, link) => {
+})));
+ipcMain.handle("environments:switch", guard("environments:switch", (_event, id) => switchEnvironment(typeof id === "string" ? id : LOCAL_ID)));
+ipcMain.handle("environments:add-from-link", guard("environments:add-from-link", async (_event, link) => {
   const parsed = parsePairingLink(typeof link === "string" ? link : "");
   if (!parsed) throw new Error("that is not a pairing link (expected https://host/pair#code=…)");
   clipboard.writeText(parsed.url);
   await addServerFromClipboard();
 }));
-ipcMain.handle("environments:forget", localOnly("environments:forget", (_event, id) => forgetEnvironment(typeof id === "string" ? id : "")));
+ipcMain.handle("environments:forget", guard("environments:forget", (_event, id) => forgetEnvironment(typeof id === "string" ? id : "")));
 
-ipcMain.handle("desktop:capabilities", async (event) =>
+ipcMain.handle("desktop:capabilities", guard("desktop:capabilities", async (event) =>
   desktopCapabilities({
     remote: !senderIsLocal(event),
     platform: process.platform,
@@ -2353,13 +2362,13 @@ ipcMain.handle("desktop:capabilities", async (event) =>
     packaged: app.isPackaged,
     localConnection: await cuaReady,
   }),
-);
+));
 
-ipcMain.handle("assemblyai:status", localOnly("assemblyai:status", () => ({
+ipcMain.handle("assemblyai:status", guard("assemblyai:status", () => ({
   configured: Boolean(assemblyAICredential(secureCredentials)),
 })));
 
-ipcMain.handle("assemblyai:set-key", localOnly("assemblyai:set-key", async (_event, value) => {
+ipcMain.handle("assemblyai:set-key", guard("assemblyai:set-key", async (_event, value) => {
   if (typeof value !== "string") throw new Error("Unsupported credential");
   if (!(await safeStorage.isAsyncEncryptionAvailable())) {
     throw new Error("The operating-system credential store is unavailable");
@@ -2373,7 +2382,7 @@ ipcMain.handle("assemblyai:set-key", localOnly("assemblyai:set-key", async (_eve
   return { configured: Boolean(secret) };
 }));
 
-ipcMain.handle("assemblyai:streaming-token", localOnly("assemblyai:streaming-token", () =>
+ipcMain.handle("assemblyai:streaming-token", guard("assemblyai:streaming-token", () =>
   mintAssemblyAIStreamingToken(assemblyAICredential(secureCredentials)),
 ));
 
@@ -2427,11 +2436,11 @@ async function saveWorkspaceCredential(name, value) {
   );
 }
 
-ipcMain.handle("credential:set", localOnly("credential:set", (_event, name, value) =>
+ipcMain.handle("credential:set", guard("credential:set", (_event, name, value) =>
   saveWorkspaceCredential(name, value),
 ));
 
-ipcMain.handle("approvals:set-trusted-mode", localOnly("approvals:set-trusted-mode", (_event, botId, mode, options) => {
+ipcMain.handle("approvals:set-trusted-mode", guard("approvals:set-trusted-mode", (_event, botId, mode, options) => {
   // Development uses a separately launched server, which is intentionally
   // outside this trust path. Never degrade this grant to loopback HTTP.
   if (!app.isPackaged || !serverProc) {
