@@ -80,6 +80,7 @@ import {
 } from "./cloud-backend.ts";
 import * as composio from "./composio.ts";
 import { createOpenAIRealtimeSession } from "./live-call-proxy.ts";
+import { prepareSpeechInputSchema, speakSpeechInputSchema, voiceInputError } from "./voice-route-contracts.ts";
 import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts";
 import { peerAllowed, peerRosterSystemPrompt, reachablePeers } from "./peer-roster.ts";
 import { openMausStatusSystemPrompt } from "./dani-status-capsule.ts";
@@ -11887,10 +11888,14 @@ const server = createServer(async (req, res) => {
     // tuned against real transcripts, and it belongs next to the transform
     // that produced it.
     if (method === "POST" && path === "/api/tts/prepare") {
-      const body = await readBody(req);
+      const parsed = prepareSpeechInputSchema.safeParse(await readBody(req));
+      if (!parsed.success) {
+        const error = voiceInputError(parsed.error);
+        return json(res, error.status, { error: error.message });
+      }
       return json(res, 200, {
-        ready: tts.voiceReady(cfg, typeof body.voiceId === "string" ? body.voiceId : undefined),
-        utterances: toUtterances(String(body.text ?? "")),
+        ready: tts.voiceReady(cfg, parsed.data.voiceId),
+        utterances: toUtterances(parsed.data.text),
       });
     }
     if (method === "GET" && path === "/api/tts/voices") {
@@ -11901,15 +11906,16 @@ const server = createServer(async (req, res) => {
       }
     }
     if (method === "POST" && path === "/api/tts/speak") {
-      const body = await readBody(req);
-      const text = String(body.text ?? "").trim();
-      if (!text) return json(res, 400, { error: "text required" });
+      const parsed = speakSpeechInputSchema.safeParse(await readBody(req));
+      if (!parsed.success) {
+        const error = voiceInputError(parsed.error);
+        return json(res, error.status, { error: error.message });
+      }
       // The normal client sends <=320-character utterances. A hard ceiling
       // prevents an arbitrary local request from turning the user's hosted
       // voice account into an unbounded, billable synthesis job.
-      if (text.length > 500) return json(res, 413, { error: "voice utterances are limited to 500 characters" });
       try {
-        const audio = await tts.speak(cfg, text, typeof body.voiceId === "string" ? body.voiceId : undefined);
+        const audio = await tts.speak(cfg, parsed.data.text, parsed.data.voiceId);
         res.writeHead(200, {
           "content-type": audio.mime,
           "content-length": String(audio.bytes.byteLength),
