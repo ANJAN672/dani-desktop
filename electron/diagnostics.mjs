@@ -30,6 +30,8 @@ export const CREDENTIAL_ENV_NAMES = [
   "OMB_BROWSER_CONNECTION",
   "DANI_USER_DATA",
   "OMB_USER_DATA",
+  "DANI_OWNER_TOKEN",
+  "OMB_OWNER_TOKEN",
 ];
 
 // Credential-shaped tokens (server/redact.ts parity): unmistakable formats

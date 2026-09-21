@@ -22,7 +22,8 @@
 // Pure module: no Electron import, so it is unit-tested with node --test.
 "use strict";
 
-const { localOnly, localOnlySync } = require("./local-origin.cjs");
+const localOriginModule = require("./local-origin.cjs");
+const { localOnly, localOnlySync } = localOriginModule;
 
 // ── tiny schema DSL ────────────────────────────────────────────────────
 // Schemas are plain objects: { kind, ... }. validateValue throws on mismatch.
@@ -356,6 +357,11 @@ function guardSync(channel, handler, denied) {
 
 module.exports = {
   CHANNEL_POLICY,
+  // Test seam: under vitest's split ESM/CJS caches a test's own import of
+  // local-origin.cjs is a different instance from the one this module
+  // requires, so the origin must be set through the guard's instance.
+  // Production Node shares one CJS cache and never sees the split.
+  setLocalOrigin: localOriginModule.setLocalOrigin,
   arrayOf,
   boolean,
   checkArgs,

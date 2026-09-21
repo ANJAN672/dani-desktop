@@ -1,8 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
-import localOriginModule from "./local-origin.cjs";
+import ipcGuardModule from "./ipc-guard.cjs";
 
 // The updater channels answer only the local UI (electron/local-origin.cjs).
-localOriginModule.setLocalOrigin("http://127.0.0.1:8799");
+// Set the origin through the guard's own local-origin instance: under vitest
+// a direct import of local-origin.cjs here resolves to a different module
+// instance than the one ipc-guard.cjs requires (production Node shares one).
+ipcGuardModule.setLocalOrigin("http://127.0.0.1:8799");
 const localEvent = { senderFrame: { url: "http://127.0.0.1:8799/" } };
 
 const { updater, handlers } = vi.hoisted(() => ({
