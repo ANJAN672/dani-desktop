@@ -459,6 +459,9 @@ let executionKernel: DaniExecutionKernel | null = null;
 let kernelThreadJobs = new Map<string, { jobId: string; generation: number }>();
 function createExecutionKernel(): DaniExecutionKernel | null {
   const hermes = registry.instances().find((instance) => instance.driverKind === "hermesAgent");
+  // Migration/e2e fixtures and legacy custom fleets can intentionally boot
+  // without Hermes. Preserve that compatibility; only Hermes dispatch uses
+  // the kernel, and product selection still fails closed elsewhere.
   if (!hermes) return null;
   const repository = new DaniKernelRepository(join(DATA_DIR, "execution-kernel.sqlite"));
   const kernel = new DaniExecutionKernel(repository, hermes.adapter, new Map());
