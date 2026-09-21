@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 @testable import CompanionCore
@@ -69,7 +70,7 @@ final class PhoneSecretTests: XCTestCase {
                 context: context
             ), as: UTF8.self),
             [
-                "openmausbot-phone-credential-v1",
+                "danibot-phone-credential-v1",
                 "taWSR_nZ7ojlH_0Z3tar6Q",
                 "paired-device-1",
                 "bot-1",
@@ -80,6 +81,28 @@ final class PhoneSecretTests: XCTestCase {
             ].joined(separator: "\n")
         )
         XCTAssertNil(PhoneSecretCrypto.normalizedPublicKey(String(publicKey.dropLast())))
+    }
+
+    @available(macOS 14.0, *)
+    func testOpensTheSharedRFC9180VectorEveryImplementationAccepts() throws {
+        // The same deterministic DHKEM(P-256, HKDF-SHA256)/HKDF-SHA256/
+        // AES-256-GCM envelope the server opens in server/phone-secret.test.ts:
+        // plaintext "swift-to-node-secret", test ikm 01..20, current info/AAD.
+        let privateKey = try P256.KeyAgreement.PrivateKey(
+            rawRepresentation: XCTUnwrap(Data(base64URLEncoded: "5B-SwYLGXc04u4v7YLpzFrwj2JjysBFaJevOPl3h3Zg"))
+        )
+        let aad = try PhoneSecretCrypto.authenticatedData(keyId: "taWSR_nZ7ojlH_0Z3tar6Q", context: context)
+        var recipient = try HPKE.Recipient(
+            privateKey: privateKey,
+            ciphersuite: .P256_SHA256_AES_GCM_256,
+            info: Data(PhoneSecretCrypto.info.utf8),
+            encapsulatedKey: XCTUnwrap(Data(base64URLEncoded: "BOPacYsu-__TCQ9Cl1FRwYQpyAcfFJGDNtHJKAX9iy-_Mj_WFEsqP5tJKIY1CUqgbX5FcAB_zH8fmyOMoZii1eE"))
+        )
+        let opened = try recipient.open(
+            XCTUnwrap(Data(base64URLEncoded: "RxDBCvPXHqpTnRc7N_OIwg-XQ5nClPouT1rwKRvuh2USFVO9")),
+            authenticating: aad
+        )
+        XCTAssertEqual(String(decoding: opened, as: UTF8.self), "swift-to-node-secret")
     }
 
     @available(macOS 14.0, *)

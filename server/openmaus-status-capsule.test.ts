@@ -155,10 +155,12 @@ function cachePath(capsule: TestCapsule): string {
 posixOnly("readOpenMausStatus", () => {
   it("projects only fresh normalized two-VM capability data", () => {
     const capsule = successCapsule();
-    // Cross-language receipt produced by scripts/aos_openmausbot_status.py
-    // for this exact normalized fixture.
+    // Pinned receipt for this exact normalized fixture: sha256 of the
+    // canonical (recursively key-sorted, compact) JSON. Recompute with any
+    // independent implementation when the fixture changes; the previous value
+    // went stale when the schema string was renamed in 956e105.
     expect(capsule.receipt_sha256).toBe(
-      "sha256:2f76115fcbf37dfc5406d4a7a460c5e3016ff87184cd9e314bf4cc11022e2d7c",
+      "sha256:c347a165866a94a63ef6aacf42b3c2493e44c96a3149420538676b22e4738ce3",
     );
     const path = cachePath(capsule);
 

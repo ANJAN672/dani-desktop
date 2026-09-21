@@ -70,7 +70,7 @@ async function seal(
 }
 
 describe("PhoneSecretBridge", () => {
-  it("opens an envelope produced by Apple's CryptoKit HPKE implementation", async () => {
+  it("opens the pinned RFC 9180 vector every conformant HPKE implementation accepts", async () => {
     let bridge!: PhoneSecretBridge;
     const send = vi.fn((message: { requestId: string; value: string }) => {
       expect(message.value).toBe("swift-to-node-secret");
@@ -104,8 +104,12 @@ describe("PhoneSecretBridge", () => {
       messageId: "message-1",
       target: "ttsKey",
       requestKey: "credential-request-1",
-      encapsulatedKey: "BDhy_5hMSvVIy3zGSmBwBECAedYBAwwFLvbWoXCGTJyLRH1cItoQXo9NBcEG0cTQV_VwaEf5judXcsJlh2jfW7Q",
-      ciphertext: "CjM0CnBT8NYd_BHAXJRKFrbYrSw6OgMIlJLAKs8VUPSSCsa2",
+      // Deterministic DHKEM(P-256, HKDF-SHA256)/HKDF-SHA256/AES-256-GCM
+      // envelope of "swift-to-node-secret" for the key above, sealed with test
+      // ikm 01..20 under the current info/AAD. CryptoKit opens the same vector
+      // in ios/Tests/CompanionCoreTests/PhoneSecretTests.swift.
+      encapsulatedKey: "BOPacYsu-__TCQ9Cl1FRwYQpyAcfFJGDNtHJKAX9iy-_Mj_WFEsqP5tJKIY1CUqgbX5FcAB_zH8fmyOMoZii1eE",
+      ciphertext: "RxDBCvPXHqpTnRc7N_OIwg-XQ5nClPouT1rwKRvuh2USFVO9",
     })).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledTimes(1);
   });
