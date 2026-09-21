@@ -71,7 +71,7 @@ describe("team library", () => {
     }) as unknown as typeof fetch;
 
     const loaded = await fetchLibraryTeam("engineering", fetcher);
-    if (loaded.format !== "openmaus.team") throw new Error("expected a legacy team");
+    if (loaded.format !== "dani.team") throw new Error("expected a team manifest");
     expect(loaded.team.name).toBe("Engineering");
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
@@ -80,9 +80,11 @@ describe("team library", () => {
     expect(githubManifestUrls("https://github.com/acme/team")).toEqual([
       "https://raw.githubusercontent.com/acme/team/main/botmrr.md",
       "https://raw.githubusercontent.com/acme/team/main/team.md",
+      "https://raw.githubusercontent.com/acme/team/main/team.daniteam.json",
       "https://raw.githubusercontent.com/acme/team/main/team.mausteam.json",
       "https://raw.githubusercontent.com/acme/team/master/botmrr.md",
       "https://raw.githubusercontent.com/acme/team/master/team.md",
+      "https://raw.githubusercontent.com/acme/team/master/team.daniteam.json",
       "https://raw.githubusercontent.com/acme/team/master/team.mausteam.json",
     ]);
     expect(githubManifestUrls("https://github.com/acme/team/blob/main/presets/seo.mausteam.json")).toEqual([
@@ -103,8 +105,8 @@ describe("team library", () => {
     ) as unknown as typeof fetch;
 
     const loaded = await fetchGithubTeam("https://github.com/acme/team", fetcher);
-    if (loaded.format !== "openmaus.team") throw new Error("expected a legacy team");
+    if (loaded.format !== "dani.team") throw new Error("expected a team manifest");
     expect(loaded.team.members[0]?.name).toBe("Ada");
-    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(fetcher).toHaveBeenCalledTimes(8);
   });
 });

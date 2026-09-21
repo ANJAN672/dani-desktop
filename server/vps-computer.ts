@@ -51,6 +51,9 @@ const CONTAINER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/;
 const CONTAINER_ID = /^[a-f0-9]{12,64}$/i;
 const FULL_CONTAINER_ID = /^[a-f0-9]{64}$/i;
 const MANAGED_VPS_CONTAINER_NAME = /^danibot-vps-[a-z0-9]{1,12}-[a-f0-9]{12}$/;
+// Containers provisioned before the rebrand keep their openmausbot-vps-* names;
+// they are still ours to adopt and reap.
+const LEGACY_MANAGED_VPS_CONTAINER_NAME = /^openmausbot-vps-[a-z0-9]{1,12}-[a-f0-9]{12}$/;
 const IMAGE_ID = /^sha256:[a-f0-9]{64}$/i;
 const PIDS_LIMIT = 512;
 const SCREENSHOT_PATH = "/tmp/danibot-vps-preview.png";
@@ -731,7 +734,7 @@ async function scanManagedVpsComputers(
         !FULL_CONTAINER_ID.test(id) ||
         !listedId ||
         seenIds.has(listedId) ||
-        !MANAGED_VPS_CONTAINER_NAME.test(name) ||
+        !(MANAGED_VPS_CONTAINER_NAME.test(name) || LEGACY_MANAGED_VPS_CONTAINER_NAME.test(name)) ||
         seenNames.has(name) ||
         !labels ||
         typeof labels !== "object" ||
@@ -980,7 +983,7 @@ export async function removeManagedVpsComputer(
   if (!alias) {
     throw Object.assign(new Error("VPS is not configured — add an SSH config alias in Connections"), { status: 409 });
   }
-  if (!MANAGED_VPS_CONTAINER_NAME.test(containerName)) {
+  if (!(MANAGED_VPS_CONTAINER_NAME.test(containerName) || LEGACY_MANAGED_VPS_CONTAINER_NAME.test(containerName))) {
     throw Object.assign(new Error("invalid managed VPS computer name"), { status: 400 });
   }
   const key = `${alias}:${containerName}`;

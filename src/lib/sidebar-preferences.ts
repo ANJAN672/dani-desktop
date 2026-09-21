@@ -2,9 +2,12 @@ import { z } from "zod";
 
 export type SidebarDensity = "comfortable" | "compact" | "icons";
 
-export const SIDEBAR_DENSITY_KEY = "openmausbot.sidebarDensity";
-export const SIDEBAR_COLLAPSED_SECTIONS_KEY = "openmausbot.sidebarCollapsedSections.v1";
-export const SIDEBAR_SECTION_ORDER_KEY = "openmausbot.sidebarSectionOrder.v1";
+export const SIDEBAR_DENSITY_KEY = "danibot.sidebarDensity";
+const LEGACY_SIDEBAR_DENSITY_KEY = "openmausbot.sidebarDensity";
+export const SIDEBAR_COLLAPSED_SECTIONS_KEY = "danibot.sidebarCollapsedSections.v1";
+const LEGACY_SIDEBAR_COLLAPSED_SECTIONS_KEY = "openmausbot.sidebarCollapsedSections.v1";
+export const SIDEBAR_SECTION_ORDER_KEY = "danibot.sidebarSectionOrder.v1";
+const LEGACY_SIDEBAR_SECTION_ORDER_KEY = "openmausbot.sidebarSectionOrder.v1";
 
 export function parseSidebarDensity(value: string | null): SidebarDensity {
   switch (value) {
@@ -20,7 +23,7 @@ export function parseSidebarDensity(value: string | null): SidebarDensity {
 export function loadSidebarDensity(storage?: Pick<Storage, "getItem"> | null): SidebarDensity {
   try {
     const target = storage === undefined ? (globalThis.localStorage ?? null) : storage;
-    return parseSidebarDensity(target?.getItem(SIDEBAR_DENSITY_KEY) ?? null);
+    return parseSidebarDensity(target?.getItem(SIDEBAR_DENSITY_KEY) ?? target?.getItem(LEGACY_SIDEBAR_DENSITY_KEY) ?? null);
   } catch {
     return "comfortable";
   }
@@ -82,7 +85,8 @@ function saveStringList(
 }
 
 export function loadCollapsedSections(storage?: Pick<Storage, "getItem"> | null): string[] {
-  return loadStringList(SIDEBAR_COLLAPSED_SECTIONS_KEY, storage);
+  const current = loadStringList(SIDEBAR_COLLAPSED_SECTIONS_KEY, storage);
+  return current.length ? current : loadStringList(LEGACY_SIDEBAR_COLLAPSED_SECTIONS_KEY, storage);
 }
 
 export function saveCollapsedSections(
@@ -97,7 +101,8 @@ export function toggleCollapsedSection(ids: string[], id: string): string[] {
 }
 
 export function loadSectionOrder(storage?: Pick<Storage, "getItem"> | null): string[] {
-  return loadStringList(SIDEBAR_SECTION_ORDER_KEY, storage);
+  const current = loadStringList(SIDEBAR_SECTION_ORDER_KEY, storage);
+  return current.length ? current : loadStringList(LEGACY_SIDEBAR_SECTION_ORDER_KEY, storage);
 }
 
 export function saveSectionOrder(

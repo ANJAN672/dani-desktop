@@ -5,7 +5,9 @@ import type { MausColor } from "./store.ts";
 import { botMascotBody, type MascotBodyId } from "../shared/mascot-bodies.ts";
 import { takeImportName } from "../shared/import-name.ts";
 
-export const TEAM_MANIFEST_FORMAT = "openmaus.team" as const;
+export const TEAM_MANIFEST_FORMAT = "dani.team" as const;
+/** Team files written before the rebrand carry this format tag; still accepted. */
+export const LEGACY_TEAM_MANIFEST_FORMAT = "openmaus.team" as const;
 export const TEAM_MANIFEST_VERSION = 2 as const;
 export const LEGACY_TEAM_MANIFEST_VERSION = 1 as const;
 export const MAX_TEAM_MEMBERS = 200;
@@ -60,7 +62,7 @@ const membersSchema = z
 
 const manifestSchema = z.discriminatedUnion("version", [
   z.object({
-    format: z.literal(TEAM_MANIFEST_FORMAT, { error: "This is not an OpenMaus team file" }),
+    format: z.literal(TEAM_MANIFEST_FORMAT, { error: "This is not a Dani Bot team file" }),
     version: z.literal(LEGACY_TEAM_MANIFEST_VERSION),
     team: z.object({
       name: requiredText(100),
@@ -74,7 +76,7 @@ const manifestSchema = z.discriminatedUnion("version", [
     }),
   }),
   z.object({
-    format: z.literal(TEAM_MANIFEST_FORMAT, { error: "This is not an OpenMaus team file" }),
+    format: z.literal(TEAM_MANIFEST_FORMAT, { error: "This is not a Dani Bot team file" }),
     version: z.literal(TEAM_MANIFEST_VERSION),
     team: z.object({
       name: requiredText(100),
@@ -150,6 +152,9 @@ interface ExportableTeam {
 export function parseTeamManifest(value: TeamManifestV2): TeamManifestV2;
 export function parseTeamManifest(value: TeamManifestInput): ParsedTeamManifest;
 export function parseTeamManifest(value: TeamManifestInput): ParsedTeamManifest {
+  if (value && typeof value === "object" && (value as { format?: unknown }).format === LEGACY_TEAM_MANIFEST_FORMAT) {
+    value = { ...(value as Record<string, unknown>), format: TEAM_MANIFEST_FORMAT } as TeamManifestInput;
+  }
   const parsed = manifestSchema.safeParse(value);
   if (!parsed.success) {
     const formatIssue = parsed.error.issues.find((issue) => issue.path[0] === "format");

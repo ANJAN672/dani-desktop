@@ -85,7 +85,7 @@ const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const INTERVAL_PRESETS = [5, 10, 15, 30, 60];
 const EVENT_DURATION_OPTIONS = Array.from({ length: 240 / CALENDAR_SLOT_MINUTES }, (_, index) => (index + 1) * CALENDAR_SLOT_MINUTES);
-const BOT_DRAG_TYPE = "application/x-openmaus-bot";
+const BOT_DRAG_TYPE = "application/x-dani-bot";
 const EVENT_DRAG_TYPE = "application/x-openmaus-calendar-event";
 
 type EventKind = "routine" | "call";

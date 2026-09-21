@@ -43,7 +43,7 @@ const schedule = z.discriminatedUnion("type", [
   z.object({ type: z.literal("interval"), everyMinutes: z.number().int().min(5).max(1440), anchorAt: z.number().int().min(0).max(8_640_000_000_000_000) }),
 ]);
 const backupSchema = z.object({
-  format: z.literal("openmaus.backup"),
+  format: z.literal("dani.backup"),
   version: z.literal(1),
   name,
   exportedAt: timestamp,
@@ -85,7 +85,12 @@ export type BackupTask = z.infer<typeof task>;
 /** Validate the whole reference graph before an import can write anything.
  * All keys are file-local; none are ever used as destination record IDs. */
 export function parseTeamBackup(input: unknown): TeamBackup {
-  const parsed = backupSchema.safeParse(input);
+  // Legacy backups written before the rebrand carry format "openmaus.backup".
+  const source =
+    input && typeof input === "object" && (input as { format?: unknown }).format === "openmaus.backup"
+      ? { ...(input as Record<string, unknown>), format: "dani.backup" }
+      : input;
+  const parsed = backupSchema.safeParse(source);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     throw new Error(`Invalid backup: ${issue.path.join(".") || "file"}: ${issue.message}`);

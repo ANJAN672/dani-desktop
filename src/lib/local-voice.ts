@@ -8,7 +8,8 @@ type Preferences = {
   voices?: Record<string, string>;
 };
 
-const STORAGE_KEY = "openmausbot.remote-voice.v1";
+const STORAGE_KEY = "danibot.remote-voice.v1";
+const LEGACY_STORAGE_KEY = "openmausbot.remote-voice.v1";
 
 function storage(): Storage | null {
   try {
@@ -20,7 +21,7 @@ function storage(): Storage | null {
 
 function read(): Preferences {
   try {
-    const value = storage()?.getItem(STORAGE_KEY);
+    const value = storage()?.getItem(STORAGE_KEY) ?? storage()?.getItem(LEGACY_STORAGE_KEY);
     if (!value) return {};
     const parsed = JSON.parse(value) as Preferences;
     return parsed && typeof parsed === "object" ? parsed : {};

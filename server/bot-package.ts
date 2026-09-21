@@ -5,7 +5,9 @@ import { schemaIssue, type JsonValue } from "./schema.ts";
 import type { MausColor } from "./store.ts";
 import type { TeamManifestMember } from "./team-manifest.ts";
 
-export const BOT_PACKAGE_FORMAT = "openmaus.package" as const;
+export const BOT_PACKAGE_FORMAT = "dani.package" as const;
+/** Packages written before the rebrand carry this format tag; still accepted. */
+export const LEGACY_BOT_PACKAGE_FORMAT = "openmaus.package" as const;
 export const BOT_PACKAGE_VERSION = 1 as const;
 export const BOTMRR_MARKDOWN_VERSION = 1 as const;
 
@@ -132,8 +134,9 @@ export type BotPackagePlaybook = NonNullable<BotPackageDefinition["playbooks"]>[
 
 export function isBotPackage(value: unknown): boolean {
   if (typeof value === "string") return /^---\r?\n[\s\S]*?\bbotmrr:\s*1\b/m.test(value);
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value) &&
-    (value as { format?: unknown }).format === BOT_PACKAGE_FORMAT;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const format = (value as { format?: unknown }).format;
+  return format === BOT_PACKAGE_FORMAT || format === LEGACY_BOT_PACKAGE_FORMAT;
 }
 
 function markdownDocument(markdown: string): ParsedBotPackage {
@@ -165,6 +168,9 @@ function markdownDocument(markdown: string): ParsedBotPackage {
  * are stripped; ids, grants, credentials, paths, model selections, and
  * runtime state therefore cannot ride through the package boundary. */
 export function parseBotPackage(value: JsonValue | ParsedBotPackage): ParsedBotPackage {
+  if (value && typeof value === "object" && (value as { format?: unknown }).format === LEGACY_BOT_PACKAGE_FORMAT) {
+    value = { ...(value as Record<string, unknown>), format: BOT_PACKAGE_FORMAT } as JsonValue;
+  }
   const source = typeof value === "string" ? markdownDocument(value) : value;
   const parsed = packageSchema.safeParse(source);
   if (!parsed.success) throw new Error(schemaIssue(parsed.error, "This is not a bot package"));

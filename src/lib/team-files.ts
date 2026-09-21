@@ -12,12 +12,12 @@ export async function downloadAllBots(): Promise<{ name: string; members: number
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "openmaus";
+      .replace(/^-|-$/g, "") || "dani";
   const blob = new Blob([JSON.stringify(backup)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${slug}-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.mausbackup.json`;
+  link.download = `${slug}-${new Date(backup.exportedAt).toISOString().slice(0, 10)}.danibackup.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();
