@@ -995,7 +995,7 @@ function askBotAndWait(targetBotId: string, message: string, depth: number, from
   });
 }
 
-// default selection for new bots: first available instance, claude preferred
+// default selection for new bots: Dani runs Hermes by default, then any available engine
 async function defaultSelection() {
   const described = await registry.describe();
   const available = described.filter((d) => d.snapshot.state === "available");
@@ -1004,7 +1004,7 @@ async function defaultSelection() {
   // spawn ENOENT — the single worst first-run experience, and the one every
   // user with no CLIs used to get. An empty selection is honest: the UI shows
   // the setup path instead of a bot that cannot answer.
-  const pick = available.find((d) => d.driverKind === "claudeAgent") ?? available[0];
+  const pick = available.find((d) => d.driverKind === "hermesAgent") ?? available[0];
   return { instanceId: pick?.instanceId ?? "", model: pick?.models.default ?? "" };
 }
 
