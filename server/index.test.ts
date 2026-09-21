@@ -5095,7 +5095,7 @@ describe("harness HTTP API", () => {
   it("keeps Teach a skill off by default and persists an explicit opt-in", async () => {
     const before = await api("GET", "/api/config");
     expect(before.status).toBe(200);
-    expect(before.body.features).toEqual({ browser: false, skillRecorder: false, showToolCalls: false });
+    expect(before.body.features).toEqual({ browser: false, localSpeech: false, skillRecorder: false, showToolCalls: false });
 
     const saved = await api("PATCH", "/api/config", {
       features: { skillRecorder: true },
