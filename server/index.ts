@@ -306,7 +306,8 @@ import {
   serializeSessionCookie,
   sessionCookieName,
 } from "./request-auth.ts";
-import { formatPairingCode, SESSION_TTL_MS, SessionRegistry, type Scope } from "./sessions.ts";
+import { formatPairingCode, SESSION_TTL_MS, SessionRegistry } from "./sessions.ts";
+import { openPairingInputSchema, pairSessionInputSchema, parsePairingResourcePath } from "./auth-route-contracts.ts";
 import { describeBrand, loadBrand } from "./brand.ts";
 import {
   PHONE_SECRET_PROTOCOL_VERSION,
@@ -7250,11 +7251,9 @@ const server = createServer(async (req, res) => {
       if (!/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
         return json(res, 415, { error: "send the pairing code as JSON (content-type: application/json)" });
       }
-      const body = await readBody(req);
-      const code = typeof body?.code === "string" ? body.code : "";
-      const wantsCookie = body?.cookie === true;
-      const label = typeof body?.label === "string" ? body.label : "";
-      const attemptId = typeof body?.attemptId === "string" ? body.attemptId : undefined;
+      const parsed = pairSessionInputSchema.safeParse(await readBody(req));
+      if (!parsed.success) return json(res, 400, { error: "invalid pairing request" });
+      const { code, cookie: wantsCookie, label, attemptId } = parsed.data;
       const result = sessions.exchange({ code, label, attemptId, source: requestSource(req), fallbackLabel: labelFromUserAgent(req.headers["user-agent"]) });
       if (!result.ok) {
         console.warn(`pairing refused from ${requestSource(req)}: ${result.error}`);
@@ -7306,10 +7305,9 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (method === "POST" && path === "/api/auth/pairing") {
-      const body = await readBody(req);
-      const requested: unknown = body?.scopes;
-      const scopes = Array.isArray(requested) ? requested.filter((v): v is Scope => v === "admin" || v === "client") : undefined;
-      const opened = sessions.openPairing({ label: typeof body?.label === "string" ? body.label : undefined, scopes });
+      const parsed = openPairingInputSchema.safeParse(await readBody(req));
+      if (!parsed.success) return json(res, 400, { error: "invalid pairing options" });
+      const opened = sessions.openPairing(parsed.data);
       const origin = requestOrigin(req);
       const base = PUBLIC_URL ?? (auth.kind === "session" && origin ? origin : null);
       const code = formatPairingCode(opened.code);
@@ -7324,18 +7322,17 @@ const server = createServer(async (req, res) => {
       });
     }
     if (method === "GET" && path === "/api/auth/pairing") return json(res, 200, { pairings: sessions.openPairings() });
-    m = path.match(/^\/api\/auth\/pairing\/([\w-]+)$/);
-    if (m && method === "DELETE") {
-      const cancelled = sessions.cancelPairing(m[1]);
+    const authResource = parsePairingResourcePath(path);
+    if (authResource?.kind === "pairing" && method === "DELETE") {
+      const cancelled = sessions.cancelPairing(authResource.id);
       return json(res, cancelled ? 200 : 404, cancelled ? { ok: true } : { error: "no such pairing code" });
     }
     if (method === "GET" && path === "/api/auth/sessions") {
       return json(res, 200, { sessions: sessions.list(), current: auth.kind === "session" ? auth.session.id : null });
     }
-    m = path.match(/^\/api\/auth\/sessions\/([\w-]+)$/);
-    if (m && method === "DELETE") {
-      const revoked = sessions.revoke(m[1]);
-      if (auth.kind === "session" && auth.session.id === m[1]) res.setHeader("set-cookie", clearSessionCookie(SESSION_COOKIE));
+    if (authResource?.kind === "session" && method === "DELETE") {
+      const revoked = sessions.revoke(authResource.id);
+      if (auth.kind === "session" && auth.session.id === authResource.id) res.setHeader("set-cookie", clearSessionCookie(SESSION_COOKIE));
       return json(res, revoked ? 200 : 404, revoked ? { ok: true } : { error: "no such session" });
     }
     // Isolated integration fixtures cannot invoke an MCP tool before their
