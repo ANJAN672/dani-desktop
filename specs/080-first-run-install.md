@@ -11,10 +11,20 @@ first try"). Phase P6. NEW SPEC.
   (idempotent, --check gate, printed verified success check + actionable
   failures) documented verbatim at the top of README Quick start and pinned by
   scripts/install-commands.test.mjs, including stubbed-toolchain behavior tests.
-- Remaining: clean-VM execution of those commands per platform (needs physical
-  machines - the harness and drift tests are in place, real artifact builds on
-  clean macOS/Windows/Linux VMs are not yet run); R2-R6 wizard, consent, mic,
-  upgrade and uninstall work.
+- Done (continued): R2 consent half - first use of a metered model requires an
+  explicit acknowledgement, gated server-side at the turn (409
+  metered_consent_required) and confirmed in the model picker GUI; hermes
+  models carry per-provider billing classes (2c/2c-ii). R6 substrate:
+  uninstall residue contract documented in README, Windows uninstaller
+  deletes app data (deleteAppDataOnUninstall), residue drift pinned by
+  scripts/uninstall-residue.test.mjs; managed cloud-box names generate dani-
+  and dual-accept pre-rebrand ogb- scoped names.
+- Remaining: clean-VM execution of the install commands and uninstall steps
+  per platform (needs physical machines - the harness and drift tests are in
+  place; real artifact builds, uninstaller runs on clean macOS/Windows/Linux
+  VMs are not yet run); R2 remainder (wizard first pixel truth), R3 first
+  turn, R4 mic gate verification, R5 failure actionability sweep, upgrade
+  migrations.
 
 ## Requirements
 

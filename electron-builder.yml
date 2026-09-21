@@ -152,6 +152,10 @@ nsis:
   oneClick: true
   perMachine: false
   shortcutName: Dani Bot
+  # R6: uninstall removes %APPDATA%\Dani Bot (window state, app logs, stored
+  # app credentials). The data directory ~/.danibot is outside appData and
+  # stays by design - a reinstall picks the fleet back up.
+  deleteAppDataOnUninstall: true
   # Versioned, like the .dmg. The README's /latest/download/ button needs a
   # STABLE filename, so ship a second copy named DaniBot-setup.exe on the
   # release — the same trick as DaniBot.dmg beside DaniBot-${version}.dmg.

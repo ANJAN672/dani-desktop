@@ -42,8 +42,11 @@ const BOX_INVENTORY_PAGE_SIZE = 200;
 // Current self-serve accounts top out below 2,000 boxes. Keep the walk
 // bounded anyway: a broken or adversarial cursor must not hold Settings open.
 const MAX_BOX_INVENTORY_PAGES = 10;
+// Pre-scope names predate the rebrand, so only the ogb- generation exists.
 const LEGACY_MANAGED_BOX_NAME = /^ogb-[a-z0-9]{1,8}-[a-f0-9]{6}$/;
-const SCOPED_MANAGED_BOX_NAME = /^ogb-[a-f0-9]{12}-[a-z0-9]{1,8}-[a-f0-9]{6}$/;
+// Scoped names exist in both generations: new installs generate dani-, and
+// boxes created before the rebrand still answer to their ogb- scoped names.
+const SCOPED_MANAGED_BOX_NAME = /^(?:dani|ogb)-[a-f0-9]{12}-[a-z0-9]{1,8}-[a-f0-9]{6}$/;
 const BOX_ID = /^bx_[23456789abcdefghjkmnpqrstuvwxyz]{8}$/;
 const BOX_DELETE_OPERATION_ID = /^bdop_[a-f0-9]{32}$/;
 const BOX_DELETE_OPERATION_STATES = new Set(["pending", "processing", "blocked", "completed"]);
@@ -66,19 +69,25 @@ const BOX_STATES = new Set([
 // into every new name so another Dani Bot installation using the same Box
 // account cannot mistake this installation's computers for abandoned ones.
 // The environment UUID itself never leaves the local data directory.
-let scopedBoxPrefixCache: string | null = null;
+let scopedBoxPrefixCache: { current: string; legacy: string } | null = null;
 
 /** Resolve only after server startup has migrated the legacy data directory
  * and acquired its writer lease. A static-import side effect here used to
- * create the new directory too early and suppress that migration. */
-function scopedBoxPrefix(): string {
+ * create the new directory too early and suppress that migration. New boxes
+ * get the dani- generation; the ogb- generation of the same scope stays
+ * matchable so pre-rebrand boxes keep their owners. */
+function scopedBoxPrefixes(): { current: string; legacy: string } {
   if (scopedBoxPrefixCache) return scopedBoxPrefixCache;
   const scope = createHash("sha256")
     .update(loadEnvironmentId(DATA_DIR))
     .digest("hex")
     .slice(0, 12);
-  scopedBoxPrefixCache = `ogb-${scope}-`;
+  scopedBoxPrefixCache = { current: `dani-${scope}-`, legacy: `ogb-${scope}-` };
   return scopedBoxPrefixCache;
+}
+
+function scopedBoxPrefix(): string {
+  return scopedBoxPrefixes().current;
 }
 
 export interface ManagedBoxOwner {
@@ -249,6 +258,12 @@ function legacyBoxNameFor(botId: string): string {
   return `ogb-${prefix}-${hash}`;
 }
 
+/** The scoped name this bot's box carried before the dani- rebrand. */
+function legacyScopedBoxNameFor(botId: string): string {
+  const { prefix, hash } = boxBotNameParts(botId);
+  return `${scopedBoxPrefixes().legacy}${prefix}-${hash}`;
+}
+
 // Deterministic per installation and bot. The bot hash kills truncated-id
 // collisions; the environment scope prevents cross-install ownership claims.
 export async function boxNameFor(botId: string) {
@@ -256,10 +271,15 @@ export async function boxNameFor(botId: string) {
   return `${scopedBoxPrefix()}${prefix}-${hash}`;
 }
 
-/** Credential restoration must accept both current installation-scoped names
- * and durable pre-scope names that the ownership journal may have adopted. */
+/** Credential restoration must accept every name generation a box of this
+ * bot can carry: current installation-scoped, pre-rebrand scoped, and
+ * durable pre-scope names that the ownership journal may have adopted. */
 export async function boxNameMatchesBot(botId: string, name: string): Promise<boolean> {
-  return name === await boxNameFor(botId) || name === legacyBoxNameFor(botId);
+  return (
+    name === (await boxNameFor(botId)) ||
+    name === legacyScopedBoxNameFor(botId) ||
+    name === legacyBoxNameFor(botId)
+  );
 }
 
 export async function runCommand(cfg: AppConfig, boxId: string, command: string, { timeoutMs = 120_000 } = {}) {
@@ -397,10 +417,12 @@ export async function listManagedBoxes(
 
   const namedOwners = await Promise.all(owners.map(async (owner) => ({
     currentName: await boxNameFor(owner.botId),
+    legacyScopedName: legacyScopedBoxNameFor(owner.botId),
     legacyName: legacyBoxNameFor(owner.botId),
     owner,
   })));
   const ownerByCurrentName = new Map(namedOwners.map(({ currentName, owner }) => [currentName, owner] as const));
+  const ownerByLegacyScopedName = new Map(namedOwners.map(({ legacyScopedName, owner }) => [legacyScopedName, owner] as const));
   const ownerByLegacyName = new Map(namedOwners.map(({ legacyName, owner }) => [legacyName, owner] as const));
   const boxIdCounts = new Map<string, number>();
   for (const candidate of listed.boxes) {
@@ -418,21 +440,22 @@ export async function listManagedBoxes(
   for (const candidate of listed.boxes) {
     if (!candidate || typeof candidate !== "object") continue;
     const name = typeof candidate.name === "string" ? candidate.name : "";
-    const owner = ownerByCurrentName.get(name) ?? ownerByLegacyName.get(name) ?? null;
+    const owner =
+      ownerByCurrentName.get(name) ?? ownerByLegacyScopedName.get(name) ?? ownerByLegacyName.get(name) ?? null;
     if (!owner) continue;
     const boxId = typeof candidate.id === "string" ? candidate.id : "";
     if (!BOX_ID.test(boxId)) {
-      return invalidInventory("ascii.dev returned an invalid id for an OpenMaus-managed cloud computer — refresh or repair it in ascii.dev");
+      return invalidInventory("ascii.dev returned an invalid id for a Dani-managed cloud computer — refresh or repair it in ascii.dev");
     }
     const existing = ownedBoxByBot.get(owner.botId);
     if (existing && existing !== boxId) {
-      return invalidInventory("ascii.dev returned conflicting cloud computers for one OpenMaus bot — repair them in ascii.dev before continuing");
+      return invalidInventory("ascii.dev returned conflicting cloud computers for one Dani bot — repair them in ascii.dev before continuing");
     }
     ownedBoxByBot.set(owner.botId, boxId);
   }
   const instances: ManagedBoxInventoryInstance[] = [];
   const seenBoxIds = new Set<string>();
-  const scopedPrefix = scopedBoxPrefix();
+  const scopedPrefixes = scopedBoxPrefixes();
   for (const candidate of listed.boxes) {
     if (!candidate || typeof candidate !== "object") continue;
     const boxId = typeof candidate.id === "string" ? candidate.id : "";
@@ -440,10 +463,15 @@ export async function listManagedBoxes(
     let owner: ManagedBoxOwner | null = null;
     let legacyOwner = false;
     if (SCOPED_MANAGED_BOX_NAME.test(name)) {
-      // A valid OMB name for another environment is account-visible but not
-      // ours to display or mutate.
-      if (!name.startsWith(scopedPrefix)) continue;
+      // A valid managed name for another environment is account-visible but
+      // not ours to display or mutate. Both scoped generations name this
+      // installation.
+      if (!name.startsWith(scopedPrefixes.current) && !name.startsWith(scopedPrefixes.legacy)) continue;
       owner = ownerByCurrentName.get(name) ?? null;
+      if (!owner) {
+        owner = ownerByLegacyScopedName.get(name) ?? null;
+        if (owner) legacyOwner = true;
+      }
     } else if (LEGACY_MANAGED_BOX_NAME.test(name)) {
       // Pre-scope names have no installation provenance. A live local bot is
       // the only safe ownership proof; unmatched legacy rows stay provider-
@@ -458,10 +486,10 @@ export async function listManagedBoxes(
     // deterministic name), silently skipping a malformed/duplicated identity
     // could let bot deletion mistake provider corruption for absence.
     if (!BOX_ID.test(boxId)) {
-      return invalidInventory("ascii.dev returned an invalid id for an OpenMaus-managed cloud computer — refresh or repair it in ascii.dev");
+      return invalidInventory("ascii.dev returned an invalid id for a Dani-managed cloud computer — refresh or repair it in ascii.dev");
     }
     if ((boxIdCounts.get(boxId) ?? 0) !== 1 || seenBoxIds.has(boxId)) {
-      return invalidInventory("ascii.dev returned a conflicting id for an OpenMaus-managed cloud computer — refresh or repair it in ascii.dev");
+      return invalidInventory("ascii.dev returned a conflicting id for a Dani-managed cloud computer — refresh or repair it in ascii.dev");
     }
     if (legacyOwner && owner && options.adoptLegacy !== false) {
       try {
@@ -541,7 +569,7 @@ async function revalidateManagedBox(
   if (!inventory.available) throw inventoryFailure(inventory);
   const instance = inventory.instances.find((candidate) => candidate.boxId === boxId);
   if (!instance) {
-    throw Object.assign(new Error("that OpenMaus-managed cloud computer no longer exists"), { status: 404 });
+    throw Object.assign(new Error("that Dani-managed cloud computer no longer exists"), { status: 404 });
   }
   return instance;
 }
@@ -646,18 +674,23 @@ export async function findBox(cfg: AppConfig, botId: string) {
     boxIdCache.delete(botId); // gone or broken — fall back to the listing
   }
   const name = await boxNameFor(botId);
+  const legacyScopedName = legacyScopedBoxNameFor(botId);
   const legacyName = legacyBoxNameFor(botId);
   const listed = await listBoxPages(cfg);
   if (!listed.ok) {
     throw Object.assign(new Error(listed.problem), { status: 503 });
   }
-  // Prefer the installation-scoped identity. A legacy name remains
+  // Prefer the installation-scoped identity. Either legacy generation remains
   // discoverable only for this exact local bot id.
-  const expected = listed.boxes.filter((candidate: any) => candidate?.name === name || candidate?.name === legacyName);
+  const expected = listed.boxes.filter(
+    (candidate: any) =>
+      candidate?.name === name || candidate?.name === legacyScopedName || candidate?.name === legacyName,
+  );
   if (expected.some((candidate: any) => !BOX_ID.test(candidate?.id))) {
     throw Object.assign(new Error("ascii.dev returned an invalid cloud computer identity"), { status: 503 });
   }
   const found = expected.find((candidate: any) => candidate.name === name && candidate.state !== "error")
+    ?? expected.find((candidate: any) => candidate.name === legacyScopedName && candidate.state !== "error")
     ?? expected.find((candidate: any) => candidate.name === legacyName && candidate.state !== "error")
     ?? null;
   if (found) {
@@ -665,7 +698,7 @@ export async function findBox(cfg: AppConfig, botId: string) {
     if (duplicateId) {
       throw Object.assign(new Error("ascii.dev returned a conflicting cloud computer identity"), { status: 503 });
     }
-    if (found.name === legacyName) adoptResolvedBox(botId, found.id);
+    if (found.name === legacyScopedName || found.name === legacyName) adoptResolvedBox(botId, found.id);
     boxIdCache.set(botId, found.id);
   }
   return found;

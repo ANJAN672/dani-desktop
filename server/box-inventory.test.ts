@@ -15,7 +15,7 @@ const legacyNameFor = (botId: string) => {
   return `ogb-${prefix}-${hash}`;
 };
 
-describe("OpenMaus-managed Box inventory", () => {
+describe("Dani-managed Box inventory", () => {
   let api: Server;
   let boxes: ProviderBox[] = [];
   let listStatus = 200;
@@ -212,6 +212,33 @@ describe("OpenMaus-managed Box inventory", () => {
     expect(await box.boxNameMatchesBot(botId, "provider-owned-box")).toBe(false);
   });
 
+  it("keeps pre-rebrand ogb- scoped boxes owned and restorable", async () => {
+    const botId = "pre-rebrand-bot";
+    const preRebrandName = (await box.boxNameFor(botId)).replace(/^dani-/, "ogb-");
+    expect(preRebrandName).not.toBe(await box.boxNameFor(botId));
+    expect(await box.boxNameMatchesBot(botId, preRebrandName)).toBe(true);
+
+    boxes = [{ id: "bx_abcdefgh", name: preRebrandName, state: "ready" }];
+    const inventory = await box.listManagedBoxes(cfg, [{ botId, name: "Pre-rebrand", inUse: true }]);
+    expect(inventory.available).toBe(true);
+    expect(inventory.instances).toEqual([
+      expect.objectContaining({ boxId: "bx_abcdefgh", ownerBotId: botId, ownerName: "Pre-rebrand", inUse: true }),
+    ]);
+  });
+
+  it("findBox recovers a pre-rebrand scoped box by its ogb- name and adopts it", async () => {
+    const botId = "pre-rebrand-find";
+    const preRebrandName = (await box.boxNameFor(botId)).replace(/^dani-/, "ogb-");
+    boxes = [{ id: "bx_23456789", name: preRebrandName, state: "ready" }];
+
+    const found = await box.findBox(cfg, botId);
+    expect(found?.id).toBe("bx_23456789");
+    // adopted into the ownership journal, exactly like a pre-scope recovery
+    expect(journal.boxCreateRecoverySnapshot().filter((record) => record.botId === botId)).toEqual([
+      { botId, boxId: "bx_23456789", resolved: true },
+    ]);
+  });
+
   it("fails closed for malformed or conflicting identities that name this installation", async () => {
     const botId = "invalid-owned";
     const currentName = await box.boxNameFor(botId);
@@ -242,10 +269,10 @@ describe("OpenMaus-managed Box inventory", () => {
     const legacyBotId = "legacy-owner";
     const currentName = await box.boxNameFor(currentBotId);
     const orphanName = await box.boxNameFor("deleted-local-bot");
-    const currentScope = currentName.match(/^ogb-([a-f0-9]{12})-/)?.[1];
+    const currentScope = currentName.match(/^dani-([a-f0-9]{12})-/)?.[1];
     expect(currentScope).toBeTruthy();
     const foreignScope = currentScope === "000000000000" ? "111111111111" : "000000000000";
-    const foreignName = currentName.replace(/^ogb-[a-f0-9]{12}-/, `ogb-${foreignScope}-`);
+    const foreignName = currentName.replace(/^dani-[a-f0-9]{12}-/, `dani-${foreignScope}-`);
     const ownerlessLegacyName = "ogb-orphaned-abcdef";
     boxes = [
       { id: "bx_23456789", name: currentName, state: "ready" },

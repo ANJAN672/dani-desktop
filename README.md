@@ -319,6 +319,37 @@ exposes only `/health` and secret `/hooks/...` endpoints; it never exposes the a
 Dani Bot must remain running to accept a delivery. For public internet delivery, proxy only this
 dedicated receiver through a hosted relay or a tool such as Tailscale Funnel.
 
+## Uninstall
+
+Uninstalling removes the app completely. The only thing left behind is your data directory, by design:
+**`~/.danibot`** holds your bots, chats, config, and keys, so a reinstall picks up where you left off. Delete it
+too if you want a clean break.
+
+What each platform's uninstall removes, and the one step it cannot do for you:
+
+**macOS** - move `Dani Bot.app` to the Trash, then remove the app-support and log folders (macOS has no
+uninstaller to do it):
+
+```sh
+rm -rf "$HOME/Library/Application Support/Dani Bot" "$HOME/Library/Logs/Dani Bot"
+```
+
+**Windows** - uninstall from Settings > Apps. The uninstaller removes the program and the `%APPDATA%\Dani Bot`
+app-data folder (window state, app logs, stored app credentials).
+
+**Ubuntu (.deb)** - `sudo apt remove danibot` removes the program, its `/usr/bin/danibot` link, and its AppArmor
+profile. A package manager must not touch home directories, so remove the per-user app data yourself:
+
+```sh
+rm -rf "$HOME/.config/Dani Bot"
+```
+
+The AppImage installs nothing; delete the file and the same `~/.config/Dani Bot` folder.
+
+Your data directory is `~/.danibot` on every platform (or `$DANI_DATA_DIR` if you set it). If you upgraded from
+OpenMausBot, first launch moves `~/.openmausbot` / `~/.opengrokbot` into `~/.danibot`; when a move is not
+possible (different drive, folder busy) the old folder stays behind and can be removed once the new one works.
+
 ## Status
 
 Early but real — the loop works end to end: message → agent → streamed reply → tools → approvals →
