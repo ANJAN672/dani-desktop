@@ -70,6 +70,17 @@ describe("HermesKernelTurnService", () => {
     await service.dispose(); h.repo.close();
   });
 
+  it("dispatches without waiting while terminal events settle the durable planner state", async () => {
+    const h = harness();
+    const service = new HermesKernelTurnService(h.repo, h.adapter);
+    await expect(service.dispatch({ jobId: String(h.job.id), generation: 1, text: "background" })).resolves.toEqual({ turnId: "provider-turn-1" });
+    expect(h.repo.job(String(h.job.id)).status).toBe("running");
+    h.emit({ ...base, type: "session.started", sessionId: "session-detached" });
+    h.emit({ ...base, type: "turn.completed", ok: true, stopReason: "end_turn" });
+    expect(h.repo.job(String(h.job.id))).toMatchObject({ status: "running", provider_cursor: "session-detached" });
+    await service.dispose(); h.repo.close();
+  });
+
   it("surfaces provider failure instead of treating model output as completion", async () => {
     const h = harness();
     const service = new HermesKernelTurnService(h.repo, h.adapter);

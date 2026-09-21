@@ -10,11 +10,13 @@ export class DaniExecutionKernel {
   readonly turns: HermesKernelTurnService;
   readonly effects: DaniKernelEffectService;
 
+  readonly repository: DaniKernelRepository;
   constructor(
-    readonly repository: DaniKernelRepository,
+    repository: DaniKernelRepository,
     hermes: ProviderAdapter,
     adapters: ReadonlyMap<string, KernelEffectAdapter>,
   ) {
+    this.repository = repository;
     this.turns = new HermesKernelTurnService(repository, hermes);
     this.effects = new DaniKernelEffectService(repository, adapters);
   }
@@ -23,6 +25,9 @@ export class DaniExecutionKernel {
   admit(input: AdmitJobInput) { return this.repository.admitJob(input); }
   async plan(jobId: string, generation: number, turn: Omit<HermesKernelTurnInput, "jobId" | "generation">) {
     return this.turns.run({ ...turn, jobId, generation });
+  }
+  dispatchPlan(jobId: string, generation: number, turn: Omit<HermesKernelTurnInput, "jobId" | "generation">) {
+    return this.turns.dispatch({ ...turn, jobId, generation });
   }
   propose(input: ProposeEffectInput) { return this.repository.proposeEffect(input); }
   approve(input: ApprovalGrantInput) { return this.repository.recordApproval(input); }

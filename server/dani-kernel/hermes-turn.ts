@@ -9,6 +9,7 @@ export interface HermesKernelTurnInput {
   model?: string;
   effort?: SendTurnInput["effort"];
   timeoutMs?: number;
+  turn?: Omit<SendTurnInput, "threadId" | "text" | "system" | "model" | "effort" | "resumeCursor">;
 }
 
 export interface HermesKernelTurnResult {
@@ -26,6 +27,7 @@ type Pending = {
   sessionId: string | null;
   resolve: (event: Extract<RuntimeEvent, { type: "turn.completed" }>) => void;
   reject: (error: Error) => void;
+  detached?: boolean;
 };
 
 const asError = (value: unknown, fallback: string) => value instanceof Error ? value : new Error(fallback);
@@ -39,10 +41,11 @@ export class HermesKernelTurnService {
   private readonly pending = new Map<string, Pending>();
   private readonly unsubscribe: () => void;
 
-  constructor(
-    private readonly repository: DaniKernelRepository,
-    private readonly adapter: ProviderAdapter,
-  ) {
+  private readonly repository: DaniKernelRepository;
+  private readonly adapter: ProviderAdapter;
+  constructor(repository: DaniKernelRepository, adapter: ProviderAdapter) {
+    this.repository = repository;
+    this.adapter = adapter;
     if (adapter.provider !== "hermesAgent") throw new Error(`expected hermesAgent, received ${adapter.provider}`);
     this.unsubscribe = adapter.onEvent(event => this.onEvent(event));
   }
@@ -65,8 +68,45 @@ export class HermesKernelTurnService {
     if (event.type === "turn.completed") {
       if (pending.turnId && event.turnId && pending.turnId !== event.turnId) return;
       this.pending.delete(event.threadId);
+      this.repository.finishProviderTurn(
+        pending.jobId,
+        pending.generation,
+        event.ok ? "completed" : "failed",
+        pending.sessionId,
+      );
       if (!event.ok) pending.reject(new Error(`Hermes turn failed: ${event.stopReason ?? "unknown"}`));
       else pending.resolve(event);
+    }
+  }
+
+  async dispatch(input: HermesKernelTurnInput): Promise<{ turnId: string }> {
+    const job = this.repository.beginTurn(input.jobId, input.generation);
+    const threadId = String(job.thread_id);
+    if (this.pending.has(threadId)) throw new Error("Hermes thread already has a running turn");
+    let pending!: Pending;
+    const terminal = new Promise<Extract<RuntimeEvent, { type: "turn.completed" }>>((resolve, reject) => {
+      pending = { jobId: input.jobId, generation: input.generation, threadId, turnId: null, sessionId: null, resolve, reject, detached: true };
+      this.pending.set(threadId, pending);
+    });
+    // Detached server dispatch is folded by server/index.ts. Keep this local
+    // promise observed so a provider failure cannot become an unhandled rejection.
+    void terminal.catch(() => undefined);
+    try {
+      const started = await this.adapter.sendTurn({
+        threadId,
+        text: input.text,
+        system: input.system,
+        model: input.model,
+        effort: input.effort,
+        resumeCursor: job.provider_cursor ?? undefined,
+        ...input.turn,
+      });
+      pending.turnId = started.turnId;
+      return started;
+    } catch (error) {
+      this.pending.delete(threadId);
+      this.repository.finishProviderTurn(input.jobId, input.generation, "failed");
+      throw asError(error, "Hermes turn failed");
     }
   }
 

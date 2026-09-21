@@ -32,10 +32,12 @@ export type ExecuteEffectResult =
   | { status: "uncertain"; reason: string };
 
 export class DaniKernelEffectService {
-  constructor(
-    private readonly repository: DaniKernelRepository,
-    private readonly adapters: ReadonlyMap<string, KernelEffectAdapter>,
-  ) {}
+  private readonly repository: DaniKernelRepository;
+  private readonly adapters: ReadonlyMap<string, KernelEffectAdapter>;
+  constructor(repository: DaniKernelRepository, adapters: ReadonlyMap<string, KernelEffectAdapter>) {
+    this.repository = repository;
+    this.adapters = adapters;
+  }
 
   private adapter(name: string) {
     const adapter = this.adapters.get(name);

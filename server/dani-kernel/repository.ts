@@ -22,7 +22,9 @@ export class DaniKernelRepository {
   readonly db: DatabaseSync;
   readonly backupPath: string | null;
 
-  constructor(readonly path: string) {
+  readonly path: string;
+  constructor(path: string) {
+    this.path = path;
     mkdirSync(dirname(path), { recursive: true });
     const existed = existsSync(path);
     this.db = new DatabaseSync(path);
@@ -100,7 +102,7 @@ export class DaniKernelRepository {
   admitJob(input: AdmitJobInput) {
     const existing = this.db.prepare("SELECT * FROM kernel_jobs WHERE owner_id=? AND originating_request_id=?")
       .get(input.ownerId, input.originatingRequestId) as Row | undefined;
-    if (existing) return { ...existing, id: String(existing.id), duplicate: true };
+    if (existing) return { ...existing, id: String(existing.id), generation: Number(existing.generation), duplicate: true };
     const id = randomUUID();
     const at = now();
     this.db.prepare(`INSERT INTO kernel_jobs(
@@ -111,7 +113,7 @@ export class DaniKernelRepository {
       input.provider, input.threadId, input.providerCursor ?? null, at, at,
     );
     this.event(id, null, "job.admitted", { turnId: input.turnId, provider: input.provider });
-    return { ...this.job(id), id, duplicate: false };
+    return { ...this.job(id), id, generation: 1, duplicate: false };
   }
 
   job(id: string): KernelRow {
@@ -297,6 +299,17 @@ export class DaniKernelRepository {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  finishProviderTurn(jobId: string, generation: number, outcome: "completed" | "failed", providerCursor?: string | null) {
+    const job = this.job(jobId);
+    if (Number(job.generation) !== generation) throw new Error("stale cancellation generation");
+    const at = now();
+    const nextStatus = outcome === "completed" ? "running" : "failed";
+    const result = this.db.prepare(`UPDATE kernel_jobs SET status=?,provider_cursor=COALESCE(?,provider_cursor),updated_at=?
+      WHERE id=? AND generation=? AND status='running'`).run(nextStatus, providerCursor ?? null, at, jobId, generation);
+    if (result.changes === 1) this.event(jobId, null, `provider.${outcome}`, { generation });
+    return this.job(jobId);
   }
 
   cancelJob(jobId: string, reason: string) {
