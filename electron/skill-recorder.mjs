@@ -336,7 +336,7 @@ export function saveSkillRecording(payload, options = {}) {
   const name = cleanText(payload.name, 100);
   if (!name) throw new Error("Name the skill before creating it");
   const description = cleanText(payload.description, 300);
-  const dataRoot = options.dataRoot ?? process.env.OMB_DATA_DIR ?? path.join(os.homedir(), ".danibot");
+  const dataRoot = options.dataRoot ?? process.env.DANI_DATA_DIR ?? process.env.OMB_DATA_DIR ?? path.join(os.homedir(), ".danibot");
   const skillsRoot = path.join(dataRoot, "skills");
   mkdirSync(skillsRoot, { recursive: true });
   const target = uniqueSkillDirectory(skillsRoot, name);

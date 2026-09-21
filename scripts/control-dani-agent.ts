@@ -46,7 +46,7 @@ read-only:
   wait --bot ID [--timeout 30] [--url URL]
   wait --channel ID [--timeout 30] [--url URL]
 
-mutating (an explicit --url or OPENMAUSBOT_URL/OMB_PORT is required):
+mutating (an explicit --url or DANIBOT_URL/DANI_PORT is required):
   new-bot --name NAME [--url URL]
   new-channel --name NAME --members ID,ID [--url URL]
   send --bot ID --text TEXT [--dry-run] [--url URL]
@@ -100,7 +100,7 @@ function positiveInteger(value: unknown, name: string, fallback: number, maximum
 function configuredUrl(raw: unknown, env: NodeJS.ProcessEnv, requiredForMutation: boolean): string | undefined {
   const explicit = typeof raw === "string" && raw.trim()
     ? raw.trim()
-    : env.OPENMAUSBOT_URL?.trim() || (env.OMB_PORT ? `http://127.0.0.1:${env.OMB_PORT}` : "");
+    : (env.DANIBOT_URL ?? env.OPENMAUSBOT_URL)?.trim() || ((env.DANI_PORT ?? env.OMB_PORT) ? `http://127.0.0.1:${env.DANI_PORT ?? env.OMB_PORT}` : "");
   if (!explicit) {
     if (requiredForMutation) {
       throw new ControlOmbError(

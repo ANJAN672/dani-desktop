@@ -216,7 +216,7 @@ app.setPath(
 // intercepting input. This app is not graphics-heavy, so reliability wins.
 if (process.platform === "linux") {
   app.disableHardwareAcceleration();
-  app.setDesktopName("com.openmausbot.app.desktop");
+  app.setDesktopName("com.danibot.app.desktop");
 }
 
 // One instance per user: without this lock a second launch forks a second
@@ -299,7 +299,7 @@ function desktopDataDir() {
   // then pass this exact resolved path to the utility child. server/config.ts
   // intentionally treats an empty OMB_DATA_DIR differently, so inheriting it
   // without normalization would lease one directory and write another.
-  return process.env.OMB_DATA_DIR || path.join(app.getPath("home"), ".danibot");
+  return process.env.DANI_DATA_DIR || process.env.OMB_DATA_DIR || path.join(app.getPath("home"), ".danibot");
 }
 
 async function stopUtilityServer(proc, timeoutMs = UTILITY_SERVER_STOP_TIMEOUT_MS) {
@@ -430,7 +430,7 @@ async function secureWorkspaceConfig() {
 }
 
 function composioBrokerUrl() {
-  const configured = process.env.OMB_COMPOSIO_BROKER_URL?.trim();
+  const configured = (process.env.DANI_COMPOSIO_BROKER_URL ?? process.env.OMB_COMPOSIO_BROKER_URL)?.trim();
   return normalizeManagedComposioBrokerUrl(
     configured || (app.isPackaged ? DEFAULT_COMPOSIO_BROKER_URL : ""),
   );
@@ -987,7 +987,7 @@ function syncPhoneSecretKey(proc) {
 function syncDesktopMutationToken(proc) {
   try {
     proc.postMessage({
-      type: "openmausbot:desktop-mutation-token",
+      type: "danibot:desktop-mutation-token",
       token: desktopMutationToken,
     });
   } catch (error) {
@@ -1042,28 +1042,38 @@ async function startServerOn(port) {
     // server gets only a private capability that validates that same live
     // owner; fallback-port children must not race to replace the parent lease.
     ...desktopDataDirLease.utilityServerLeaseEnvironment(),
+    DANI_DATA_DIR: desktopDataDir(),
     OMB_DATA_DIR: desktopDataDir(),
     // A packaged utility child must never fall back to a descriptor inherited
     // from the launching shell. It starts fail-closed until this exact main
     // process sends the private in-memory connection after spawn.
+    DANI_DESKTOP_PARENT: "1",
     OMB_DESKTOP_PARENT: "1",
+    DANI_STATIC_DIR: path.join(process.resourcesPath, "ui"),
     OMB_STATIC_DIR: path.join(process.resourcesPath, "ui"),
+    DANI_RESOURCES_PATH: process.resourcesPath,
     OMB_RESOURCES_PATH: process.resourcesPath,
+    DANI_SKILLS_DIR: path.join(process.resourcesPath, "skills"),
     OMB_SKILLS_DIR: path.join(process.resourcesPath, "skills"),
+    DANI_PORT: String(port),
     OMB_PORT: String(port),
     // the server advertises this to remote clients so version skew is visible
+    DANI_APP_VERSION: app.getVersion(),
     OMB_APP_VERSION: app.getVersion(),
+    DANI_USER_DATA: app.getPath("userData"),
     OMB_USER_DATA: app.getPath("userData"),
     ...(secureCredentials.composioApiKey
       ? { COMPOSIO_API_KEY: secureCredentials.composioApiKey }
       : {}),
     // "we could not read your keys" must not reach the UI as "you have none"
+    DANI_CREDENTIAL_STORE: credentialStoreUnavailable ? "unavailable" : "ok",
     OMB_CREDENTIAL_STORE: credentialStoreUnavailable ? "unavailable" : "ok",
     // one env var per stored workspace secret (xai/box/voice/OpenCode Go);
     // the server prefers these over config.json, whose plaintext fields
     // the boot migration has deleted
     ...workspaceCredentialEnv(secureCredentials),
   });
+  delete childEnv.DANI_BROWSER_CONNECTION;
   delete childEnv.OMB_BROWSER_CONNECTION;
   slog(`fork ${entry} port=${port}`);
   const proc = utilityProcess.fork(entry, [], {
@@ -1167,7 +1177,7 @@ function syncManagedComposioCredentials() {
   if (!serverProc) return;
   try {
     serverProc.postMessage({
-      type: "openmausbot:managed-composio",
+      type: "danibot:managed-composio",
       access: managedComposioAccess(composioBrokerUrl(), secureCredentials),
     });
   } catch (error) {
@@ -1297,7 +1307,7 @@ function openDesktopViewer(owner, rawUrl, rawTitle, contextId) {
       sandbox: true,
       // Keep provider cookies away from the app renderer and discard them on
       // app exit. The secret-bearing URL is sufficient to authenticate.
-      partition: "openmausbot-desktop-viewer",
+      partition: "danibot-desktop-viewer",
     },
   });
   desktopViewerWindow = viewer;
@@ -1382,7 +1392,7 @@ function ensureDesktopWorkspace(owner) {
   const manager = createDesktopWorkspaceManager({
     owner,
     createView: (options) => new WebContentsView(options),
-    partitionPrefix: `openmausbot-desktop-workspace-${randomUUID()}`,
+    partitionPrefix: `danibot-desktop-workspace-${randomUUID()}`,
     notify: (state) => {
       if (!owner.isDestroyed() && !owner.webContents.isDestroyed()) {
         owner.webContents.send("desktop-workspace:state", state);
@@ -1870,14 +1880,14 @@ function createWindow() {
   // Packaged CI smoke hook. It validates the real renderer/preload bridge and
   // same-origin embedded server, then follows the normal window-close path.
   // No debugging port or sandbox override is needed.
-  if (process.env.OMB_SMOKE_TEST === "1") {
+  if (process.env.DANI_SMOKE_TEST === "1") {
     win.webContents.once("did-finish-load", async () => {
       try {
         const result = await win.webContents.executeJavaScript(`
           (async () => {
             if (!window.ogb?.getCapabilities) throw new Error("desktop preload bridge is unavailable");
             let crashPromise = null;
-            if (${JSON.stringify(process.env.OMB_SMOKE_CUA === "1")}) {
+            if (${JSON.stringify(process.env.DANI_SMOKE_CUA === "1")}) {
               crashPromise = new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                   unsubscribe?.();
@@ -1933,7 +1943,7 @@ function createWindow() {
             `unexpected packaged renderer URL: ${result.location} (expected ${expectedLocation})`,
           );
         }
-        if (process.env.OMB_SMOKE_BUNDLED_CUA === "1") {
+        if (process.env.DANI_SMOKE_BUNDLED_CUA === "1") {
           const connection = await cuaReady;
           const expectedDriver = path.join(
             process.resourcesPath,
@@ -1971,7 +1981,7 @@ function createWindow() {
       } catch (error) {
         console.error(`[smoke] renderer-failed ${error?.stack ?? error}`);
       } finally {
-        if (process.env.OMB_SMOKE_KEEP_OPEN !== "1") win.close();
+        if (process.env.DANI_SMOKE_KEEP_OPEN !== "1") win.close();
       }
     });
   }
@@ -2455,7 +2465,7 @@ app.whenReady().then(async () => {
   }
   if (app.isPackaged) {
     app.setAsDefaultProtocolClient("danibot");
-    app.setAsDefaultProtocolClient("openmausbot");
+    app.setAsDefaultProtocolClient("danibot");
     // Chromium adds this capability below JavaScript, so renderer requests
     // can mutate the local harness while a Full-access shell using curl
     // cannot impersonate the person operating the desktop app.

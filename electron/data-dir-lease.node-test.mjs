@@ -12,7 +12,7 @@ import {
 } from "./data-dir-lease.mjs";
 
 const MODULE_URL = new URL("./data-dir-lease.mjs", import.meta.url).href;
-const LEASE_NAME = "openmausbot-server.lease";
+const LEASE_NAME = "danibot-server.lease";
 const roots = [];
 
 function temporaryDirectory(name = "data") {
@@ -305,7 +305,7 @@ test("a foreign-host owner fails closed and identifies the preserved lease recor
 
 test("a foreign-host delegated child fails closed and identifies its preserved lease record", () => {
   const { dataDir } = temporaryDirectory();
-  const childLeasePath = path.join(dataDir, ".openmausbot-server-child", LEASE_NAME);
+  const childLeasePath = path.join(dataDir, ".danibot-server-child", LEASE_NAME);
   const child = {
     version: 1,
     pid: process.pid,
@@ -367,7 +367,7 @@ test("legacy data is moved before lease creation", () => {
   const root = mkdtempSync(path.join(tmpdir(), "omb-electron-legacy-"));
   roots.push(root);
   const legacyDataDir = path.join(root, ".opengrokbot");
-  const dataDir = path.join(root, ".openmausbot");
+  const dataDir = path.join(root, ".danibot");
   mkdirSync(legacyDataDir);
   writeFileSync(path.join(legacyDataDir, "keep-me.txt"), "kept");
 

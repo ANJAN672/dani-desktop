@@ -1,4 +1,4 @@
-appId: com.openmausbot.app
+appId: com.danibot.app
 productName: Dani Bot
 artifactName: DaniBot-${version}-${arch}.${ext}
 

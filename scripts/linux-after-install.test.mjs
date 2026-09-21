@@ -34,7 +34,7 @@ function fixture() {
 function runHook(appRoot, extraEnv = {}) {
   return spawnSync("/bin/sh", [hook], {
     encoding: "utf8",
-    env: { ...process.env, OPENMAUSBOT_POSTINSTALL_TEST_ROOT: appRoot, ...extraEnv },
+    env: { ...process.env, DANIBOT_POSTINSTALL_TEST_ROOT: appRoot, ...extraEnv },
   });
 }
 

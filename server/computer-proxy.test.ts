@@ -73,7 +73,7 @@ describe("computer proxy (fake box)", () => {
             ? JSON.stringify([
                 { id: "page-1", type: "page", title: " Example ", url: browserUrl },
               ])
-            : command.includes("openmausbot-cdp.mjs snapshot")
+            : command.includes("danibot-cdp.mjs snapshot")
               ? JSON.stringify({
                   title: "Account",
                   url: "https://user:password@example.com/form?token=secret#private",
@@ -82,7 +82,7 @@ describe("computer proxy (fake box)", () => {
                     { ref: "b42", role: "button", name: "Continue" },
                   ],
                 })
-              : command.includes("openmausbot-cdp.mjs click") || command.includes("openmausbot-cdp.mjs fill")
+              : command.includes("danibot-cdp.mjs click") || command.includes("danibot-cdp.mjs fill")
                 ? `GEOM 1920 1080\nHASH ${hash}\nSIZE ${size}\nB64 ${JPEG}\nSEM ok\n`
             : cropFails && /convert "\$f" -crop/.test(command)
               ? `GEOM 1920 1080\nHASH ${hash}\nCROP_FAILED\n`
@@ -300,7 +300,7 @@ describe("computer proxy (fake box)", () => {
     expect(command).toContain('exec env -i HOME="$HOME"');
     if (process.platform !== "win32") expect(spawnSync("/bin/bash", ["-n", "-c", command]).status).toBe(0);
     expect(command).toMatch(/xdotool mousemove \$CX \$CY click 1/);
-    expect(command).toContain("/opt/ogb/cua-driver call click");
+    expect(command).toContain("/opt/danibot/cua-driver call click");
     expect(command).toContain("CUA_DRIVER_RS_TELEMETRY_ENABLED=0");
     expect(command).toMatch(/getdisplaygeometry/); // scaling resolved box-side
     // scaling is conditional: a display narrower than the model's space is
@@ -423,7 +423,7 @@ describe("computer proxy (fake box)", () => {
     });
     const filled = await waitFor(82);
     expect(commands.length - before).toBe(1);
-    expect(commands.at(-1)).toContain("openmausbot-cdp.mjs fill");
+    expect(commands.at(-1)).toContain("danibot-cdp.mjs fill");
     expect(commands.at(-1)).not.toContain("person@example.com");
     expect(filled.result.content[0].text).toMatch(/trusted Chrome DevTools input/);
 

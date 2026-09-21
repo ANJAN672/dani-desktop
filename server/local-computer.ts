@@ -311,7 +311,7 @@ export function validateLinuxDescriptorRuntime(
 
 export function readCuaConnection({
   platform = process.platform,
-  userData = process.env.OMB_USER_DATA,
+  userData = process.env.DANI_USER_DATA ?? process.env.OMB_USER_DATA,
   home = homedir(),
   validateLinuxRuntime = validateLinuxDescriptorRuntime,
 }: {

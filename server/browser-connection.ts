@@ -103,14 +103,14 @@ const descriptorSchema = z.object({
   pid: z.number().int().positive(),
 }).strict();
 const desktopConnectionMessageSchema = z.object({
-  type: z.literal("openmausbot:browser-connection"),
+  type: z.enum(["danibot:browser-connection", "openmausbot:browser-connection"]),
   connection: descriptorSchema.nullable(),
 }).strict();
 
 // `undefined` means no desktop parent ever spoke, so a standalone/dev server
 // may use the descriptor fallback. `null` is an explicit packaged-desktop
 // "unavailable" and must not rediscover a stale on-disk master token.
-const hasDesktopParent = process.env.OMB_DESKTOP_PARENT === "1";
+const hasDesktopParent = (process.env.DANI_DESKTOP_PARENT ?? process.env.OMB_DESKTOP_PARENT) === "1";
 let desktopConnection: BrowserConnection | null | undefined = hasDesktopParent ? null : undefined;
 
 function loopbackOrigin(value: string): string | null {
@@ -154,10 +154,11 @@ export function decodeBrowserDescriptor(raw: unknown, alive: (pid: number) => bo
  * process port. The master token stays in memory on both sides and is never
  * exposed through an agent child environment or descriptor file. */
 export function applyDesktopBrowserConnectionMessage(message: unknown): boolean {
+  const messageType = (message as { type?: unknown } | null)?.type;
   if (
     typeof message !== "object" ||
     message === null ||
-    (message as { type?: unknown }).type !== "openmausbot:browser-connection"
+    (messageType !== "danibot:browser-connection" && messageType !== "openmausbot:browser-connection")
   ) {
     return false;
   }
@@ -174,9 +175,9 @@ export function applyDesktopBrowserConnectionMessage(message: unknown): boolean 
 
 export function readBrowserConnection({
   platform = process.platform,
-  userData = process.env.OMB_USER_DATA,
+  userData = process.env.DANI_USER_DATA ?? process.env.OMB_USER_DATA,
   home = homedir(),
-  file = process.env.OMB_BROWSER_CONNECTION,
+  file = process.env.DANI_BROWSER_CONNECTION ?? process.env.OMB_BROWSER_CONNECTION,
   alive,
 }: {
   platform?: NodeJS.Platform;
@@ -221,7 +222,7 @@ export function availableBrowserConnection(
   // or a future refactor leaves the state undefined. A utility child may use
   // only the connection delivered over its private parent port, never a file
   // path inherited from the shell that launched Electron.
-  if (process.env.OMB_DESKTOP_PARENT === "1" && desktopConnection === undefined) return null;
+  if ((process.env.DANI_DESKTOP_PARENT ?? process.env.OMB_DESKTOP_PARENT) === "1" && desktopConnection === undefined) return null;
   return desktopConnection !== undefined ? desktopConnection : readBrowserConnection(options);
 }
 

@@ -16,8 +16,8 @@ set -eu
 # Chromium falls back to the setuid sandbox helper, whose zygote launch
 # splits the install path at its space (electron/electron#44414) and kills
 # the renderer with "LaunchProcess: failed to execvp: /opt/Dani".
-if [ -n "${OPENMAUSBOT_POSTINSTALL_TEST_ROOT:-}" ]; then
-  TEST_ROOT="$(realpath -e -- "$OPENMAUSBOT_POSTINSTALL_TEST_ROOT")"
+if [ -n "${DANIBOT_POSTINSTALL_TEST_ROOT:-}" ]; then
+  TEST_ROOT="$(realpath -e -- "$DANIBOT_POSTINSTALL_TEST_ROOT")"
   case "$TEST_ROOT" in
     /tmp/*) APP_ROOT=$TEST_ROOT ;;
     *)

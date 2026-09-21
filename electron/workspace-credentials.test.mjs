@@ -123,8 +123,10 @@ describe("workspace credential env", () => {
     ).toEqual({
       XAI_API_KEY: "xai-secret",
       BOX_TOKEN: "box-secret",
+      DANI_TTS_KEY: "tts-secret",
       OMB_TTS_KEY: "tts-secret",
       OPENCODE_API_KEY: "ocg-secret",
+      DANI_OPENAI_IMAGE_KEY: "image-secret",
       OMB_OPENAI_IMAGE_KEY: "image-secret",
     });
   });
@@ -138,6 +140,7 @@ describe("workspace credential env", () => {
   it("covers every credential the migration table declares", () => {
     const credentials = Object.fromEntries(WORKSPACE_CREDENTIALS.map((c) => [c.name, `v-${c.name}`]));
     const env = workspaceCredentialEnv(credentials);
-    expect(Object.keys(env).sort()).toEqual(WORKSPACE_CREDENTIALS.map((c) => c.env).sort());
+    const expected = WORKSPACE_CREDENTIALS.flatMap((c) => (c.legacyEnv ? [c.env, c.legacyEnv] : [c.env])).sort();
+    expect(Object.keys(env).sort()).toEqual(expected);
   });
 });
