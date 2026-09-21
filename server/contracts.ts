@@ -418,6 +418,10 @@ export interface ProviderInstance {
   readonly startAuthentication?: () => Promise<ProviderAuthenticationStart>;
   readonly completeAuthentication?: (flowId: string, callbackUrl: string) => Promise<void>;
   readonly cancelAuthentication?: () => Promise<void>;
+  /** Static cost class, known without probing: the metered-consent gate
+   * (spec 010 R8) must not spawn a CLI or hit the network to find out
+   * whether a turn bills the user's account. */
+  readonly billingClass?: "metered" | "subscription" | "local";
   readonly adapter: ProviderAdapter;
   snapshot(): Promise<ProviderSnapshot>;
   /** Run the live credential probe now; resolves with the new state. */

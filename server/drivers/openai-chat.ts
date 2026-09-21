@@ -318,6 +318,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     driverKind: options.driverKind,
     displayName: input.displayName,
     enabled: input.enabled,
+    billingClass: options.billing,
     get models() {
       return options.models();
     },

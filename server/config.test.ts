@@ -800,4 +800,24 @@ describe("customMcpServers", () => {
     );
     expect(Object.keys(out)).toEqual(["keeper"]);
   });
+
+  it("persists metered acknowledgements through saveConfig and loadConfig (spec 010 R8)", () => {
+    const path = join(DATA_DIR, "config.json");
+    writeFileSync(path, JSON.stringify({ xai: { key: "file-xai" }, futureSetting: { keep: true } }));
+
+    saveConfig({
+      meteredAcknowledgements: [{ instanceId: "grok", model: "grok-3-mini", acknowledgedAt: "2026-09-22T00:00:00Z" }],
+    });
+    const persisted = JSON.parse(readFileSync(path, "utf8"));
+    expect(persisted.meteredAcknowledgements).toEqual([
+      { instanceId: "grok", model: "grok-3-mini", acknowledgedAt: "2026-09-22T00:00:00Z" },
+    ]);
+    // unrelated keys survive the write
+    expect(persisted.xai).toEqual({ key: "file-xai" });
+    expect(persisted.futureSetting).toEqual({ keep: true });
+
+    expect(loadConfig().meteredAcknowledgements).toEqual([
+      { instanceId: "grok", model: "grok-3-mini", acknowledgedAt: "2026-09-22T00:00:00Z" },
+    ]);
+  });
 });

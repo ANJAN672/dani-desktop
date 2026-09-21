@@ -48,6 +48,8 @@ export const GrokDriver: ProviderDriver<GrokConfig> = {
       missingKeyError: `no xAI key — set ${config.apiKeyEnv} or config.json xai.key`,
       unavailableReason: `no xAI API key — add {"xai":{"key":"xai-…"}} to ~/.danibot/config.json or set ${config.apiKeyEnv}`,
       timeoutMs: 120_000,
+      // xAI bills per token - the metered-consent gate keys off this
+      billing: "metered",
       retryScale: Number(process.env.FAKE_GROK_RETRY_SCALE ?? "1"),
       generateModel: () => "grok-3-mini",
       nativeLog: {

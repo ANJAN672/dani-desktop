@@ -271,6 +271,12 @@ const appConfigSchema = z.object({
    * file on a schema error, and one bad server entry must degrade to a
    * skipped entry (customMcpServers), never to a vanished config. */
   mcpServers: z.record(z.string(), z.unknown()).optional(),
+  /** Explicit metered-use acknowledgements (spec 010 R8): one entry per
+   * instance+model the user has confirmed bills their account. Presence of
+   * a credential never implies one. */
+  meteredAcknowledgements: z
+    .array(z.object({ instanceId: z.string(), model: z.string(), acknowledgedAt: z.string() }).strict())
+    .optional(),
 });
 const storedAppConfigSchema = appConfigSchema.extend({
   browserProfiles: storedBrowserProfilesSchema.optional(),
@@ -405,6 +411,23 @@ export function parseConfigPatch(value: JsonValue): ConfigPatch {
     throw Object.assign(new Error(schemaIssue(parsed.error, "Invalid configuration")), { status: 400 });
   }
   return parsed.data;
+}
+
+/** Has the user explicitly acknowledged that this instance+model bills
+ * their account? (spec 010 R8 - first metered call requires it.) */
+export function hasMeteredAcknowledgement(cfg: AppConfig, instanceId: string, model: string): boolean {
+  return (cfg.meteredAcknowledgements ?? []).some((entry) => entry.instanceId === instanceId && entry.model === model);
+}
+
+/** The acknowledgement list with this instance+model recorded (idempotent). */
+export function withMeteredAcknowledgement(
+  cfg: AppConfig,
+  instanceId: string,
+  model: string,
+  acknowledgedAt = new Date().toISOString(),
+): NonNullable<AppConfig["meteredAcknowledgements"]> {
+  if (hasMeteredAcknowledgement(cfg, instanceId, model)) return cfg.meteredAcknowledgements ?? [];
+  return [...(cfg.meteredAcknowledgements ?? []), { instanceId, model, acknowledgedAt }];
 }
 
 export function vpsSshAlias(cfg: AppConfig): string | null {
@@ -617,6 +640,11 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   // saveConfig remains the single atomic persistence boundary.
   if (checkedPatch.mcpServers !== undefined) {
     disk.mcpServers = jsonObjectSchema.parse(checkedPatch.mcpServers);
+  }
+  // acknowledgements are a whole-list value like browserProfiles: callers
+  // append via withMeteredAcknowledgement and write the result
+  if (checkedPatch.meteredAcknowledgements !== undefined) {
+    disk.meteredAcknowledgements = checkedPatch.meteredAcknowledgements;
   }
   // the whole list is the unit of change: an add or a delete arrives as the
   // new list, never as a per-item merge

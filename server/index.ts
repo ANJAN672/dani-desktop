@@ -118,8 +118,8 @@ import {
   DATA_DIR,
   EVENTS_DIR,
   NATIVE_DIR,
-  customMcpServers,
-} from "./config.ts";
+  customMcpServers, withMeteredAcknowledgement } from "./config.ts";
+import { meteredConsentRefusal } from "./metered-consent.ts";
 import { ComputerControl } from "./computer-control.ts";
 import { DaniExecutionKernel } from "./dani-kernel/kernel.ts";
 import { DaniKernelRepository } from "./dani-kernel/repository.ts";
@@ -3836,6 +3836,12 @@ async function startTurn(
   console.error(`[omb-turn] bot=${botId} text=${JSON.stringify(resolvedImages.text.slice(0, 70))} images=${turnImages.length} depth=${commsDepth} card=${Boolean(opts?.cardContinuation)}`);
   const instanceId = instance.instanceId;
   const model = opts?.runOn === "cloud" ? instance.models.default : bot.modelSelection.model;
+  // spec 010 R8: the first call on a metered engine needs the user's explicit
+  // provider/model/cost acknowledgement. A saved key never implies one.
+  const meteredRefusal = meteredConsentRefusal(instance, cfg, model);
+  if (meteredRefusal) {
+    throw Object.assign(new Error(meteredRefusal), { status: 409, code: "metered_consent_required" });
+  }
   // a cloud routine borrows the instance default model, so it borrows no
   // per-bot effort either
   const effort = opts?.runOn === "cloud" ? undefined : bot.modelSelection.effort;
@@ -7107,6 +7113,9 @@ function configStatus() {
     imageGen: { configured: Boolean(cfg.imageGen?.key) },
     // not a secret — the sidebar shows it
     profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
+    // not a secret - the model picker needs it to know what still needs
+    // an explicit metered acknowledgement
+    meteredAcknowledgements: cfg.meteredAcknowledgements ?? [],
     // not a secret — the settings picker shows it; "" = follow the system
     language: cfg.language ?? "",
     rooms: { turnTimeoutMinutes: roomTurnTimeoutMinutes(cfg) },
@@ -11282,7 +11291,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { instances: await registry.describe() });
     }
 
-    const instanceAction = /^\/api\/instances\/([\w.-]+)\/(refresh-models|install|auth\/start|auth\/complete|auth\/cancel|verify)$/.exec(path);
+    const instanceAction = /^\/api\/instances\/([\w.-]+)\/(refresh-models|install|auth\/start|auth\/complete|auth\/cancel|verify|acknowledge-metered)$/.exec(path);
     if (method === "POST" && instanceAction) {
       if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
         return json(res, 415, { error: "content-type must be application/json" });
@@ -11290,6 +11299,17 @@ const server = createServer(async (req, res) => {
       const instanceId = instanceAction[1];
       const action = instanceAction[2];
       try {
+        if (action === "acknowledge-metered") {
+          const target = registry.instances().find((candidate) => candidate.instanceId === instanceId);
+          if (!target) return json(res, 404, { error: "unknown instance" });
+          if (target.billingClass !== "metered") return json(res, 400, { error: "this engine is not metered" });
+          const body = await readBody(req);
+          const model = typeof body?.model === "string" ? body.model.trim() : "";
+          if (!model) return json(res, 400, { error: "model is required" });
+          saveConfig({ meteredAcknowledgements: withMeteredAcknowledgement(cfg, instanceId, model) });
+          Object.assign(cfg, loadConfig());
+          return json(res, 200, { ok: true, meteredAcknowledgements: cfg.meteredAcknowledgements ?? [] });
+        }
         if (action === "verify") {
           if (!(await registry.verifyInstance(instanceId))) return json(res, 404, { error: "verification is unavailable for this engine" });
           return json(res, 200, { instances: await registry.describe() });
@@ -12324,7 +12344,8 @@ const server = createServer(async (req, res) => {
     return json(res, 404, { error: `no route: ${method} ${path}` });
   } catch (e) {
     const status = (e as any)?.status ?? 500;
-    return json(res, status, { error: e instanceof Error ? e.message : String(e) });
+    const code = typeof (e as any)?.code === "string" ? (e as any).code : undefined;
+    return json(res, status, { error: e instanceof Error ? e.message : String(e), ...(code ? { code } : {}) });
   }
 });
 
