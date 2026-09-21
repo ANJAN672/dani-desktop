@@ -72,11 +72,30 @@ jobs:
           deb=(release/*.deb)
           test "${#deb[@]}" -eq 1
           pnpm smoke:deb-command "${deb[0]}"
+      - name: Check whether a public release feed exists
+        id: feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Anonymous view, matching what electron-updater can see on a user
+          # machine: drafts are invisible without auth.
+          count="$(curl -fsSL https://api.github.com/repos/somdipto/dani-desktop/releases | jq length)"
+          echo "published releases visible to the update feed: $count"
+          echo "has-release=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Prove an AppImage update lands on the launched path
         # Installs the current published release over a copy named after a
         # version, which is the shape that used to orphan the launcher. Runs
         # against the real feed, so it also covers the differential download.
+        # Needs a published release to update from: before the first one the
+        # feed is empty and there is nothing to prove against, so gate loudly
+        # instead of failing the whole artifact build.
+        if: steps.feed.outputs.has-release == 'true'
         run: pnpm smoke:linux-update
+      - name: Note the skipped AppImage update proof
+        if: steps.feed.outputs.has-release == 'false'
+        run: >-
+          echo "No public release exists yet; the AppImage update proof needs
+          a real feed to update from and activates with the first release."
       - name: Configure Chromium sandbox for the unpacked app
         run: |
           sudo chown root:root release/linux-unpacked/chrome-sandbox
