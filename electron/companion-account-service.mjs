@@ -22,7 +22,7 @@ export const COMPANION_ACCOUNT_CLEANUP_PENDING_FIELD = "companionAccountCleanupP
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const INSTALLATION_ID = UUID;
-const INSTALLATION_CREDENTIAL = /^omb_install_[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/;
+const INSTALLATION_CREDENTIAL = /^(?:omb|dani)_install_[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/;
 const DEFAULT_HEALTH_CACHE_MS = 30_000;
 
 const ownString = (document, field) =>
@@ -36,8 +36,9 @@ export function resolveCompanionControlPlaneURL({
   isPackaged,
   environment = process.env,
 } = {}) {
-  if (Object.hasOwn(environment, "OMB_CONTROL_PLANE_URL")) {
-    return normalizeControlPlaneURL(environment.OMB_CONTROL_PLANE_URL);
+  const override = environment.DANI_CONTROL_PLANE_URL ?? environment.OMB_CONTROL_PLANE_URL;
+  if (override !== undefined) {
+    return normalizeControlPlaneURL(override);
   }
   return isPackaged ? DEFAULT_COMPANION_CONTROL_PLANE_URL : "";
 }

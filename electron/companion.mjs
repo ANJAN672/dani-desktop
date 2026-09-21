@@ -221,12 +221,28 @@ async function start({ resourcesPath, harnessPort, hostedUrl = null, secretPubli
   // an inherited value would bypass that gate and make Settings claim a dead
   // or attacker-selected route is ready.
   const childEnvironment = { ...process.env };
-  delete childEnvironment.OMB_COMPANION_HOSTED_URL;
-  delete childEnvironment.OMB_COMPANION_INTERNAL_ORIGIN;
-  delete childEnvironment.OMB_PHONE_SECRET_PUBLIC_KEY;
-  if (hostedUrl) childEnvironment.OMB_COMPANION_HOSTED_URL = hostedUrl;
+  // Current and legacy variable names are both cleared and both set: a managed
+  // sidecar older than this build only reads the legacy names, a newer one
+  // prefers the current ones, and an inherited parent value must reach
+  // neither.
+  for (const name of [
+    "DANI_COMPANION_HOSTED_URL",
+    "OMB_COMPANION_HOSTED_URL",
+    "DANI_COMPANION_INTERNAL_ORIGIN",
+    "OMB_COMPANION_INTERNAL_ORIGIN",
+    "DANI_PHONE_SECRET_PUBLIC_KEY",
+    "OMB_PHONE_SECRET_PUBLIC_KEY",
+  ]) {
+    delete childEnvironment[name];
+  }
+  if (hostedUrl) {
+    childEnvironment.DANI_COMPANION_HOSTED_URL = hostedUrl;
+    childEnvironment.OMB_COMPANION_HOSTED_URL = hostedUrl;
+  }
+  childEnvironment.DANI_COMPANION_INTERNAL_ORIGIN = allocatedOrigin.socketPath;
   childEnvironment.OMB_COMPANION_INTERNAL_ORIGIN = allocatedOrigin.socketPath;
   if (/^[A-Za-z0-9_-]{87}$/.test(String(secretPublicKey ?? ""))) {
+    childEnvironment.DANI_PHONE_SECRET_PUBLIC_KEY = secretPublicKey;
     childEnvironment.OMB_PHONE_SECRET_PUBLIC_KEY = secretPublicKey;
   }
 
@@ -235,8 +251,11 @@ async function start({ resourcesPath, harnessPort, hostedUrl = null, secretPubli
     child = utilityProcess.fork(resolved.entry, [], {
       env: {
         ...childEnvironment,
+        DANI_PORT: String(harnessPort),
         OMB_PORT: String(harnessPort),
+        DANI_COMPANION_PORT: String(COMPANION_PORT),
         OMB_COMPANION_PORT: String(COMPANION_PORT),
+        DANI_CONTROL_PORT: String(CONTROL_PORT),
         OMB_CONTROL_PORT: String(CONTROL_PORT),
       },
       // how the TS-source fallback gets --experimental-strip-types; empty for
@@ -424,7 +443,7 @@ export async function companionPairing(open, expectedToken) {
   if (!proc) return companionState();
   const conditionalClose = !open && expectedToken !== undefined;
   const candidate = String(expectedToken ?? "");
-  const token = /^omb_pair_[A-Za-z0-9_-]{43}$/.test(candidate)
+  const token = /^(?:omb|dani)_pair_[A-Za-z0-9_-]{43}$/.test(candidate)
     ? candidate
     : "invalid-pairing-token";
   const path = conditionalClose

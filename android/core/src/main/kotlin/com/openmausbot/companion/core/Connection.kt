@@ -405,8 +405,13 @@ data class PairingInvite(val connection: Connection, val credential: String) {
 
         private fun credential(values: Map<String, String>): String? {
             values["token"]?.let { token ->
-                val suffix = token.removePrefix("omb_pair_")
-                if (!token.startsWith("omb_pair_") || token.toByteArray().size != 52 || suffix.length != 43) {
+                val prefix = when {
+                    token.startsWith("dani_pair_") -> "dani_pair_"
+                    token.startsWith("omb_pair_") -> "omb_pair_"
+                    else -> null
+                }
+                val suffix = prefix?.let { token.removePrefix(it) }.orEmpty()
+                if (prefix == null || suffix.length != 43) {
                     return null
                 }
                 if (suffix.all { it.isLetterOrDigit() && it.code < 128 || it == '-' || it == '_' }) return token

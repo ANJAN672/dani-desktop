@@ -11,7 +11,7 @@ import { createProxyHandler, proxyHeadersTimeoutMs } from "../src/proxy.ts";
 import type { CompanionEndpoint } from "../src/endpoints.ts";
 import { scrub } from "../src/wire.ts";
 
-const TOKEN = "omb_test_token";
+const TOKEN = "dani_test_token";
 
 /** Nested past any plausible stack, so `scrub`'s recursion gives out while
  * JSON.parse does not. The payload is what the scrubber is meant to remove. */

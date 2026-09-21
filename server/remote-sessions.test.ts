@@ -179,7 +179,7 @@ describe("pairing", () => {
       body: JSON.stringify({ code: opened.code.toLowerCase() }),
     });
     expect(paired.status).toBe(200);
-    expect(paired.body.token).toMatch(/^omb_sess_/);
+    expect(paired.body.token).toMatch(/^dani_sess_/);
     expect(paired.body.session.label).toBe("Safari on Mac");
     expect(paired.body.environment.label).toBe("cab mini");
     // a plain retry (no attempt id) is a second use of a consumed code: refused
@@ -192,7 +192,7 @@ describe("pairing", () => {
     expect(me.body).toMatchObject({ kind: "session", via: "bearer", label: "Safari on Mac", scopes: ["admin", "client"] });
 
     const ticket = await call("/api/auth/stream-ticket", { method: "POST", headers: bearer });
-    expect(ticket.body.ticket).toMatch(/^omb_tick_/);
+    expect(ticket.body.ticket).toMatch(/^dani_tick_/);
     const stream = await openSse(`${BASE}/api/events?ticket=${ticket.body.ticket}`, { host: REMOTE_HOST });
     try {
       const hello = await stream.until((f) => f.kind === "hello", 5_000);
@@ -224,7 +224,7 @@ describe("pairing", () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toBeUndefined();
     const setCookie = header(res.headers, "set-cookie");
-    expect(setCookie).toMatch(new RegExp(`^omb_session_${PORT}_[a-f0-9]{12}=omb_sess_`));
+    expect(setCookie).toMatch(new RegExp(`^dani_session_${PORT}_[a-f0-9]{12}=dani_sess_`));
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Lax");
     expect(setCookie).toContain("Secure");

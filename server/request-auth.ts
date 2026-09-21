@@ -147,7 +147,7 @@ export function bearerToken(header: string | string[] | undefined): string | und
  * otherwise clobber each other's session. The environment id keeps a
  * reinstalled server from reading a cookie signed by its predecessor. */
 export function sessionCookieName(port: number, environmentId: string): string {
-  return `omb_session_${port}_${environmentId.replace(/[^a-z0-9]/gi, "").slice(0, 12)}`;
+  return `dani_session_${port}_${environmentId.replace(/[^a-z0-9]/gi, "").slice(0, 12)}`;
 }
 
 export function serializeSessionCookie(
@@ -315,7 +315,7 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
   const ticket = path === options.streamPath ? options.url.searchParams.get("ticket") : null;
   let session: SessionRecord | null = null;
   let via: "bearer" | "cookie" | "ticket" | null = null;
-  if (bearer?.startsWith("omb_sess_")) {
+  if (bearer?.startsWith("dani_sess_") || bearer?.startsWith("omb_sess_")) {
     session = options.sessions.authenticate(bearer);
     via = "bearer";
   } else if (ticket) {

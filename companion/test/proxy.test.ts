@@ -69,7 +69,7 @@ let SIDECAR_PORT = 0;
 let HARNESS = "";
 let SIDECAR = "";
 
-const TOKEN = "omb_test_token";
+const TOKEN = "dani_test_token";
 let harness: ChildProcess;
 let sidecar: Server;
 let home: string;
@@ -283,7 +283,7 @@ describe("the sidecar in front of an unmodified harness", () => {
     expect(unauthenticated.status).toBe(401);
     expect(unauthenticated.headers.get("cache-control")).toContain("no-store");
     expect(unauthenticated.headers.get("cloudflare-cdn-cache-control")).toBe("no-store");
-    expect((await device("GET", "/api/bots", { token: "omb_wrong" })).status).toBe(401);
+    expect((await device("GET", "/api/bots", { token: "dani_wrong" })).status).toBe(401);
     expect((await device("GET", "/api/bots")).status).toBe(200);
   });
 
@@ -736,7 +736,7 @@ describe("pairing, end to end", () => {
         authenticate: (t) => registry.authenticate(t ?? undefined),
         redeem: (code, deviceName, pairRequestId) => registry.redeem(code, deviceName, pairRequestId),
         serverName: () => "Ada's computer",
-        hosts: () => ["macbook.tail1234.ts.net", "192.168.1.42", "openmausbot-abcd1234.local"],
+        hosts: () => ["macbook.tail1234.ts.net", "192.168.1.42", "danibot-abcd1234.local"],
         endpoints: () => [
           { url: "https://device-123.companion.example", kind: "hosted", priority: 0 },
           { url: "http://192.168.1.42:8810", kind: "lan", priority: 200 },
@@ -772,7 +772,7 @@ describe("pairing, end to end", () => {
         token: string;
       };
       expect(opened.code).toMatch(/^\d{6}$/);
-      expect(opened.token).toMatch(/^omb_pair_[A-Za-z0-9_-]{43}$/);
+      expect(opened.token).toMatch(/^dani_pair_[A-Za-z0-9_-]{43}$/);
 
       // a wrong code is refused, and does not burn the window
       const wrong = await fetch(`${base}/api/pair`, {
@@ -804,10 +804,10 @@ describe("pairing, end to end", () => {
         endpoints: Array<{ url: string; kind: string; priority: number }>;
       };
       expect(body.serverName).toBe("Ada's computer");
-      expect(body.token).toMatch(/^omb_/);
+      expect(body.token).toMatch(/^dani_/);
       // The fallback list rides on the redeem response so a phone that paired
       // by typed address learns the other ways to reach this computer too.
-      expect(body.hosts).toEqual(["macbook.tail1234.ts.net", "192.168.1.42", "openmausbot-abcd1234.local"]);
+      expect(body.hosts).toEqual(["macbook.tail1234.ts.net", "192.168.1.42", "danibot-abcd1234.local"]);
       expect(body.endpoints).toEqual([
         { url: "https://device-123.companion.example", kind: "hosted", priority: 0 },
         { url: "http://192.168.1.42:8810", kind: "lan", priority: 200 },

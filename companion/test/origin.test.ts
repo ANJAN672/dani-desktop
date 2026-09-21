@@ -24,10 +24,10 @@ describe("private managed origin", () => {
     ).toBe("/tmp/omb-companion-origin-test/origin.sock");
     expect(
       companionOriginSocket(
-        "\\\\.\\pipe\\openmausbot-companion-origin-42-12345678-1234-1234-1234-123456789abc",
+        "\\\\.\\pipe\\danibot-companion-origin-42-12345678-1234-1234-1234-123456789abc",
         "win32",
       ),
-    ).toContain("openmausbot-companion-origin-42");
+    ).toContain("danibot-companion-origin-42");
     expect(companionOriginSocket("\\\\.\\pipe\\foreign", "win32")).toBeNull();
   });
 

@@ -69,7 +69,7 @@ export type ControlPlaneAuth = ReturnType<typeof createAuth>;
 export async function accountSession(request: Request, auth: ControlPlaneAuth) {
   const authorization = request.headers.get("authorization");
   const match = authorization?.match(/^Bearer\s+([^\s]+)$/i);
-  if (!match || match[1].startsWith("omb_install_")) return null;
+  if (!match || /^(?:omb|dani)_install_/.test(match[1])) return null;
 
   return auth.api.getSession({
     headers: new Headers({ authorization: `Bearer ${match[1]}` }),

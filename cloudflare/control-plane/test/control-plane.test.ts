@@ -366,7 +366,7 @@ describe("installation lifecycle", () => {
   it("registers once, stores no raw credential, and serves installation self", async () => {
     const account = await signIn("owner@example.com");
     const created = await createInstall(account.token, "mac-stable-1");
-    expect(created.credential).toMatch(/^omb_install_[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
+    expect(created.credential).toMatch(/^dani_install_[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/);
     expect(created.credentialExpiresAt).toBeGreaterThan(Date.now() + 89 * 24 * 60 * 60 * 1_000);
 
     const stored = await env.DB.prepare(

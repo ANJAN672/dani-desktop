@@ -61,9 +61,9 @@ describe("origin and cookies", () => {
     expect(isSameOrigin(request({ host: "a.example", origin: "https://evil.example" }))).toBe(false);
   });
   it("parses cookies and names the session cookie per port and environment", () => {
-    expect(parseCookies("a=1; omb_session_8799_abc=tok; b = 2")).toEqual(new Map([["a", "1"], ["omb_session_8799_abc", "tok"], ["b", "2"]]));
+    expect(parseCookies("a=1; dani_session_8799_abc=tok; b = 2")).toEqual(new Map([["a", "1"], ["dani_session_8799_abc", "tok"], ["b", "2"]]));
     expect(parseCookies(undefined).size).toBe(0);
-    expect(sessionCookieName(8799, "3f2a-uuid-like-id")).toBe("omb_session_8799_3f2auuidlike");
+    expect(sessionCookieName(8799, "3f2a-uuid-like-id")).toBe("dani_session_8799_3f2auuidlike");
     expect(serializeSessionCookie("c", "t", { secure: true, maxAgeSeconds: 60 })).toBe("c=t; Path=/; HttpOnly; SameSite=Lax; Max-Age=60; Secure");
     expect(serializeSessionCookie("c", "t", { secure: false, maxAgeSeconds: 60 })).not.toContain("Secure");
     expect(clearSessionCookie("c")).toContain("Max-Age=0");
@@ -125,7 +125,7 @@ describe("scopes", () => {
 describe("resolveRequestAuth", () => {
   let dir: string;
   let sessions: SessionRegistry;
-  const cookieName = "omb_session_8799_env";
+  const cookieName = "dani_session_8799_env";
   const resolve = (headers: Record<string, string>, path = "/api/bots", method = "GET") =>
     resolveRequestAuth(request(headers, method), { sessions, cookieName, streamPath: "/api/events", url: new URL(path, "http://x") });
 

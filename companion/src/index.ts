@@ -41,20 +41,25 @@ import { normalizedPhoneSecretPublicKey } from "./phone-secret-key.ts";
 
 /** A port from the environment, or the default. Anything that is not a whole
  * number in range is the default — a typo'd port must not become port 0. */
+/** Environment override, current name first, legacy OpenMausBot-era name as
+ * fallback so existing installs and self-hosters keep working. */
+const env = (primary: string, legacy: string): string | undefined =>
+  process.env[primary] ?? process.env[legacy];
+
 const num = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : fallback;
 };
 
-const HARNESS_PORT = num(process.env.OMB_PORT, 8799);
-const WEBHOOK_PORT = num(process.env.OMB_WEBHOOK_PORT, HARNESS_PORT + 1);
-const COMPANION_PORT = num(process.env.OMB_COMPANION_PORT, 8810);
-const CONTROL_PORT = num(process.env.OMB_CONTROL_PORT, 8811);
-const SERVICE_TYPE = "_openmausbot._tcp";
-let hostedUrl = hostedCompanionUrl(process.env.OMB_COMPANION_HOSTED_URL);
-const PRIVATE_ORIGIN = companionOriginSocket(process.env.OMB_COMPANION_INTERNAL_ORIGIN);
+const HARNESS_PORT = num(env("DANI_PORT", "OMB_PORT"), 8799);
+const WEBHOOK_PORT = num(env("DANI_WEBHOOK_PORT", "OMB_WEBHOOK_PORT"), HARNESS_PORT + 1);
+const COMPANION_PORT = num(env("DANI_COMPANION_PORT", "OMB_COMPANION_PORT"), 8810);
+const CONTROL_PORT = num(env("DANI_CONTROL_PORT", "OMB_CONTROL_PORT"), 8811);
+const SERVICE_TYPE = "_danibot._tcp";
+let hostedUrl = hostedCompanionUrl(env("DANI_COMPANION_HOSTED_URL", "OMB_COMPANION_HOSTED_URL"));
+const PRIVATE_ORIGIN = companionOriginSocket(env("DANI_COMPANION_INTERNAL_ORIGIN", "OMB_COMPANION_INTERNAL_ORIGIN"));
 const SECRET_PUBLIC_KEY = normalizedPhoneSecretPublicKey(
-  process.env.OMB_PHONE_SECRET_PUBLIC_KEY ?? "",
+  env("DANI_PHONE_SECRET_PUBLIC_KEY", "OMB_PHONE_SECRET_PUBLIC_KEY") ?? "",
 );
 
 /** Ports the harness takes for itself, and what it uses each for.
@@ -85,7 +90,7 @@ const conflict = (name: string, port: number): string | null => {
  * Read once at startup and cached. An override wins, and a harness that is
  * not up or has no profile falls back rather than blocking — the name is a
  * label, and no part of pairing depends on it. */
-let cachedName = process.env.OMB_COMPANION_NAME?.trim() || "";
+let cachedName = env("DANI_COMPANION_NAME", "OMB_COMPANION_NAME")?.trim() || "";
 
 /** What this computer is called on the phone. Never empty. */
 const machineName = (): string => cachedName || "Dani Bot";
@@ -186,7 +191,7 @@ const listen = (server: ReturnType<typeof createServer>, port: number, host: str
       // own ports are ruled out above, and "close whatever is using it"
       // sends someone hunting through `lsof` for a process they started.
       const hint = ` — another copy of the companion may already be running; ${
-        port === COMPANION_PORT ? "OMB_COMPANION_PORT" : "OMB_CONTROL_PORT"
+        port === COMPANION_PORT ? "DANI_COMPANION_PORT" : "DANI_CONTROL_PORT"
       } chooses a different one`;
       reject(
         error.code === "EADDRINUSE"
@@ -219,7 +224,7 @@ const listen = (server: ReturnType<typeof createServer>, port: number, host: str
  * advertise and print where to point the phone. */
 async function main(): Promise<void> {
   const clash =
-    conflict("OMB_COMPANION_PORT", COMPANION_PORT) ?? conflict("OMB_CONTROL_PORT", CONTROL_PORT);
+    conflict("DANI_COMPANION_PORT", COMPANION_PORT) ?? conflict("DANI_CONTROL_PORT", CONTROL_PORT);
   if (clash) throw new Error(`${clash}. Pick another port.`);
 
   // The sidecar's own two ports, for the same reason as the harness's: bound
@@ -231,7 +236,7 @@ async function main(): Promise<void> {
   // sockets exist to prevent.
   if (COMPANION_PORT === CONTROL_PORT) {
     throw new Error(
-      `OMB_COMPANION_PORT and OMB_CONTROL_PORT are both port ${COMPANION_PORT}, and they cannot share one: ` +
+      `DANI_COMPANION_PORT and DANI_CONTROL_PORT are both port ${COMPANION_PORT}, and they cannot share one: ` +
         `the first is open to your network and the second must never be. Pick another port.`,
     );
   }

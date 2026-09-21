@@ -86,7 +86,7 @@ describe("companion status refresh", () => {
   });
 
   it("does not let a pre-mutation poll overwrite a newly opened pairing", async () => {
-    const pairingToken = `omb_pair_${"a".repeat(43)}`;
+    const pairingToken = `dani_pair_${"a".repeat(43)}`;
     const staleState: CompanionState = {
       enabled: true,
       keepAwake: false,

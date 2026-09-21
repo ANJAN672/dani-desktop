@@ -139,7 +139,7 @@ describe("sessions", () => {
     if (process.platform !== "win32") expect(statSync(file()).mode & 0o777).toBe(0o600); // Windows has no POSIX modes
     const reloaded = new SessionRegistry({ file: file(), now: () => clock });
     expect(reloaded.authenticate(token)?.id).toBe(session.id);
-    expect(reloaded.authenticate("omb_sess_nope")).toBeNull();
+    expect(reloaded.authenticate("dani_sess_nope")).toBeNull();
   });
 
   it("expires after 30 days and can be revoked", () => {

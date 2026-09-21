@@ -1971,7 +1971,7 @@ class Session(
 
         /** High-entropy QR token — distinct from a retryable six-digit code. */
         fun isQrCredential(credential: String): Boolean =
-            credential.startsWith("omb_pair_") ||
+            (credential.startsWith("dani_pair_") || credential.startsWith("omb_pair_")) ||
                 !(credential.length == 6 && credential.all { it in '0'..'9' })
     }
 }

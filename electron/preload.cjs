@@ -6,7 +6,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 // load sibling CommonJS files. Keep this tiny predicate inline here; main's
 // privileged process uses the shared browser-platform helper.
 const browserSurfaceSupported = process.platform === "darwin" || process.platform === "linux";
-const desktopRemoteClient = process.argv.includes("--openmausbot-remote-client");
+const desktopRemoteClient = process.argv.includes("--danibot-remote-client");
 
 let pendingPackageInstallUrl = null;
 const packageInstallListeners = new Set();
