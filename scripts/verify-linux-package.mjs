@@ -164,8 +164,14 @@ function verifyCompliance(licenses, label) {
   }
   const registryIds = new Set();
   for (const component of registry) {
+    // The hash-pinned upstream archive predates the openmausbot -> danibot
+    // rename, so its SBOM still carries the legacy property namespace. The
+    // property prefix is cosmetic (archive integrity comes from the pinned
+    // SHA-256s); the exact registry+ package ID requirement is unchanged.
     const packageId = component.properties?.find(
-      (property) => property.name === "danibot:cargo:package-id",
+      (property) =>
+        property.name === "danibot:cargo:package-id" ||
+        property.name === "openmausbot:cargo:package-id",
     )?.value;
     if (typeof packageId !== "string" || !packageId.startsWith("registry+")) {
       fail(`${label} SBOM registry component has no exact Cargo package ID`);
