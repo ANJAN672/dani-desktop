@@ -1,1 +1,72 @@
-import{describe,expect,it,vi}from"vitest";import{DuplexVoiceController}from"./duplex-voice";describe("Duplex voice",()=>{it("streams a turn and supports barge-in",async()=>{let transcript:(t:string,f:boolean)=>void=()=>{};const states:string[]=[],interrupt=vi.fn(async()=>{}),tts={speak:vi.fn(async()=>{}),stop:vi.fn()};const c=new DuplexVoiceController({start:async(_s,on)=>{transcript=on},stop:async()=>{}},tts,{start:async()=>{},stop:()=>{}},{send:async()=>({async*[Symbol.asyncIterator](){yield"hello"}}),interrupt},s=>states.push(s));await c.start({}as MediaStream);transcript("hi",true);await new Promise(r=>setTimeout(r,0));expect(tts.speak).toHaveBeenCalledWith("hello",expect.any(AbortSignal));(c as any).move("speaking");await c.bargeIn();expect(interrupt).toHaveBeenCalled();expect(states).toContain("listening")})});
+import { describe, expect, it, vi } from "vitest";
+import { DuplexVoiceController, reconnectWithBackoff } from "./duplex-voice";
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe("Duplex voice", () => {
+  it("streams a turn with playback backpressure", async () => {
+    let transcript: (t: string, f: boolean) => void = () => {};
+    const order: string[] = [];
+    const c = new DuplexVoiceController(
+      { start: async (_s, on) => { transcript = on; }, stop: async () => {} },
+      { speak: async (text) => { order.push(`start:${text}`); await flush(); order.push(`end:${text}`); }, stop: vi.fn() },
+      { start: async () => {}, stop: () => {} },
+      { send: async () => ({ async *[Symbol.asyncIterator]() { yield "one"; yield "two"; } }), interrupt: vi.fn(async () => {}) },
+    );
+    await c.start({} as MediaStream);
+    transcript("hi", true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(order).toEqual(["start:one", "end:one", "start:two", "end:two"]);
+    expect(c.state).toBe("listening");
+  });
+
+  it("aborts generation and prevents post-barge playback", async () => {
+    let transcript: (t: string, f: boolean) => void = () => {};
+    let release!: () => void;
+    const interrupt = vi.fn(async () => {});
+    const speak = vi.fn(async () => { await new Promise<void>((resolve) => { release = resolve; }); });
+    const c = new DuplexVoiceController(
+      { start: async (_s, on) => { transcript = on; }, stop: async () => {} },
+      { speak, stop: vi.fn(() => release?.()) },
+      { start: async () => {}, stop: () => {} },
+      { send: async () => ({ async *[Symbol.asyncIterator]() { yield "first"; yield "must not play"; } }), interrupt },
+    );
+    await c.start({} as MediaStream);
+    transcript("hi", true);
+    await flush();
+    await c.bargeIn();
+    await flush();
+    expect(interrupt).toHaveBeenCalledOnce();
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(c.state).toBe("listening");
+  });
+
+  it("deduplicates STT final and VAD silence for the same utterance", async () => {
+    let transcript: (t: string, f: boolean) => void = () => {};
+    let silence = () => {};
+    const send = vi.fn(async () => ({ async *[Symbol.asyncIterator]() {} }));
+    const c = new DuplexVoiceController(
+      { start: async (_s, on) => { transcript = on; }, stop: async () => {} },
+      { speak: async () => {}, stop: () => {} },
+      { start: async (_s, _speech, quiet) => { silence = quiet; }, stop: () => {} },
+      { send, interrupt: async () => {} },
+    );
+    await c.start({} as MediaStream);
+    transcript("same words", false);
+    silence();
+    transcript("same words", true);
+    await flush();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconnects with bounded exponential backoff", async () => {
+    vi.useFakeTimers();
+    const signal = new AbortController().signal;
+    const connect = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+    const promise = reconnectWithBackoff(connect, signal, { baseMs: 10 });
+    await vi.advanceTimersByTimeAsync(10);
+    await promise;
+    expect(connect).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+});
