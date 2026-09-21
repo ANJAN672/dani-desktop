@@ -202,3 +202,24 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
   lease ("who is driving") and adapter evidence rules. Until one is
   registered the controller refuses to run and bounded_cua falls back to
   Hermes. End-to-end CUA verification needs real hardware/a real box.
+
+## Slice 6 landed (2026-09-22): guarded driver binding
+
+- `server/laya/proxy-driver.ts`: BoxProxyCuaDriver drives the EXISTING
+  computer proxy as a child MCP stdio server - no execution reimplemented.
+  The who-is-driving lease (CONTROL_REFUSAL -> CuaLeaseRefused), stale-ref
+  rules, act+observe evidence and box wake logic all apply unchanged.
+  Candidates are parsed from the proxy's real semantic browser snapshot
+  (disabled elements excluded); stateVersion hashes the snapshot; one child
+  process is reused per run because semantic refs live in the process.
+- Controller: driver errors and lease refusals are typed aborts with a
+  truthful Hermes handoff.
+- Gated verification surface: POST /api/laya/bots/:id/cua/run requires BOTH
+  features.laya and features.layaRouting, a configured cloud box, and an
+  objective; it runs one bounded controller run and returns the transcript.
+  Chat-turn pipeline integration (a committed bounded_cua route replacing a
+  Hermes dispatch) remains the next slice.
+- Tests: 3 new tests spawn the REAL proxy against a stub box API/control
+  endpoint (candidate parsing, lease refusal on observe+act, honest tool
+  failure). UNVERIFIED: no real box driven; local-VM/VPS surfaces (cua MCP,
+  not computer-proxy) have no driver yet.

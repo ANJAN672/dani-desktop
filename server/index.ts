@@ -130,6 +130,7 @@ import { LayaDecisionShadowScorer, routeShadowCandidates } from "./laya/shadow-s
 import { DaniTaskRouter } from "./laya/router.ts";
 import { LAYA_TYPED_DECISIONS, layaCheckpointBySubfolder } from "./laya/manifest.ts";
 import { LayaCuaController } from "./laya/cua-controller.ts";
+import { BoxProxyCuaDriver } from "./laya/proxy-driver.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
@@ -11447,6 +11448,44 @@ const server = createServer(async (req, res) => {
 
     if (path.startsWith("/api/proactive/") && !proactiveEnabled(cfg)) {
       return json(res, 404, { error: "proactive suggestions are disabled" });
+    }
+
+    // spec 100: one bounded CUA run against a bot's real cloud box, through
+    // the existing computer proxy (same who-is-driving lease, same evidence
+    // rules). Gated on BOTH the service and routing gates. This is the
+    // verification surface for the controller until route execution is
+    // integrated into the chat-turn pipeline.
+    m = path.match(/^\/api\/laya\/bots\/([A-Za-z0-9-]+)\/cua\/run$/);
+    if (m && method === "POST") {
+      if (!layaEnabled(cfg) || !layaRoutingEnabled(cfg))
+        return json(res, 404, { error: "laya bounded routing is disabled" });
+      if (!layaService) return json(res, 503, { error: "laya service unavailable" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such bot" });
+      const body = await readBody(req);
+      const objective = typeof body?.objective === "string" ? body.objective.trim() : "";
+      if (!objective) return json(res, 400, { error: "objective is required" });
+      if (!box.boxConfigured(cfg)) return json(res, 409, { error: "cloud box is not configured" });
+      const existing = await box.findBox(cfg, bot.id).catch(() => null);
+      if (!existing) return json(res, 409, { error: "this bot has no cloud box" });
+      const driver = new BoxProxyCuaDriver({
+        kind: "box",
+        boxId: existing.id,
+        token: cfg.box!.token!,
+        control: controlIntegration(bot.id, `laya-cua-${randomUUID()}`, randomUUID()),
+      });
+      try {
+        const controller = new LayaCuaController((req2) => layaService!.decide(req2), driver);
+        const result = await controller.run({
+          botId: bot.id,
+          taskId: `laya-cua-${randomUUID()}`,
+          traceId: randomUUID(),
+          objective,
+        });
+        return json(res, 200, result);
+      } finally {
+        await driver.close();
+      }
     }
 
     m = path.match(/^\/api\/proactive\/bots\/([A-Za-z0-9-]+)\/proposals$/);

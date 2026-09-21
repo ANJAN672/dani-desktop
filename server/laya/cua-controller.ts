@@ -78,6 +78,8 @@ export type CuaTerminalReason =
   | "abstained" // Laya would not commit
   | "state_changed" // state moved between scoring and acting
   | "decision_failed" // typed provider failure
+  | "driver_error" // guarded driver threw (includes lease refusal)
+  | "lease_refused" // the person is driving the computer
   | "budget_exhausted"
   | "cancelled";
 
@@ -134,6 +136,7 @@ export class LayaCuaController {
     });
     if (!this.driver) return finish("aborted", "no_driver", "no guarded CUA driver is registered for this bot");
     const driver = this.driver;
+    const isLeaseRefusal = (e: unknown) => e instanceof Error && e.name === "CuaLeaseRefused";
     const deadline = Date.now() + this.budgets.maxDurationMs;
     const objective = input.objective.slice(0, MAX_OBJECTIVE_CHARS);
 
@@ -141,7 +144,16 @@ export class LayaCuaController {
       if (input.isCancelled?.()) return finish("aborted", "cancelled", "cancelled by the user/kernel fence");
       if (Date.now() > deadline) return finish("aborted", "budget_exhausted", "wall-clock budget exhausted");
 
-      const before = await driver.observe(input.botId);
+      let before: CuaStateSnapshot;
+      try {
+        before = await driver.observe(input.botId);
+      } catch (error) {
+        return finish(
+          "aborted",
+          isLeaseRefusal(error) ? "lease_refused" : "driver_error",
+          `state observation failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       if (before.candidates.length === 0)
         return finish("aborted", "no_candidates", "current UI state exposes no bounded actions");
       if (before.candidates.length > 11)
@@ -175,11 +187,29 @@ export class LayaCuaController {
       if (!action) return finish("aborted", "decision_failed", "selected option is not a current candidate");
 
       // Decision validity expires if state changed while we scored.
-      const recheck = await driver.observe(input.botId);
+      let recheck: CuaStateSnapshot;
+      try {
+        recheck = await driver.observe(input.botId);
+      } catch (error) {
+        return finish(
+          "aborted",
+          isLeaseRefusal(error) ? "lease_refused" : "driver_error",
+          `state re-check failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       if (recheck.stateVersion !== before.stateVersion)
         return finish("aborted", "state_changed", "UI state changed between scoring and execution");
 
-      const { evidence } = await driver.act(input.botId, action.tool);
+      let evidence: string;
+      try {
+        evidence = (await driver.act(input.botId, action.tool)).evidence;
+      } catch (error) {
+        return finish(
+          "aborted",
+          isLeaseRefusal(error) ? "lease_refused" : "driver_error",
+          `guarded action failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       steps.push({
         step,
         stateVersion: before.stateVersion,
@@ -193,7 +223,16 @@ export class LayaCuaController {
       await new Promise((r) => setTimeout(r, this.budgets.settleMs));
 
       // Verify from fresh state, not from the action's own report.
-      const after = await driver.observe(input.botId);
+      let after: CuaStateSnapshot;
+      try {
+        after = await driver.observe(input.botId);
+      } catch (error) {
+        return finish(
+          "aborted",
+          isLeaseRefusal(error) ? "lease_refused" : "driver_error",
+          `verification observation failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       const done = await this.decide({
         schemaId: "dani.laya.decision",
         schemaVersion: 1,
