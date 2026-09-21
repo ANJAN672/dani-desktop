@@ -4,7 +4,7 @@
 // without an OpenRouter key — that is the "HTTP 401: Missing Authentication
 // header" failure. Inject writes providers.<host> and session/set_model
 // `custom:<host>:<model>` instead.
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +13,10 @@ import { parse as parseYaml } from "yaml";
 import type { ModelCatalog } from "../../contracts.ts";
 import { decodeInjectId, hostApiKey, INJECT_SEP, localHost, mergeLocalInject } from "../local-inject.ts";
 import { createAcpDriver, type AcpSupport } from "./core.ts";
+import { classifyHermesError } from "../../hermes-provider-policy.ts";
+
+export const HERMES_PINNED_VERSION = "0.21.0";
+export const HERMES_PINNED_RELEASE = "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.0";
 
 const EMPTY: ModelCatalog = { default: "", options: [] };
 
@@ -396,6 +400,11 @@ const support: AcpSupport = {
   displayName: "Hermes",
   access: "custom",
   models: EMPTY,
+  sessionModelSwitch: "in-session",
+  // Hermes exposes native terminal/filesystem tools outside Dani's effect ledger.
+  // Never auto-approve those. Brokered MCP calls remain interactive unless the
+  // broker itself supplies its independently verified authorization.
+  allowUnbrokeredUnattendedTool: () => false,
   resolveModels: (env: Record<string, string | undefined>, config: any) => resolveModels(env, config),
   resolveTurnModel: (model, env) => {
     // Never inherit a broad or stale compatibility grant from the parent.
@@ -419,6 +428,16 @@ const support: AcpSupport = {
     signInCommand: "hermes setup",
   },
   spawnArgs: () => ["acp"],
+  snapshot: async (env, config) => await new Promise((resolve) => {
+    execFile(config.cli, ["--version"], { env: env as NodeJS.ProcessEnv, timeout: 8_000 }, (error, stdout) => {
+      if (error) return resolve({ state: "unavailable", reason: "`hermes` CLI not found" });
+      const version = String(stdout).trim();
+      const compatible = new RegExp(`(?:^|\\s)v?${HERMES_PINNED_VERSION.replaceAll(".", "\\.")}(?:\\s|$|\\()`).test(version);
+      resolve(compatible
+        ? { state: "available", version, authenticated: true }
+        : { state: "unavailable", version, reason: `Hermes ${HERMES_PINNED_VERSION} is required; found ${version || "unknown"}` });
+    });
+  }),
   transformEnv: (env) => {
     // A leftover OPENAI_API_KEY makes Hermes auto-resolve to OpenRouter and
     // send no Authorization header. ACP also reloads ~/.hermes/.env, so the
@@ -442,6 +461,7 @@ const support: AcpSupport = {
       `model "${native}"`,
     );
   },
+  classifyError: classifyHermesError,
   buildPromptText: (turn) => (turn.system ? `${turn.system}\n\n${turn.text}` : turn.text),
 };
 

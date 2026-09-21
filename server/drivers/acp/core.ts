@@ -70,6 +70,10 @@ export interface AcpSupport {
    *  the picker-rail divider and have no first-party cloud catalog. */
   access?: "subscription" | "custom";
   models: { default: string; options: Array<{ id: string; label: string }> };
+  /** Whether this ACP harness can switch models on an existing session. */
+  sessionModelSwitch?: "in-session" | "unsupported";
+  /** Fail-closed policy for unattended provider-native tool requests. */
+  allowUnbrokeredUnattendedTool?(toolCall: unknown): boolean;
   /** Effort levels this harness's CLI accepts, ascending. Omit when it has
    * no reasoning-effort control. Static for the same reason `models` is:
    * describe() runs before any session exists, so there is no _meta to read
@@ -623,6 +627,10 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
           const toolCall = params.toolCall ?? {};
           const isQuestion = String(toolCall.toolCallId ?? "").startsWith("interaction_");
           if (turnConfig.fullAuto && turn.approvalMode === undefined && !isQuestion) {
+            if (support.allowUnbrokeredUnattendedTool && !support.allowUnbrokeredUnattendedTool(toolCall)) {
+              emit({ ...base(threadId, turnId), type: "runtime.error", message: `${DRIVER_KIND} native tool bypass blocked in unattended mode` });
+              return send({ jsonrpc: "2.0", id: msg.id, result: cancelled });
+            }
             const allow = optionFor("allow");
             if (!allow) missing("allow");
             return send({
@@ -1022,7 +1030,7 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
         adapter: {
           provider: DRIVER_KIND,
           capabilities: {
-            sessionModelSwitch: "unsupported",
+            sessionModelSwitch: support.sessionModelSwitch ?? "unsupported",
             agentsMcp: true,
         customMcp: true,
             computerMcp: true,

@@ -11,6 +11,9 @@ import {
   bindHermesScreenshotCompat,
   hermesAcpModelId,
   hermesConfiguredModel,
+  HERMES_PINNED_VERSION,
+  HERMES_PINNED_RELEASE,
+  HermesAgentDriver,
 } from "./hermes.ts";
 
 describe("Hermes OpenMaus screenshot compatibility binding", () => {
@@ -217,3 +220,6 @@ describe("hermesAcpModelId", () => {
     expect(hermesAcpModelId("gpt-5")).toBeNull();
 });
 });
+
+
+describe("Hermes release pin",()=>{it("pins a traceable upstream release",()=>{expect(HERMES_PINNED_VERSION).toBe("0.21.0");expect(HERMES_PINNED_RELEASE).toBe("https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.0");expect(HermesAgentDriver.install?.docsUrl).toContain("hermes-agent.nousresearch.com")})});

@@ -27,6 +27,7 @@ import {
 } from "../shared/credential-request.ts";
 
 import { autoVerdict, rememberableApprovalKey } from "./auto-approve.ts";
+import { selectDaniDefault } from "./dani-default-runtime.ts";
 import { requestReview, resolveAutoReviewMode, shouldReview } from "./auto-review.ts";
 import { updateClaudeCli } from "./claude-update.ts";
 import {
@@ -995,17 +996,11 @@ function askBotAndWait(targetBotId: string, message: string, depth: number, from
   });
 }
 
-// default selection for new bots: Dani runs Hermes by default, then any available engine
+// default selection for new bots: Dani runs the compatible Hermes runtime or fails closed
 async function defaultSelection() {
   const described = await registry.describe();
-  const available = described.filter((d) => d.snapshot.state === "available");
-  // Deliberately NO fallback to described[0]. Handing a bot an engine whose
-  // CLI isn't installed makes it look ready and then fail on send with a raw
-  // spawn ENOENT — the single worst first-run experience, and the one every
-  // user with no CLIs used to get. An empty selection is honest: the UI shows
-  // the setup path instead of a bot that cannot answer.
-  const pick = available.find((d) => d.driverKind === "hermesAgent") ?? available[0];
-  return { instanceId: pick?.instanceId ?? "", model: pick?.models.default ?? "" };
+  const selected = selectDaniDefault(described);
+  return { instanceId: selected.instanceId, model: selected.model };
 }
 
 function checkedModelSelection(
