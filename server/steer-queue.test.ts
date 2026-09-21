@@ -30,6 +30,10 @@ const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
+// 43 base64url chars satisfying OWNER_CAPABILITY_PATTERN (server/config.ts);
+// adopted by the child server as DANI_OWNER_TOKEN (security/epic-9-B) and
+// presented on every API call below.
+const OWNER_TOKEN = `e2e-owner-capability-${"0".repeat(22)}`;
 
 // ── unit: the queue module against a fake store ────────────────────────
 function fakeBot(id: string, threadId: string, busy: boolean): BotRecord {
@@ -227,7 +231,10 @@ describe("steer-queue e2e (fake ACP fleet)", () => {
   const api = async (method: string, path: string, body?: ApiBody): Promise<{ status: number; body: any }> => {
     const res = await fetch(`${BASE}${path}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers: {
+        "x-danibot-desktop-owner": OWNER_TOKEN,
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: res.status, body: await res.json() };
@@ -291,6 +298,7 @@ describe("steer-queue e2e (fake ACP fleet)", () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
     };
     if (process.env.PATH) env.PATH = process.env.PATH;
     // Without SystemRoot, winsock fails to initialize in the child.

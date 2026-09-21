@@ -38,10 +38,16 @@ interface ApiResult {
   body: Record<string, unknown>;
 }
 
+// 43 base64url chars satisfying OWNER_CAPABILITY_PATTERN (server/config.ts);
+// adopted by the child server as DANI_OWNER_TOKEN (security/epic-9-B).
+const OWNER_TOKEN = `e2e-owner-capability-${"0".repeat(22)}`;
 const api = async (method: string, path: string, body?: unknown): Promise<ApiResult> => {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: {
+      "x-danibot-desktop-owner": OWNER_TOKEN,
+      ...(body ? { "content-type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const parsed: unknown = await res.json().catch(() => ({}));
@@ -178,6 +184,7 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
       OMB_WEBHOOK_PORT: String(WEBHOOK_PORT),
       FAKE_CLAUDE_DUMP: fakeClaudeDump,
       OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,

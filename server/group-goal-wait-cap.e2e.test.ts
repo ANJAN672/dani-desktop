@@ -9,6 +9,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 import { freePortBlock } from "./testing/ports.ts";
 
+// 43 base64url chars satisfying OWNER_CAPABILITY_PATTERN (server/config.ts);
+// adopted by the child server as DANI_OWNER_TOKEN (security/epic-9-B).
+const OWNER_TOKEN = `e2e-owner-capability-${"0".repeat(22)}`;
+
+
 // A room waits for a busy teammate, but not forever, and a goal survives one
 // transient provider failure. This server runs with a short wait cap so the
 // cap fires in seconds: a worker that never frees up comes back to the lead
@@ -39,7 +44,10 @@ const reassignLeadReplies = [
 const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: {
+      "x-danibot-desktop-owner": OWNER_TOKEN,
+      ...(body ? { "content-type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: response.status, body: await response.json() };
@@ -86,6 +94,7 @@ beforeAll(async () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(port),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
       OMB_WEBHOOK_PORT: String(port + 1),
       OMB_STATIC_DIR: staticDir,
       // seconds, not minutes: the point of this file is the cap firing

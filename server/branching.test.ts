@@ -18,6 +18,9 @@ import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
 
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
+// 43 base64url chars, satisfying OWNER_CAPABILITY_PATTERN (server/config.ts);
+// supplied to the child server as DANI_OWNER_TOKEN (security/epic-9-B).
+const OWNER_TOKEN = `branch-owner-capability-${"0".repeat(19)}`;
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -53,7 +56,10 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
   const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
     const res = await fetch(`${BASE}${path}`, {
       method,
-      headers: body ? { "content-type": "application/json" } : undefined,
+      // The loopback owner gate (security/epic-9-B) requires the per-launch
+      // capability on every mutation; this harness supplies it as the
+      // operator (DANI_OWNER_TOKEN at spawn) and presents it on every call.
+      headers: { "x-danibot-desktop-owner": OWNER_TOKEN, ...(body ? { "content-type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: res.status, body: await res.json() };
@@ -95,6 +101,7 @@ posixOnly("conversation branching e2e (fake ACP fleet)", () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
     };
     if (process.env.PATH) env.PATH = process.env.PATH;
     child = spawn(process.execPath, [join(SERVER_DIR, "index.ts")], {

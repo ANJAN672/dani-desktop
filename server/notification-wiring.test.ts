@@ -18,6 +18,10 @@ const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
 const PORT = 18800 + Math.floor(Math.random() * 10_000);
 const WEBHOOK_PORT = 39000 + Math.floor(Math.random() * 10_000);
 const BASE = `http://127.0.0.1:${PORT}`;
+// 43 base64url chars satisfying OWNER_CAPABILITY_PATTERN (server/config.ts);
+// adopted by the child server as DANI_OWNER_TOKEN (security/epic-9-B) and
+// presented on every API call below.
+const OWNER_TOKEN = `e2e-owner-capability-${"0".repeat(22)}`;
 const posixOnly = describe.skipIf(process.platform === "win32");
 
 let child: ChildProcess;
@@ -45,7 +49,10 @@ const api = async (
 ): Promise<{ status: number; body: any }> => {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
+    headers: {
+      "x-danibot-desktop-owner": OWNER_TOKEN,
+      ...(body ? { "content-type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: res.status === 204 ? null : await res.json() };
@@ -77,6 +84,7 @@ posixOnly("routine failure notification wiring", () => {
       HOME: home,
       USERPROFILE: home,
       OMB_PORT: String(PORT),
+      DANI_OWNER_TOKEN: OWNER_TOKEN,
       OMB_WEBHOOK_PORT: String(WEBHOOK_PORT),
     };
     if (process.env.PATH) env.PATH = process.env.PATH;
