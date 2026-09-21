@@ -94,7 +94,14 @@ function CustomPicker({ instance, cliDefault, onClose, onSaved }: {
     setError(null);
     api("/api/cli-test", {
       method: "POST",
-      body: JSON.stringify({ cli: value, driver: instance.driverKind }),
+      // explicitCustomPath only when the user typed/pasted the path into the
+      // manual field: a custom (non-allowlisted) probe needs that explicit
+      // user selection server-side. A detected-binary pick never sets it.
+      body: JSON.stringify({
+        cli: value,
+        driver: instance.driverKind,
+        ...(manual.trim() ? { explicitCustomPath: true } : {}),
+      }),
     })
       .then((result: ProbeResult) => {
         setProbe(result);
