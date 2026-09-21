@@ -2,6 +2,7 @@
 // other endpoints that speak the OpenAI chat-completions contract.
 import type { ModelCatalog, ProviderDriver } from "../contracts.ts";
 import { createOpenAIChatRuntime } from "./openai-chat.ts";
+import { ensureDaniFreeProxy } from "../dani-free/supervisor.ts";
 
 const DRIVER_KIND = "openai-compat";
 const DEFAULT_IDLE_TIMEOUT_MS = 180_000;
@@ -20,11 +21,15 @@ const DEFAULT_MODELS: ModelCatalog = {
 };
 
 export interface OpenAICompatConfig {
+  tools?: boolean;
   url: string;
   apiKeyEnv: string;
   key?: string;
   model?: string;
   provider?: string;
+  /** When set to "dani-free", this instance is managed by the Dani-free
+   * proxy supervisor. URL is filled at runtime; API key is optional. */
+  localManagedProxy?: "dani-free";
 }
 
 function isOpenRouterUrl(url: string): boolean {
@@ -38,8 +43,23 @@ function isOpenRouterUrl(url: string): boolean {
 
 function decodeConfig(raw: unknown): OpenAICompatConfig {
   const config = (raw ?? {}) as Record<string, unknown>;
+  if (config.tools !== undefined && typeof config.tools !== "boolean") throw new Error("tools must be a boolean");
+  const localManagedProxy = config.localManagedProxy === "dani-free" ? "dani-free" : undefined;
   const envUrl = process.env.OPENAI_COMPAT_URL;
+  // For dani-free managed proxy, URL is filled at runtime and API key is optional
+  if (localManagedProxy === "dani-free") {
+    return {
+      ...(config.tools !== undefined ? { tools: config.tools as boolean } : {}),
+      url: "", // placeholder; supervisor fills at runtime
+      apiKeyEnv: "",
+      key: undefined,
+      model: typeof config.model === "string" && config.model ? config.model : process.env.OPENAI_COMPAT_MODEL || undefined,
+      provider: typeof config.provider === "string" ? config.provider || undefined : process.env.OPENAI_COMPAT_PROVIDER || undefined,
+      localManagedProxy: "dani-free",
+    };
+  }
   return {
+    ...(config.tools !== undefined ? { tools: config.tools as boolean } : {}),
     url: (typeof config.url === "string" && config.url ? config.url : envUrl || "https://openrouter.ai/api/v1")
       .replace(/\/+$/, ""),
     apiKeyEnv: typeof config.apiKeyEnv === "string" && config.apiKeyEnv
@@ -83,27 +103,42 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
 
   async create(input) {
     const { config } = input;
-    const apiKey =
-      config.key ??
-      input.environment[config.apiKeyEnv] ??
-      input.environment.OPENAI_COMPAT_API_KEY ??
-      process.env[config.apiKeyEnv] ??
-      process.env.OPENAI_COMPAT_API_KEY ??
-      "";
-    let catalog: ModelCatalog = config.model
-      ? {
-          default: config.model,
-          options: DEFAULT_MODELS.options.some((model) => model.id === config.model)
-            ? DEFAULT_MODELS.options
-            : [{ id: config.model, label: config.model, custom: true }, ...DEFAULT_MODELS.options],
-        }
-      : DEFAULT_MODELS;
+    const isDaniFree = config.localManagedProxy === "dani-free";
+    const apiKey = isDaniFree
+      ? ""
+      : (config.key ??
+          input.environment[config.apiKeyEnv] ??
+          input.environment.OPENAI_COMPAT_API_KEY ??
+          process.env[config.apiKeyEnv] ??
+          process.env.OPENAI_COMPAT_API_KEY ??
+          "");
+    // The managed proxy has its own catalog and must never inherit the
+    // OpenRouter/Groq seed used by generic BYOK endpoints.
+    let apiUrl = config.url;
+    if (isDaniFree) {
+      apiUrl = await ensureDaniFreeProxy();
+    }
+    let catalog: ModelCatalog = isDaniFree
+      ? config.model
+        ? { default: config.model, options: [] }
+        : { default: "", options: [] }
+      : config.model
+        ? {
+            default: config.model,
+            options: DEFAULT_MODELS.options.some((model) => model.id === config.model)
+              ? DEFAULT_MODELS.options
+              : [{ id: config.model, label: config.model, custom: true }, ...DEFAULT_MODELS.options],
+          }
+        : DEFAULT_MODELS;
 
     const fetchModels = async () => {
-      if (!apiKey) return;
       try {
-        const response = await fetch(`${config.url}/models`, {
-          headers: { authorization: `Bearer ${apiKey}` },
+        const response = await fetch(`${apiUrl}/models`, {
+          headers: isDaniFree
+            ? { "x-dani-privacy": "private" }
+            : apiKey
+              ? { authorization: `Bearer ${apiKey}` }
+              : undefined,
           signal: AbortSignal.timeout(8_000),
         });
         if (!response.ok) return;
@@ -127,29 +162,30 @@ export const OpenAICompatDriver: ProviderDriver<OpenAICompatConfig> = {
         }
         catalog = { default: config.model ?? options[0].id, options };
       } catch {
-        // Catalog refresh is opportunistic; keep the seeded options.
+        // Catalog refresh is opportunistic; managed instances start without a seeded fallback.
       }
     };
-    if (apiKey) void fetchModels();
+    if (isDaniFree || apiKey) void fetchModels();
 
     return createOpenAIChatRuntime({
       input,
       driverKind: DRIVER_KIND,
       apiKey,
-      apiUrl: config.url,
+      apiUrl,
+      localManagedProxy: isDaniFree ? "dani-free" : undefined,
       models: () => catalog,
       refreshModels: fetchModels,
       requestBody: (model, messages, stream) => ({
         model,
         messages,
         stream,
-        ...(config.provider && isOpenRouterUrl(config.url)
+        ...(config.provider && isOpenRouterUrl(apiUrl)
           ? { provider: { order: [config.provider], allow_fallbacks: false } }
           : {}),
       }),
       httpErrorLabel: "upstream",
-      missingKeyError: `no API key — set ${config.apiKeyEnv} or add it to the instance config`,
-      unavailableReason: `no API key — set ${config.apiKeyEnv} or add it to the instance config`,
+      missingKeyError: isDaniFree ? "" : `no API key — set ${config.apiKeyEnv} or add it to the instance config`,
+      unavailableReason: isDaniFree ? "proxy not ready" : `no API key — set ${config.apiKeyEnv} or add it to the instance config`,
       timeoutMs: idleTimeoutMs(),
       reasoning: true,
       billing: "metered",

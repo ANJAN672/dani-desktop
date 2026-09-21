@@ -18,11 +18,18 @@ export type AssemblyAITranscriptionSession = {
 
 const SAMPLE_RATE = 16_000;
 const STREAMING_ENDPOINT = "wss://streaming.assemblyai.com/v3/ws";
+const WEBSOCKET_OPEN = 1;
+const WEBSOCKET_CLOSING = 2;
+const WEBSOCKET_CLOSED = 3;
 const streamingMessageSchema = z.object({
   type: z.string(),
+  id: z.unknown().optional(),
+  expires_at: z.unknown().optional(),
   transcript: z.string().optional(),
   turn_order: z.coerce.number().optional(),
   end_of_turn: z.boolean().optional(),
+  configuration: z.object({ model: z.unknown().optional() }).optional(),
+  error: z.string().optional(),
 });
 
 export function mergeAssemblyAITurn(
@@ -61,46 +68,150 @@ export function pcm16FromFloat32(
   }
   return buffer;
 }
-
 export async function startAssemblyAITranscription({
   stream,
   getToken,
   onTurn,
   onError,
+  webSocketFactory = (url) => new globalThis.WebSocket(url),
 }: {
   stream: MediaStream;
   getToken: () => Promise<{ token: string }>;
   onTurn: (turn: AssemblyAITurn) => void;
   onError: (message: string) => void;
+  webSocketFactory?: (url: string) => WebSocket;
 }): Promise<AssemblyAITranscriptionSession> {
   const { token } = await getToken();
+  const requestedModel = "universal-3-5-pro";
   const query = new URLSearchParams({
     sample_rate: String(SAMPLE_RATE),
-    speech_model: "u3-rt-pro",
+    speech_model: requestedModel,
     format_turns: "true",
     token,
   });
-  const socket = new WebSocket(`${STREAMING_ENDPOINT}?${query}`);
+  let stopping = false;
+  let terminated = false;
+  const socket = webSocketFactory(`${STREAMING_ENDPOINT}?${query}`);
+  const closeSocket = () => {
+    if (socket.readyState === WEBSOCKET_CLOSING || socket.readyState === WEBSOCKET_CLOSED) return;
+    try {
+      socket.close();
+    } catch {
+      // The browser may reject close() while a connection is still opening.
+    }
+  };
+  const reportError = (message: string) => {
+    try {
+      onError(message);
+    } catch {
+      // Error reporting must not prevent socket and audio cleanup.
+    }
+  };
+
   const connected = new Promise<void>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error("AssemblyAI took too long to connect.")), 10_000);
     socket.addEventListener("open", () => {
       window.clearTimeout(timer);
       resolve();
     }, { once: true });
+    socket.addEventListener("close", () => {
+      window.clearTimeout(timer);
+      reject(new Error("AssemblyAI closed before confirming the transcription session."));
+    }, { once: true });
     socket.addEventListener("error", () => {
       window.clearTimeout(timer);
       reject(new Error("Could not open the AssemblyAI transcription stream."));
     }, { once: true });
   });
+  const sessionReady = new Promise<void>((resolve, reject) => {
+    let timer: number | undefined;
+    const onMessage = (event: MessageEvent) => {
+      let decoded: unknown;
+      try {
+        decoded = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      const parsed = streamingMessageSchema.safeParse(decoded);
+      if (!parsed.success || parsed.data === undefined) return;
+      const message = parsed.data;
+      if (message.type === "Error") {
+        if (timer !== undefined) window.clearTimeout(timer);
+        socket.removeEventListener("message", onMessage);
+        socket.removeEventListener("close", onClose);
+        closeSocket();
+        reject(new Error(message.error ?? "Cloud transcription failed."));
+        return;
+      }
+      if (message.type !== "Begin") return;
+      const expiresAt = Number(message.expires_at);
+      if (!message.id || !Number.isFinite(expiresAt) || expiresAt <= 0) {
+        if (timer !== undefined) window.clearTimeout(timer);
+        socket.removeEventListener("message", onMessage);
+        socket.removeEventListener("close", onClose);
+        closeSocket();
+        reject(new Error("AssemblyAI returned an invalid transcription session handshake."));
+        return;
+      }
+      if (message.configuration?.model !== requestedModel) {
+        if (timer !== undefined) window.clearTimeout(timer);
+        socket.removeEventListener("message", onMessage);
+        socket.removeEventListener("close", onClose);
+        closeSocket();
+        reject(new Error(`AssemblyAI started with an unexpected transcription model: ${message.configuration?.model ?? "unknown"}`));
+        return;
+      }
+      if (timer !== undefined) window.clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+      resolve();
+    };
+    const onClose = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+      reject(new Error("AssemblyAI closed before confirming the transcription session."));
+    };
+    timer = window.setTimeout(() => {
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+      reject(new Error("AssemblyAI took too long to confirm the transcription session."));
+    }, 10_000);
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose, { once: true });
+  });
   try {
-    await connected;
+    await Promise.all([connected, sessionReady]);
   } catch (error) {
-    socket.close();
+    closeSocket();
     throw error;
   }
 
-  let stopping = false;
-  let terminated = false;
+  let audioContext: AudioContext | null = null;
+  let source: MediaStreamAudioSourceNode | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let silentOutput: GainNode | null = null;
+  const cleanupAudio = () => {
+    if (processor) processor.onaudioprocess = null;
+    for (const node of [source, processor, silentOutput]) {
+      try {
+        node?.disconnect();
+      } catch {
+        // A node may already be disconnected during terminal cleanup.
+      }
+    }
+    source = null;
+    processor = null;
+    silentOutput = null;
+    if (audioContext) {
+      void audioContext.close().catch(() => {});
+      audioContext = null;
+    }
+  };
+  const cleanup = () => {
+    cleanupAudio();
+    closeSocket();
+  };
   socket.addEventListener("message", (event) => {
     let decoded: unknown;
     try {
@@ -109,26 +220,45 @@ export async function startAssemblyAITranscription({
       return;
     }
     const parsed = streamingMessageSchema.safeParse(decoded);
-    if (!parsed.success) return;
+    if (!parsed.success || parsed.data === undefined) return;
     const message = parsed.data;
+    if (message.type === "Error") {
+      terminated = true;
+      if (!stopping) reportError(message.error ?? "Cloud transcription failed.");
+      cleanup();
+      return;
+    }
     if (message.type === "Turn" && message.transcript !== undefined) {
-      onTurn({
-        order: message.turn_order ?? Number.NaN,
-        text: message.transcript,
-        final: message.end_of_turn === true,
-      });
+      try {
+        onTurn({
+          order: message.turn_order ?? Number.NaN,
+          text: message.transcript,
+          final: message.end_of_turn === true,
+        });
+      } catch {
+        // A renderer observer must not break the transcription stream.
+      }
     } else if (message.type === "Termination") {
       terminated = true;
+      cleanup();
     }
   });
   socket.addEventListener("close", () => {
-    if (!stopping && !terminated) onError("Cloud transcription disconnected; the original audio is still being saved.");
+    if (!stopping && !terminated) {
+      terminated = true;
+      cleanupAudio();
+      reportError("Cloud transcription disconnected; the original audio is still being saved.");
+    }
+  });
+  socket.addEventListener("error", () => {
+    if (!stopping && !terminated) {
+      terminated = true;
+      cleanupAudio();
+      reportError("Cloud transcription disconnected; the original audio is still being saved.");
+    }
+    cleanup();
   });
 
-  let audioContext: AudioContext | null = null;
-  let source: MediaStreamAudioSourceNode;
-  let processor: ScriptProcessorNode;
-  let silentOutput: GainNode;
   try {
     audioContext = new AudioContext();
     if (audioContext.state === "suspended") await audioContext.resume();
@@ -136,47 +266,55 @@ export async function startAssemblyAITranscription({
     processor = audioContext.createScriptProcessor(4096, 1, 1);
     silentOutput = audioContext.createGain();
   } catch (error) {
-    await audioContext?.close().catch(() => {});
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "Terminate" }));
-    socket.close();
+    cleanup();
     throw error;
   }
   silentOutput.gain.value = 0;
   processor.onaudioprocess = (event) => {
-    if (stopping || socket.readyState !== WebSocket.OPEN) return;
-    const payload = pcm16FromFloat32(event.inputBuffer.getChannelData(0), audioContext.sampleRate);
-    if (payload.byteLength) socket.send(payload);
+    const context = audioContext;
+    if (stopping || !context || !source || !processor || socket.readyState !== WEBSOCKET_OPEN) return;
+    const payload = pcm16FromFloat32(event.inputBuffer.getChannelData(0), context.sampleRate);
+    if (!payload.byteLength) return;
+    try {
+      socket.send(payload);
+    } catch {
+      terminated = true;
+      cleanup();
+      reportError("Cloud transcription disconnected; the original audio is still being saved.");
+    }
   };
-  source.connect(processor);
-  processor.connect(silentOutput);
-  silentOutput.connect(audioContext.destination);
+  if (source && processor && silentOutput) {
+    source.connect(processor);
+    processor.connect(silentOutput);
+    silentOutput.connect(audioContext!.destination);
+  }
 
   return {
     async stop() {
       if (stopping) return;
       stopping = true;
-      processor.onaudioprocess = null;
-      source.disconnect();
-      processor.disconnect();
-      silentOutput.disconnect();
-      await audioContext.close().catch(() => {});
-      if (socket.readyState !== WebSocket.OPEN) return;
+      cleanupAudio();
+      if (socket.readyState === WEBSOCKET_CLOSED) return;
       const finished = new Promise<void>((resolve) => {
-        const done = () => resolve();
+        let timer: number | undefined;
+        const done = () => {
+          if (timer !== undefined) window.clearTimeout(timer);
+          resolve();
+        };
         socket.addEventListener("close", done, { once: true });
-        socket.addEventListener("message", (event) => {
-          try {
-            const parsed = streamingMessageSchema.safeParse(JSON.parse(String(event.data)));
-            if (parsed.success && parsed.data.type === "Termination") resolve();
-          } catch {
-            // Ignore non-JSON frames while the service drains its final turn.
-          }
-        });
-        window.setTimeout(resolve, 2_500);
+        timer = window.setTimeout(done, 2_500);
       });
-      socket.send(JSON.stringify({ type: "Terminate" }));
+      try {
+        if (socket.readyState === WEBSOCKET_OPEN) {
+          socket.send(JSON.stringify({ type: "Terminate" }));
+        } else {
+          closeSocket();
+        }
+      } catch {
+        closeSocket();
+      }
       await finished;
-      socket.close();
+      closeSocket();
     },
   };
 }

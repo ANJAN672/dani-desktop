@@ -934,6 +934,7 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
     qwen: { driver: "qwenAgent" },
     hermes: { driver: "hermesAgent" },
     pi: { driver: "piAgent" },
+    daniFree: { driver: "openai-compat", config: { localManagedProxy: "dani-free", tools: true } },
   };
   const CUSTOM_ONLY = {
     qwen: { driver: "qwenAgent" },
@@ -946,6 +947,7 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
   const PRODUCT_FLEET_ADDITIONS = {
     cursor: { driver: "cursorAgent" },
     openaiCompat: { driver: "openai-compat" },
+    daniFree: { driver: "openai-compat", config: { localManagedProxy: "dani-free", tools: true } },
     ...CUSTOM_ONLY,
   } as const;
   const configured = cfg.instances && Object.keys(cfg.instances).length ? cfg.instances : null;

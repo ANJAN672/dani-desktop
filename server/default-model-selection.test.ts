@@ -19,6 +19,19 @@ const claude = {
   snapshot: { state: "available", authenticated: true } satisfies ProviderSnapshot,
   models: { default: "claude-default", options: [{ id: "claude-default", label: "Claude" }] },
 };
+const daniFree = {
+  instanceId: "dani-free",
+  driverKind: "openai-compat",
+  install: { managed: { kind: "dani-free" as const } },
+  snapshot: { state: "available", authenticated: true } satisfies ProviderSnapshot,
+  models: { default: "dani-free-model", options: [{ id: "dani-free-model", label: "Dani-Free" }] },
+};
+const hermes = {
+  instanceId: "hermes",
+  driverKind: "hermesAgent",
+  snapshot: { state: "available", authenticated: true } satisfies ProviderSnapshot,
+  models: { default: "hermes-model", options: [{ id: "hermes-model", label: "Hermes" }] },
+};
 
 describe("new bot default model selection", () => {
   it.each(["low", "high"] as const)("honors the configured provider, model, and supported %s effort ahead of the Claude preference", (effort) => {
@@ -61,8 +74,19 @@ describe("new bot default model selection", () => {
       .toEqual({ instanceId: "", model: "" });
   });
 
-  it("keeps the existing Claude preference when no default was saved", () => {
-    expect(selectDefaultModelSelection([codex, claude])).toEqual({ instanceId: "claude", model: "claude-default" });
+  it("prefers available Dani-Free, then Hermes, only when no default was saved", () => {
+    expect(selectDefaultModelSelection([codex, hermes, daniFree, claude]))
+      .toEqual({ instanceId: "dani-free", model: "dani-free-model" });
+    expect(selectDefaultModelSelection([codex, hermes, claude]))
+      .toEqual({ instanceId: "hermes", model: "hermes-model" });
+    expect(selectDefaultModelSelection([{ ...daniFree, snapshot: { state: "unavailable" } }, hermes, codex]))
+      .toEqual({ instanceId: "hermes", model: "hermes-model" });
+    expect(selectDefaultModelSelection([daniFree, codex], { instanceId: "codex", model: "selected-model" }))
+      .toEqual({ instanceId: "codex", model: "selected-model" });
+  });
+
+  it("keeps the first available non-priority provider when no default was saved", () => {
+    expect(selectDefaultModelSelection([codex, claude])).toEqual({ instanceId: "codex", model: "codex-default" });
     expect(selectDefaultModelSelection([codex])).toEqual({ instanceId: "codex", model: "codex-default" });
     expect(selectDefaultModelSelection([])).toEqual({ instanceId: "", model: "" });
   });

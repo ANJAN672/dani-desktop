@@ -21,14 +21,9 @@ const context = (patch: Partial<ReviewContext> = {}): ReviewContext => ({
 
 describe("shouldReview", () => {
   const sources: AutoVerdictSource[] = [
-    "always-allow",
-    "auto-mode",
     "full-access",
+    "native-approval",
     "explicit-approval-block",
-    "unattended-block",
-    "local-computer-block",
-    "destructive-guard",
-    "sensitive-guard",
     "no-grant",
   ];
 

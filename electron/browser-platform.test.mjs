@@ -24,4 +24,13 @@ describe("built-in browser platform gate", () => {
     const preload = readFileSync(fileURLToPath(new URL("./preload.cjs", import.meta.url)), "utf8");
     expect(preload).not.toMatch(/require\(["']\.\//);
   });
+
+  it("keeps recorder and transcription APIs local-only", () => {
+    const preload = readFileSync(fileURLToPath(new URL("./preload.cjs", import.meta.url)), "utf8");
+    expect(preload).toContain("skillRecorder:");
+    expect(preload).toContain("transcription:");
+    expect(preload).toContain('const REMOTE_SAFE = new Set(["platform", "getCapabilities", "onCapabilitiesChanged", "applySkin", "setUnreadCount", "permStatus"]);');
+    expect(preload).not.toContain('"skillRecorder"');
+    expect(preload).not.toContain('"transcription"');
+  });
 });

@@ -173,6 +173,34 @@ const bridge = {
     }),
   /** Store a provider credential with OS-backed encryption. */
   setCredential: (name, value) => ipcRenderer.invoke("credential:set", name, value),
+  /** Record a local skill with native input events and save it under the desktop data root. */
+  skillRecorder: {
+    permissions: () => ipcRenderer.invoke("skill-recorder:permissions"),
+    status: () => ipcRenderer.invoke("skill-recorder:status"),
+    recover: () => ipcRenderer.invoke("skill-recorder:recover"),
+    start: () => ipcRenderer.invoke("skill-recorder:start"),
+    stop: () => ipcRenderer.invoke("skill-recorder:stop"),
+    resume: (sessionId) => ipcRenderer.invoke("skill-recorder:resume", sessionId),
+    checkpoint: (payload) => ipcRenderer.invoke("skill-recorder:checkpoint", payload),
+    discard: (sessionId) => ipcRenderer.invoke("skill-recorder:discard", sessionId),
+    save: (payload) => ipcRenderer.invoke("skill-recorder:save", payload),
+    onEvent: (cb) => {
+      const handler = (_event, event) => cb(event);
+      ipcRenderer.on("skill-recorder:event", handler);
+      return () => ipcRenderer.removeListener("skill-recorder:event", handler);
+    },
+    onEnd: (cb) => {
+      const handler = (_event, info) => cb(info);
+      ipcRenderer.on("skill-recorder:end", handler);
+      return () => ipcRenderer.removeListener("skill-recorder:end", handler);
+    },
+  },
+  /** Mint short-lived AssemblyAI tokens while keeping the permanent key in Electron main. */
+  transcription: {
+    status: () => ipcRenderer.invoke("transcription:status"),
+    setKey: (value) => ipcRenderer.invoke("transcription:set-key", value),
+    streamingToken: () => ipcRenderer.invoke("transcription:streaming-token"),
+  },
 
   /** In-app auto-update. State object:
    *  { status: "idle"|"checking"|"available"|"downloading"|"downloaded"|"error",

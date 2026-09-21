@@ -25,6 +25,18 @@ Dani Bot does not copy or rewrite `auth.json`. The OpenCode CLI remains the
 owner of provider authentication, and the same Zen or Go connection used by
 the OpenCode desktop/TUI is used by Dani Bot.
 
+## Dani-free route
+
+The default fleet also contains a local Dani-free OpenAI-compatible route.
+Its loopback proxy is inference-only: it enforces the checked-in free catalog
+and privacy policy, forwards model output (including tool-call data), and
+never executes tools or owns a conversation session. The agent runtime remains
+responsible for the tool loop and approvals.
+
+The proxy starts lazily when the Dani-free provider is first created. Missing
+upstream credentials or expired pricing evidence fail closed with a setup
+error; the app never silently substitutes a paid model.
+
 ## Models
 
 The model picker runs `opencode models --verbose` against the configured binary

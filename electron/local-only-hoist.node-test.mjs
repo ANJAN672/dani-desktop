@@ -23,3 +23,15 @@ test("localOnly is bound before the first top-level handler that calls it", () =
     `localOnly is bound on line ${declaration + 1} but first called on line ${firstUse + 1}: the packaged app will crash at boot`,
   );
 });
+test("transcription credential handlers require the main-window sender", () => {
+  const setKeyStart = main.findIndex((line) => line.includes('ipcMain.handle("transcription:set-key"'));
+  const tokenStart = main.findIndex((line) => line.trim() === '"transcription:streaming-token",');
+  assert.ok(setKeyStart >= 0, "transcription:set-key handler is missing");
+  assert.ok(tokenStart >= 0, "transcription:streaming-token handler is missing");
+  const setKey = main.slice(setKeyStart).join("\n");
+  const streamingToken = main.slice(tokenStart).join("\n");
+  assert.match(setKey, /localOnly\("transcription:set-key"/);
+  assert.match(setKey, /requireMainWindowSender\(event\)/);
+  assert.match(streamingToken, /localOnly\("transcription:streaming-token"/);
+  assert.match(streamingToken, /requireMainWindowSender\(event\)/);
+});

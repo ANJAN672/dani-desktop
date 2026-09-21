@@ -525,6 +525,11 @@ describe("default fleet", () => {
     expect(map.hermes?.driver).toBe("hermesAgent");
     expect(map.cursor?.driver).toBe("cursorAgent");
     expect(map.openaiCompat?.driver).toBe("openai-compat");
+    expect(map.daniFree).toEqual({
+      driver: "openai-compat",
+      config: { localManagedProxy: "dani-free", tools: true },
+      environment: {},
+    });
   });
 
   it("does not expand a one-off shadow fleet", () => {

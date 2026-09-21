@@ -175,8 +175,15 @@ export type RuntimeEvent = RuntimeEventBase &
     | { type: "thread.token-usage.updated"; input: number; output: number; cachedInput?: number }
     // `setup: true` marks a failure the user fixes by installing or
     // configuring something, not by retrying — the UI offers setup instead.
-    | { type: "runtime.error"; message: string; setup?: boolean }
-  );
+     | { type: "runtime.error"; message: string; setup?: boolean }
+    | {
+        type: "provider.maintenance";
+        /** Threshold monitor must name the exact provider instance. */
+        providerInstanceId: InstanceId;
+        reason: string;
+        threshold: { kind: string; count: number; [key: string]: unknown };
+      }
+   );
 
 export type RuntimeEventListener = (event: RuntimeEvent) => void;
 
@@ -407,6 +414,7 @@ export interface EngineInstall {
   managed?: {
     label: string;
     downloadBytes: number;
+    kind?: "dani-free";
   };
   /** Settings can install or update this engine on the machine running the
    * server, as the server's own user, into a directory the app owns. Set by
@@ -466,6 +474,8 @@ export interface ProviderInstance {
   readonly displayName: string | undefined;
   readonly enabled: boolean;
   readonly models: ModelCatalog;
+  /** Identifies the managed Dani-Free proxy projection; generic OpenAI-compatible instances leave this unset. */
+  readonly localManagedProxy?: "dani-free";
   /** Refresh a live catalog without recreating the provider instance. */
   readonly refreshModels?: () => Promise<void>;
   /** Optional first-party runtime installation and account setup. */
@@ -475,7 +485,7 @@ export interface ProviderInstance {
   readonly completeAuthentication?: (flowId: string, callbackUrl: string) => Promise<void>;
   readonly cancelAuthentication?: () => Promise<void>;
   /** Remove the sign-in the provider CLI stores on this server, so a
-   * different account can connect. Never touches another instance's home. */
+  * different account can connect. Never touches another instance's home. */
   readonly signOut?: () => Promise<void>;
   readonly adapter: ProviderAdapter;
   snapshot(): Promise<ProviderSnapshot>;

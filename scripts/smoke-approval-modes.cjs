@@ -4,9 +4,9 @@
 const { app, utilityProcess } = require("electron");
 const assert = require("node:assert/strict");
 const { randomUUID, createHash } = require("node:crypto");
-const { mkdtempSync, mkdirSync, copyFileSync, chmodSync, writeFileSync, readFileSync, rmSync } = require("node:fs");
+const { mkdtempSync, mkdirSync, copyFileSync, chmodSync, writeFileSync, readFileSync, rmSync, existsSync } = require("node:fs");
 const { tmpdir } = require("node:os");
-const { join, resolve } = require("node:path");
+const { delimiter, dirname, join, resolve } = require("node:path");
 const { createServer } = require("node:net");
 const { once } = require("node:events");
 const { setTimeout: delay } = require("node:timers/promises");
@@ -14,8 +14,10 @@ const { createTrustedApprovalModeCoordinator } = require("../electron/approval-t
 
 const root = resolve(__dirname, "..");
 const home = mkdtempSync(join(tmpdir(), "omb-approval-smoke-"));
+const nodeDirectory = (process.env.npm_node_execpath || process.env.NODE)
+  ? dirname(process.env.npm_node_execpath || process.env.NODE)
+  : (process.env.PATH ?? "").split(delimiter).find((entry) => existsSync(join(entry, process.platform === "win32" ? "node.exe" : "node"))) ?? "";
 app.setPath("userData", join(home, "electron"));
-let child;
 let logs = "";
 
 async function freePort() {
@@ -84,7 +86,7 @@ app.whenReady().then(async () => {
     cwd: root,
     execArgv: ["--experimental-strip-types"],
     env: {
-      HOME: home, USERPROFILE: home, OMB_DATA_DIR: home, PATH: "",
+      HOME: home, USERPROFILE: home, OMB_DATA_DIR: home, PATH: nodeDirectory,
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
       OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(webhookPort),
       OMB_TEST_INTERNAL_CAPABILITY_KEY: testCapabilityKey,

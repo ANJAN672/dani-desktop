@@ -239,6 +239,7 @@ export class ProviderRegistry {
         } catch (e) {
           snapshot = { state: "unavailable", reason: e instanceof Error ? e.message : String(e) };
         }
+        const install = withServerInstall(driver?.install, npmPresent);
         return {
           instanceId: inst.instanceId,
           driverKind: inst.driverKind,
@@ -258,7 +259,17 @@ export class ProviderRegistry {
             approvalReview: inst.reviewPermission !== undefined,
           },
           access: driver?.metadata.access ?? "subscription",
-          install: withServerInstall(driver?.install, npmPresent),
+          install: inst.localManagedProxy === "dani-free"
+            ? {
+                ...install,
+                managed: {
+                  ...(install?.managed ?? {}),
+                  label: install?.managed?.label ?? "Dani-Free proxy",
+                  downloadBytes: install?.managed?.downloadBytes ?? 0,
+                  kind: "dani-free" as const,
+                },
+              }
+            : install,
           authentication: inst.startAuthentication
             ? {
                 method: inst.getAuthentication && inst.completeAuthentication

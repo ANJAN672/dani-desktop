@@ -6,6 +6,11 @@ interface SelectableInstance {
   snapshot: ProviderSnapshot;
   models: ModelCatalog;
   capabilities?: { effortLevels?: readonly EffortLevel[] };
+  install?: { managed?: { kind?: "dani-free" } };
+}
+
+function isDaniFree(instance: SelectableInstance): boolean {
+  return instance.install?.managed?.kind === "dani-free";
 }
 
 /** A saved choice is intentional: an unavailable provider or removed model
@@ -30,6 +35,8 @@ export function selectDefaultModelSelection(
     return selection;
   }
   const available = instances.filter((instance) => instance.snapshot.state === "available");
-  const pick = available.find((instance) => instance.driverKind === "claudeAgent") ?? available[0];
+  const pick = available.find(isDaniFree)
+    ?? available.find((instance) => instance.driverKind === "hermesAgent")
+    ?? available[0];
   return { instanceId: pick?.instanceId ?? "", model: pick?.models.default ?? "" };
 }

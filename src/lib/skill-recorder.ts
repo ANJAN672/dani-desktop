@@ -1,3 +1,32 @@
+export type NativeSkillRecordingEvent = {
+  type: "app" | "click" | "scroll" | "key" | "typing" | "clipboard" | "download";
+  atMs: number;
+  app?: string;
+  windowTitle?: string;
+  x?: number;
+  y?: number;
+  button?: "left" | "right" | "other";
+  deltaY?: number;
+  keycode?: number;
+  meta?: boolean;
+  control?: boolean;
+  option?: boolean;
+  shift?: boolean;
+  /** Element identity for a click, from the accessibility tree. */
+  role?: string;
+  name?: string;
+  identifier?: string;
+  ancestry?: string[];
+  /** Typed keystroke count (never the characters themselves). */
+  keyCount?: number;
+  /** Clipboard action kind — never its contents. */
+  op?: "copy" | "cut" | "paste";
+  /** Downloaded file name and its origin URLs. */
+  filename?: string;
+  whereFroms?: string[];
+  /** Optional native text payload retained by newer recorder helpers. */
+  text?: string;
+};
 export type RecordedSkillEvent = {
   id: string;
   type: "app" | "click" | "scroll" | "shortcut" | "typing" | "clipboard" | "download";

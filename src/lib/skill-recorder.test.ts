@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendNativeEvent, shortcutLabel, type RecordedSkillEvent } from "./skill-recorder";
+import { appendNativeEvent, shortcutLabel, type NativeSkillRecordingEvent, type RecordedSkillEvent } from "./skill-recorder";
 
 const event = (patch: Partial<NativeSkillRecordingEvent>): NativeSkillRecordingEvent => ({
   type: "key", atMs: 100, app: "Notes", windowTitle: "Ideas", ...patch,

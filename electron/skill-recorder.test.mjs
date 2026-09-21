@@ -1,14 +1,289 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: { isPackaged: false, getPath: () => tmpdir() },
   systemPreferences: { isTrustedAccessibilityClient: () => true },
 }));
 
-const { compileSkillMarkdown, saveSkillRecording, skillSlug } = await import("./skill-recorder.mjs");
+const {
+  checkpointRecorderSession,
+  compileSkillMarkdown,
+  discardRecorderSession,
+  recorderPermissionStatus,
+  recorderStatus,
+  resumeRecorderSession,
+  saveSkillRecording,
+  skillSlug,
+  startRecorder,
+  stopRecorder,
+} = await import("./skill-recorder.mjs");
+const electronApp = (await import("electron")).app;
+let fakeHelperRoot;
+let originalAppPackaged;
+let currentDataRoot;
+const reviewedEvent = {
+  id: "event-1",
+  type: "click",
+  atMs: 10,
+  app: "RecorderTest",
+  name: "Continue",
+};
+let originalResourcesPath;
+
+describe("skill recorder lifecycle", () => {
+  it("reports native recording support only on macOS", () => {
+    expect(recorderPermissionStatus()).toEqual({ supported: process.platform === "darwin" });
+  });
+
+  it("returns a stopped state when no recorder session is active", () => {
+    expect(stopRecorder()).toEqual({ recording: false });
+  });
+});
+function installFakeHelper() {
+  fakeHelperRoot = mkdtempSync(path.join(tmpdir(), "danibot-recorder-helper-"));
+  const binary = path.join(fakeHelperRoot, "Dani Bot Recorder.app", "Contents", "MacOS", "recorder-helper");
+  mkdirSync(path.dirname(binary), { recursive: true });
+  writeFileSync(binary, [
+    "#!/usr/bin/env node",
+    "const fs = require(\"node:fs\");",
+    "fs.appendFileSync(process.env.OMB_RECORDER_OUTPUT, JSON.stringify({ type: \"app\", atMs: 0, app: \"RecorderTest\" }) + \"\\n\");",
+    "const stopFile = process.argv[2];",
+    "const timer = setInterval(() => {",
+    "  if (stopFile && fs.existsSync(stopFile)) clearInterval(timer);",
+    "}, 10);",
+    "",
+  ].join("\n"), { mode: 0o700 });
+  writeFileSync(
+    path.join(path.dirname(path.dirname(binary)), "Info.plist"),
+    [
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+      "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
+      "<plist version=\"1.0\"><dict>",
+      "<key>CFBundleExecutable</key><string>recorder-helper</string>",
+      "<key>CFBundleIdentifier</key><string>com.danibot.recorder-test</string>",
+      "<key>CFBundleName</key><string>Dani Bot Recorder Test</string>",
+      "<key>CFBundlePackageType</key><string>APPL</string>",
+      "</dict></plist>",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(binary, 0o700);
+}
+
+async function useFakeHelper() {
+  originalAppPackaged = electronApp.isPackaged;
+  originalResourcesPath = process.resourcesPath;
+  installFakeHelper();
+  electronApp.isPackaged = true;
+  process.resourcesPath = fakeHelperRoot;
+}
+
+function restoreFakeHelper() {
+  electronApp.isPackaged = originalAppPackaged;
+  if (originalResourcesPath === undefined) delete process.resourcesPath;
+  else process.resourcesPath = originalResourcesPath;
+  if (fakeHelperRoot) rmSync(fakeHelperRoot, { recursive: true, force: true });
+  fakeHelperRoot = undefined;
+  originalAppPackaged = undefined;
+  originalResourcesPath = undefined;
+}
+afterEach(async () => {
+  const stopped = stopRecorder();
+  if (stopped && typeof stopped.then === "function") await stopped;
+  if (currentDataRoot) {
+    const active = recorderStatus({ dataRoot: currentDataRoot }).active;
+    if (active) {
+      await checkpointRecorderSession({
+        sessionId: active.sessionId,
+        sequence: active.checkpointSequence + 1,
+        events: [reviewedEvent],
+        durationMs: active.durationMs ?? 0,
+        finalize: true,
+      }, { dataRoot: currentDataRoot });
+    }
+  }
+  currentDataRoot = undefined;
+  restoreFakeHelper();
+});
+describe("durable recorder lifecycle", () => {
+
+  async function start(dataRoot) {
+    currentDataRoot = dataRoot;
+    await useFakeHelper();
+    return startRecorder({ webContents: { send() {} } }, { dataRoot });
+  }
+
+  async function checkpoint(dataRoot, sessionId, sequence, extra = {}) {
+    return checkpointRecorderSession({
+      sessionId,
+      sequence,
+      events: [reviewedEvent],
+      durationMs: 100,
+      ...extra,
+    }, { dataRoot });
+  }
+
+  it("rejects sequence zero, finalizes after helper stop, and recovers review-only", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    const zero = await checkpoint(dataRoot, sessionId, 0);
+    expect(zero).toMatchObject({ accepted: false, reason: "invalid-sequence" });
+
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    await stopRecorder();
+    expect((await checkpoint(dataRoot, sessionId, 2, { finalize: true })).accepted).toBe(true);
+
+    const recovered = await resumeRecorderSession(sessionId, { dataRoot });
+    expect(recovered).toMatchObject({
+      sessionId,
+      checkpointSequence: 2,
+      reviewOnly: true,
+      liveStreamsResumed: false,
+    });
+  });
+  it("recovers the newest numbered checkpoint when the pointer is stale", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    const sessionDirectory = path.join(dataRoot, "skill-recordings", sessionId);
+    const pointerPath = path.join(sessionDirectory, "checkpoint.json");
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    const stalePointer = readFileSync(pointerPath, "utf8");
+    await stopRecorder();
+    expect((await checkpoint(dataRoot, sessionId, 2, { finalize: true })).accepted).toBe(true);
+    writeFileSync(pointerPath, stalePointer);
+
+    const recovered = await resumeRecorderSession(sessionId, { dataRoot });
+    expect(recovered).toMatchObject({
+      sessionId,
+      checkpointSequence: 2,
+      audioIndex: 0,
+      reviewOnly: true,
+      liveStreamsResumed: false,
+    });
+  });
+  it("persists helper output written after startup through periodic draining", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    const sessionDirectory = path.join(dataRoot, "skill-recordings", sessionId);
+    const outputPath = path.join(sessionDirectory, "events-output.ndjson");
+    const laterEvent = { type: "click", atMs: 500, app: "DrainTest", name: "Later step" };
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    writeFileSync(outputPath, `${JSON.stringify(laterEvent)}\n`, { flag: "a" });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(readFileSync(outputPath, "utf8")).toContain("Later step");
+    expect(readFileSync(path.join(sessionDirectory, "events.ndjson"), "utf8")).toContain("Later step");
+    await stopRecorder();
+    expect((await checkpoint(dataRoot, sessionId, 2, { finalize: true, events: [reviewedEvent, { ...laterEvent, id: "drain-1" }] })).accepted).toBe(true);
+
+    const recovered = await resumeRecorderSession(sessionId, { dataRoot });
+    expect(recovered.events).toContainEqual(expect.objectContaining({
+      type: "click",
+      app: "DrainTest",
+      name: "Later step",
+    }));
+  });
+
+  it("rejects checkpoints after durable review state", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    await stopRecorder();
+    expect((await checkpoint(dataRoot, sessionId, 2, { finalize: true })).accepted).toBe(true);
+
+    await expect(checkpoint(dataRoot, sessionId, 3)).resolves.toMatchObject({
+      accepted: false,
+      reason: "invalid-session-state",
+    });
+  });
+
+  it("rejects traversal and symlink media references", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    const frames = path.join(dataRoot, "skill-recordings", sessionId, "frames");
+
+    await expect(checkpoint(dataRoot, sessionId, 2, {
+      events: [{ ...reviewedEvent, screenshot: "../frames/frame.webp" }],
+    })).rejects.toMatchObject({ code: "invalid-screenshot" });
+
+    symlinkSync("/etc/hosts", path.join(frames, "linked.webp"));
+    await expect(checkpoint(dataRoot, sessionId, 2, {
+      events: [{ ...reviewedEvent, screenshot: "linked.webp" }],
+    })).rejects.toMatchObject({ code: "invalid-media-reference" });
+  });
+
+  it("rejects audio once the cumulative budget is exceeded", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    const audioDataUrl = `data:audio/webm;base64,${Buffer.alloc(10 * 1024 * 1024, 65).toString("base64")}`;
+
+    for (let index = 0; index < 10; index += 1) {
+      expect((await checkpoint(dataRoot, sessionId, index + 2, {
+        audioChunk: { index, mime: "audio/webm", dataUrl: audioDataUrl },
+      })).accepted).toBe(true);
+    }
+    await expect(checkpoint(dataRoot, sessionId, 12, {
+      audioChunk: { index: 10, mime: "audio/webm", dataUrl: audioDataUrl },
+    })).rejects.toMatchObject({ code: "audio-budget-exceeded" });
+  });
+  it("rejects raw screenshots in strict reviewed saves", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    await stopRecorder();
+    expect((await checkpoint(dataRoot, sessionId, 2, { finalize: true })).accepted).toBe(true);
+    expect(recorderStatus({ dataRoot }).active).toBeNull();
+
+    await expect(saveSkillRecording({
+      name: "Reviewed workflow",
+      sessionId,
+      checkpointSequence: 2,
+      durationMs: 100,
+      transcript: "",
+      events: [{ ...reviewedEvent, screenshot: "data:image/webp;base64,AQIDBA==" }],
+    }, { dataRoot })).rejects.toMatchObject({ code: "invalid-screenshot" });
+  });
+  it("retains a recoverable draft when cleanup cannot remove it", async () => {
+    const dataRoot = mkdtempSync(path.join(tmpdir(), "danibot-recording-"));
+    const { sessionId } = await start(dataRoot);
+    const sessionDirectory = path.join(dataRoot, "skill-recordings", sessionId);
+    const recordings = path.join(dataRoot, "skill-recordings");
+    expect((await checkpoint(dataRoot, sessionId, 1)).accepted).toBe(true);
+    await stopRecorder();
+    expect((await checkpoint(dataRoot, sessionId, 2, { finalize: true })).accepted).toBe(true);
+
+    chmodSync(recordings, 0o500);
+    try {
+      const result = await saveSkillRecording({
+        name: "Cleanup failure",
+        sessionId,
+        checkpointSequence: 2,
+        durationMs: 100,
+        transcript: "",
+        events: [reviewedEvent],
+      }, { dataRoot });
+      expect(result.cleanupFailed).toBe(true);
+      expect(result.draftRetained).toBe(true);
+      expect(existsSync(sessionDirectory)).toBe(true);
+    } finally {
+      chmodSync(recordings, 0o700);
+    }
+    await discardRecorderSession(sessionId, { dataRoot });
+  });
+});
 
 describe("skill recorder compiler", () => {
   it("creates a valid safe slug", () => {
@@ -23,7 +298,7 @@ describe("skill recorder compiler", () => {
       description: "Use when submitting a travel receipt",
       durationMs: 4_200,
       transcript: "Choose the matching trip and attach the receipt.",
-      transcription: { provider: "assemblyai", model: "u3-rt-pro" },
+      transcription: { provider: "assemblyai", model: "universal-3-5-pro" },
       events: [{
         type: "click",
         atMs: 800,

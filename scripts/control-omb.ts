@@ -65,7 +65,7 @@ read-only:
   wait --channel ID [--task ID] [--timeout 30] [--url URL]
 
 mutating (an explicit --url or DANIBOT_URL/OMB_PORT is required):
-  new-bot --name NAME [--url URL]
+  new-bot --name NAME [--instance ID --model ID] [--effort LEVEL] [--url URL]
   new-channel --name NAME --members ID,ID [--url URL]
   send --bot ID --text TEXT [--task ID] [--dry-run] [--url URL]
   send-channel --channel ID --text TEXT [--task ID] [--dry-run] [--url URL]
@@ -203,11 +203,17 @@ export async function runControlOmb(
       name: { type: "string" },
       title: { type: "string" },
       section: { type: "string" },
+      instance: { type: "string" },
+      model: { type: "string" },
+      effort: { type: "string" },
     });
     return call("create_bot", {
       name: required(values.name, "--name"),
       ...(values.title ? { title: values.title } : {}),
       ...(values.section ? { section: values.section } : {}),
+      ...(values.instance !== undefined ? { instance_id: required(values.instance, "--instance") } : {}),
+      ...(values.model !== undefined ? { model: required(values.model, "--model") } : {}),
+      ...(values.effort !== undefined ? { effort: required(values.effort, "--effort") } : {}),
     }, values.url);
   }
 

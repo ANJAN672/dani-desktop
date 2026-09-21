@@ -25,6 +25,20 @@ describe("ProviderRegistry", () => {
     expect(registry.instances()).toHaveLength(1);
   });
 
+  it("exposes the managed Dani-Free marker only for live managed instances", async () => {
+    const fake = makeFakeDriver({ kind: "openai-compat" });
+    const registry = new ProviderRegistry([fake.driver]);
+    await registry.load({
+      managed: { driver: "openai-compat" },
+      generic: { driver: "openai-compat" },
+    });
+    Object.assign(registry.get("managed")!, { localManagedProxy: "dani-free" as const });
+
+    const described = Object.fromEntries((await registry.describe()).map((entry) => [entry.instanceId, entry]));
+    expect(described.managed.install?.managed?.kind).toBe("dani-free");
+    expect(described.generic.install?.managed?.kind).toBeUndefined();
+  });
+
   it("uses defaultConfig when the entry has no config", async () => {
     const fake = makeFakeDriver();
     const registry = new ProviderRegistry([fake.driver]);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type ControlOmbDependencies,
   controlResultSucceeded,
   HELP,
   HELP_UI,
@@ -133,6 +134,34 @@ describe("control-omb command mapping", () => {
     })).rejects.toMatchObject({
       message: "mutating commands require an explicit Dani Bot instance",
     });
+  });
+
+  it("maps optional model selection for new-bot without changing default creation", async () => {
+    const callTool = vi.fn(async (name: string, args: Record<string, unknown>) => ({ name, args }));
+    const dependencies: ControlOmbDependencies = {
+      callTool,
+      env: { DANIBOT_URL: "http://127.0.0.1:19999" },
+    };
+
+    await runControlOmb([
+      "new-bot", "--name", "Configured", "--title", "Researcher", "--section", "Work",
+      "--instance", "claude", "--model", "opus", "--effort", "high",
+    ], dependencies);
+    await runControlOmb(["new-bot", "--name", "Default"], dependencies);
+    await runControlOmb(["new-bot", "--name", "Default Model", "--instance", "claude", "--model", "opus"], dependencies);
+
+    expect(callTool.mock.calls.map(([name, args]) => [name, args])).toEqual([
+      ["create_bot", {
+        name: "Configured",
+        title: "Researcher",
+        section: "Work",
+        instance_id: "claude",
+        model: "opus",
+        effort: "high",
+      }],
+      ["create_bot", { name: "Default" }],
+      ["create_bot", { name: "Default Model", instance_id: "claude", model: "opus" }],
+    ]);
   });
 
   it("maps bounded reads and dry-run actions without reimplementing them", async () => {

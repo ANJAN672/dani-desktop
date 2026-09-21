@@ -4,49 +4,117 @@ declare global {
 /** The package.json version, inlined by Vite's define at build time. */
 const __APP_VERSION__: string;
 
-  type DesktopCapabilities = {
-    host: {
-      platform: "darwin" | "linux" | "win32" | "other";
-      /** The user's home folder, for showing paths as ~/… */
-      homeDir?: string;
-      label: string;
-      session: "x11" | "wayland" | "headless" | "unknown";
-      packaged: boolean;
-    };
-    windowChrome: "mac-inset" | "native";
-    screenPreview: {
-      available: boolean;
-      interaction: "direct" | "portal-picker" | "none";
-      reasonCode?: string;
-    };
-    dictation: {
-      available: boolean;
-      engine: "apple-speech" | "none";
-      onDevice: boolean;
-      reasonCode?: string;
-    };
-    localComputer: {
-      available: boolean;
-      support: "supported" | "limited" | "unsupported";
-      enabled: boolean;
-      status: "disabled" | "checking" | "starting" | "ready" | "error" | "stopped" | "unavailable";
-      reasonCode?: string;
-      message?: string;
-      driverPath?: string;
-      driverVersion?: string;
-      driverSource?: "bundled" | "environment" | "user-local" | "path";
-      session?: "x11" | "wayland" | "headless" | "unknown";
-      compositor?: "gnome-mutter";
-    };
+  type SkillRecorderPermissionStatus = { supported: boolean; reason?: string };
+  type SkillRecorderSessionSummary = {
+    sessionId: string;
+    state: string;
+    startedAt: string;
+    stoppedAt: string | null;
+    durationMs: number;
+    eventCount: number;
+    hasAudio: boolean;
+    checkpointSequence: number;
   };
+  type SkillRecorderStatus = {
+    active: SkillRecorderSessionSummary | null;
+    recoverable: SkillRecorderSessionSummary[];
+  };
+  type SkillRecorderResumeResult = {
+    sessionId: string;
+    state: "review";
+    reviewOnly: true;
+    liveStreamsResumed: false;
+    startedAt: string;
+    stoppedAt: string | null;
+    durationMs: number;
+    events: import("../lib/skill-recorder").RecordedSkillEvent[];
+    transcript: string;
+    partialTranscript: string;
+    audioMime: string | null;
+    audio: string;
+    checkpointSequence: number;
+  };
+  type SkillRecorderAudioChunk = {
+    index: number;
+    mime: "audio/webm" | "audio/mp4" | "audio/ogg" | string;
+    dataUrl: string;
+  };
+  type SkillRecorderCheckpointPayload = {
+    sessionId: string;
+    sequence: number;
+    events: import("../lib/skill-recorder").RecordedSkillEvent[];
+    transcript?: string;
+    partialTranscript?: string;
+    durationMs?: number;
+    audioChunk?: SkillRecorderAudioChunk;
+    finalize?: boolean;
+  };
+  type SkillRecorderCheckpointResult = {
+    accepted: boolean;
+    sequence?: number;
+    checkpointSequence: number;
+    audioIndex: number;
+    reason?: string;
+  };
+  type SkillRecorderDiscardResult = { discarded: true; sessionId: string };
+  type SkillRecorderSavePayload = {
+    name: string;
+    description?: string;
+    sessionId: string;
+    checkpointSequence: number;
+    durationMs: number;
+    transcript?: string;
+    transcription?: { provider: "assemblyai"; model?: string };
+    audio?: string;
+    events: import("../lib/skill-recorder").RecordedSkillEvent[];
+  };
+  type SkillRecorderSaveResult = { id: string; path: string; events: number; draftRetained?: boolean; cleanupFailed?: boolean };
+  type SkillRecorderEndInfo = { code: number | null; reason?: string };
+  type TranscriptionStatus = { configured: boolean };
+  type StreamingToken = { token: string; expiresInSeconds: number };
 
-  interface DesktopWorkspaceBounds {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }
+interface DesktopCapabilities {
+  host: {
+    platform: "darwin" | "linux" | "win32" | "other";
+    /** The user's home folder, for showing paths as ~/… */
+    homeDir?: string;
+    label: string;
+    session: "x11" | "wayland" | "headless" | "unknown";
+    packaged: boolean;
+  };
+  windowChrome: "mac-inset" | "native";
+  screenPreview: {
+    available: boolean;
+    interaction: "direct" | "portal-picker" | "none";
+    reasonCode?: string;
+  };
+  dictation: {
+    available: boolean;
+    engine: "apple-speech" | "none";
+    onDevice: boolean;
+    reasonCode?: string;
+  };
+  localComputer: {
+    available: boolean;
+    support: "supported" | "limited" | "unsupported";
+    enabled: boolean;
+    status: "disabled" | "checking" | "starting" | "ready" | "error" | "stopped" | "unavailable";
+    reasonCode?: string;
+    message?: string;
+    driverPath?: string;
+    driverVersion?: string;
+    driverSource?: "bundled" | "environment" | "user-local" | "path";
+    session?: "x11" | "wayland" | "headless" | "unknown";
+    compositor?: "gnome-mutter";
+  };
+}
 
+interface DesktopWorkspaceBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
   interface BrowserSurfaceState {
     botId: string;
     open: boolean;
@@ -80,6 +148,8 @@ const __APP_VERSION__: string;
   interface Window {
     ogb?: {
       platform: NodeJS.Platform;
+      /** Optional legacy browser bridge; current browser support is server-side. */
+      browser?: unknown;
       /** Saved servers and the active one (desktop Server menu). Present on
        * the local server's UI; a remote server's page sees a reduced bridge. */
       environments?: {
@@ -164,55 +234,75 @@ const __APP_VERSION__: string;
       /** Updates the native Dock/taskbar unread indicator. */
       setUnreadCount?(count: number): void;
       /** Opens a live desktop as a sandboxed window owned by Dani Bot. */
-      desktopViewer?: {
-        open(url: string, title: string, contextId: string): Promise<boolean>;
-        /** Closes the live-desktop window, but only when it belongs to this bot. */
-        close(contextId: string): Promise<boolean>;
-        /** The current viewer state, for a panel to initialize from on mount. */
-        currentState(): Promise<{ open: boolean; contextId: string | null }>;
-        onState(cb: (state: { open: boolean; contextId: string | null }) => void): () => void;
-      };
-      /** Two Local VM viewers embedded in one app window. URLs are accepted
-       * only by main-process validation and never return over this bridge. */
-      desktopWorkspace?: {
-        open(input: {
-          contextId: string;
-          url: string;
-          title: string;
-          bounds: DesktopWorkspaceBounds;
-        }): Promise<DesktopWorkspaceState>;
-        layout(items: Array<{
-          contextId: string;
-          bounds: DesktopWorkspaceBounds;
-          visible: boolean;
-        }>): Promise<boolean>;
-        setInteractive(contextId: string | null): Promise<boolean>;
-        close(contextId?: string): Promise<boolean>;
-        onState(cb: (state: DesktopWorkspaceState) => void): () => void;
-      };
-      /** Native folder picker; resolves null when the user cancels. */
-      pickFolder?(current?: string): Promise<string | null>;
-      /** Writes the redacted diagnostics report to a user-chosen file;
-       * resolves the path, or null when cancelled. */
-      exportDiagnostics?(): Promise<string | null>;
-      /** Asks where to save a bot-created file (inside ~/.danibot), copies
-       * it there and reveals it. Resolves the chosen path, or null if the
-       * user cancelled the dialog. */
-      saveFile?(filePath: string): Promise<string | null>;
-      /** Save a provider credential through Electron's OS-backed store. */
-      setCredential?(
-        name: "composioApiKey" | "xaiApiKey" | "boxToken" | "opencodeGoApiKey" | "ttsKey" | "openaiImageApiKey" | "customImageApiKey",
-        value: string,
-      ): Promise<ConfigStatus>;
-      /** In-app auto-update (packaged app only; dormant in dev). onState
-       * fires immediately with the current state, then on transitions. */
-      updater?: {
-        check(): Promise<void>;
-        download(): Promise<void>;
-        /** apply the download: quit-and-install, or copy the command and open a terminal */
-        install(): Promise<void>;
-        onState(cb: (s: UpdaterState) => void): () => void;
-      };
+desktopViewer?: {
+  open(url: string, title: string, contextId: string): Promise<boolean>;
+  /** Closes the live-desktop window, but only when it belongs to this bot. */
+  close(contextId: string): Promise<boolean>;
+  /** The current viewer state, for a panel to initialize from on mount. */
+  currentState(): Promise<{ open: boolean; contextId: string | null }>;
+  onState(cb: (state: { open: boolean; contextId: string | null }) => void): () => void;
+};
+/** Two Local VM viewers embedded in one app window. URLs are accepted
+ * only by main-process validation and never return over this bridge. */
+desktopWorkspace?: {
+  open(input: {
+    contextId: string;
+    url: string;
+    title: string;
+    bounds: DesktopWorkspaceBounds;
+  }): Promise<DesktopWorkspaceState>;
+  layout(items: Array<{
+    contextId: string;
+    bounds: DesktopWorkspaceBounds;
+    visible: boolean;
+  }>): Promise<boolean>;
+  setInteractive(contextId: string | null): Promise<boolean>;
+  close(contextId?: string): Promise<boolean>;
+  onState(cb: (state: DesktopWorkspaceState) => void): () => void;
+};
+/** Native folder picker; resolves null when the user cancels. */
+pickFolder?(current?: string): Promise<string | null>;
+/** Writes the redacted diagnostics report to a user-chosen file;
+ * resolves the path, or null when cancelled. */
+exportDiagnostics?(): Promise<string | null>;
+/** Asks where to save a bot-created file (inside ~/.danibot), copies
+ * it there and reveals it. Resolves the chosen path, or null if the
+ * user cancelled the dialog. */
+saveFile?(filePath: string): Promise<string | null>;
+/** Save a provider credential through Electron's OS-backed store. */
+setCredential?(
+  name: "composioApiKey" | "xaiApiKey" | "boxToken" | "opencodeGoApiKey" | "ttsKey" | "openaiImageApiKey" | "customImageApiKey",
+  value: string,
+): Promise<ConfigStatus>;
+/** Record and compile a local skill. */
+skillRecorder?: {
+  permissions(): Promise<SkillRecorderPermissionStatus>;
+  status(): Promise<SkillRecorderStatus>;
+  recover(): Promise<SkillRecorderSessionSummary[]>;
+  start(): Promise<{ recording: true; sessionId: string }>;
+  stop(): Promise<{ recording: false }>;
+  resume(sessionId: string): Promise<SkillRecorderResumeResult>;
+  checkpoint(payload: SkillRecorderCheckpointPayload): Promise<SkillRecorderCheckpointResult>;
+  discard(sessionId: string): Promise<SkillRecorderDiscardResult>;
+  save(payload: SkillRecorderSavePayload): Promise<SkillRecorderSaveResult>;
+  onEvent(cb: (event: import("../lib/skill-recorder").NativeSkillRecordingEvent) => void): () => void;
+  onEnd(cb: (info: SkillRecorderEndInfo) => void): () => void;
+};
+/** AssemblyAI transcription with a short-lived renderer token. */
+transcription?: {
+  status(): Promise<TranscriptionStatus>;
+  setKey(value: string): Promise<TranscriptionStatus>;
+  streamingToken(): Promise<StreamingToken>;
+};
+/** In-app auto-update (packaged app only; dormant in dev). onState
+ * fires immediately with the current state, then on transitions. */
+updater?: {
+  check(): Promise<void>;
+  download(): Promise<void>;
+  /** apply the download: quit-and-install, or copy the command and open a terminal */
+  install(): Promise<void>;
+  onState(cb: (s: UpdaterState) => void): () => void;
+};
     };
   }
 }

@@ -19,17 +19,18 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-
 import {
   mergeAssemblyAITurn,
   startAssemblyAITranscription,
   type AssemblyAITranscript,
   type AssemblyAITranscriptionSession,
 } from "@/lib/assemblyai-transcription";
+import { t } from "@/lib/i18n";
 import {
   appendNativeEvent,
   eventLabel,
   formatRecordingTime,
+  type NativeSkillRecordingEvent,
   type RecordedSkillEvent,
 } from "@/lib/skill-recorder";
 import { requestScreenPreview, stopScreenPreview } from "@/lib/screen-preview";
@@ -37,6 +38,16 @@ import { TRANSCRIPTION_STATUS_EVENT } from "@/lib/transcription-status";
 import { useStore } from "@/state/store";
 
 type Phase = "idle" | "starting" | "recording" | "review" | "saving" | "saved";
+type SessionSummary = {
+  sessionId: string;
+  state: string;
+  startedAt: string;
+  stoppedAt: string | null;
+  durationMs: number;
+  eventCount: number;
+  hasAudio: boolean;
+  checkpointSequence: number;
+};
 
 const iconFor = (type: RecordedSkillEvent["type"]) => {
   if (type === "click") return MousePointer2;
@@ -65,36 +76,51 @@ function blobDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+const MEDIA_RECORDER_STOP_TIMEOUT_MS = 2_000;
+const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
 export function SkillRecorderPage() {
   const { dispatch } = useStore();
   const bridge = window.ogb?.skillRecorder;
   const [phase, setPhase] = useState<Phase>("idle");
   const phaseRef = useRef<Phase>("idle");
+  const mountedRef = useRef(false);
   const [events, setEvents] = useState<RecordedSkillEvent[]>([]);
   const eventsRef = useRef<RecordedSkillEvent[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [transcript, setTranscript] = useState("");
   const transcriptRef = useRef("");
   const [partialTranscript, setPartialTranscript] = useState("");
+  const partialTranscriptRef = useRef("");
   const [transcriptionConfigured, setTranscriptionConfigured] = useState<boolean | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState<{ id: string; path: string; events: number } | null>(null);
+  const [recoverable, setRecoverable] = useState<SessionSummary[]>([]);
+  const [reviewOnly, setReviewOnly] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const screenRef = useRef<MediaStream | null>(null);
   const micRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const transcriptionSessionRef = useRef<AssemblyAITranscriptionSession | null>(null);
   const cloudTranscriptRef = useRef<AssemblyAITranscript>({ turns: new Map(), finalText: "", partialText: "" });
+  const startedAtRef = useRef(0);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioDataRef = useRef("");
-  const startedRef = useRef(0);
+  const audioIndexRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
+  const checkpointSequenceRef = useRef(0);
+  const durationRef = useRef(0);
+  const checkpointTailRef = useRef<Promise<unknown>>(Promise.resolve());
   const stoppingRef = useRef(false);
-
+  const finalizingRef = useRef(false);
+  const finalCheckpointRef = useRef(false);
+  const startupEventsRef = useRef<NativeSkillRecordingEvent[]>([]);
+  const startAttemptRef = useRef(0);
   const updatePhase = (next: Phase) => {
     phaseRef.current = next;
-    setPhase(next);
+    if (mountedRef.current) setPhase(next);
   };
 
   const takeScreenshot = useCallback((): string | undefined => {
@@ -111,34 +137,231 @@ export function SkillRecorderPage() {
     return canvas.toDataURL("image/webp", 0.68);
   }, []);
 
+  const submitCheckpoint = useCallback((
+    audio?: { blob: Blob; mime: string },
+    finalize = false,
+    releaseSession = false,
+  ) => {
+    const requestedSessionId = sessionIdRef.current;
+    const operation = (checkpointTailRef.current ?? Promise.resolve()).catch(() => {}).then(async () => {
+      if (!bridge || !requestedSessionId) {
+        return { accepted: false, checkpointSequence: checkpointSequenceRef.current, audioIndex: audioIndexRef.current, reason: "no-active-session" };
+      }
+      if (sessionIdRef.current !== requestedSessionId) {
+        return { accepted: false, checkpointSequence: checkpointSequenceRef.current, audioIndex: audioIndexRef.current, reason: "session-replaced" };
+      }
+      const currentPhase = phaseRef.current;
+      if (
+        currentPhase !== "starting" &&
+        currentPhase !== "recording" &&
+        !(finalize && (currentPhase === "review" || currentPhase === "saving"))
+      ) {
+        return { accepted: false, checkpointSequence: checkpointSequenceRef.current, audioIndex: audioIndexRef.current, reason: "invalid-phase" };
+      }
+      const sequence = checkpointSequenceRef.current + 1;
+      const currentAudioIndex = audioIndexRef.current;
+      let audioChunk;
+      try {
+        if (audio) {
+          audioChunk = {
+            index: currentAudioIndex,
+            mime: audio.mime,
+            dataUrl: await blobDataUrl(audio.blob),
+          };
+        }
+        const result = await bridge.checkpoint({
+          sessionId: requestedSessionId,
+          sequence,
+          events: eventsRef.current,
+          transcript: transcriptRef.current,
+          partialTranscript: partialTranscriptRef.current,
+          durationMs: durationRef.current,
+          audioChunk,
+          finalize,
+        });
+        const next = result ?? {
+          accepted: false,
+          checkpointSequence: checkpointSequenceRef.current,
+          audioIndex: audioIndexRef.current,
+          reason: "checkpoint-response-missing",
+        };
+        if (sessionIdRef.current !== requestedSessionId) return next;
+        checkpointSequenceRef.current = next.checkpointSequence ?? checkpointSequenceRef.current;
+        audioIndexRef.current = next.audioIndex ?? (next.accepted && audio ? currentAudioIndex + 1 : currentAudioIndex);
+        if (next.accepted && finalize) {
+          finalCheckpointRef.current = true;
+          if (releaseSession) {
+            sessionIdRef.current = null;
+            finalCheckpointRef.current = false;
+          }
+          updatePhase("review");
+        } else if (!finalize && !["sequence-not-increasing", "event-prefix-changed"].includes(next.reason ?? "")) {
+          setError(`Checkpoint was not saved: ${String(next.reason ?? "unknown")}`);
+        }
+        return next;
+      } catch (caught) {
+        const failure = {
+          accepted: false,
+          checkpointSequence: checkpointSequenceRef.current,
+          audioIndex: audioIndexRef.current,
+          reason: caught instanceof Error ? caught.message : String(caught),
+        };
+        if (sessionIdRef.current === requestedSessionId && !finalize) {
+          setError(`Checkpoint was not saved: ${failure.reason}`);
+        }
+        return failure;
+      }
+    });
+    checkpointTailRef.current = operation;
+    return operation;
+  }, [bridge]);
+  const recordNativeEvent = useCallback((native: NativeSkillRecordingEvent) => {
+    const result = appendNativeEvent(eventsRef.current, native);
+    if (result.addedId) {
+      const noFrame = native.type === "typing" || native.type === "clipboard";
+      const screenshot = noFrame ? undefined : takeScreenshot();
+      if (screenshot) {
+        const index = result.events.findIndex((event) => event.id === result.addedId);
+        if (index >= 0) result.events[index] = { ...result.events[index]!, screenshot };
+      }
+    }
+    eventsRef.current = result.events;
+    setEvents(result.events);
+    void submitCheckpoint();
+  }, [submitCheckpoint, takeScreenshot]);
+
+  const flushCheckpoints = useCallback(async () => {
+    await checkpointTailRef.current;
+  }, []);
+
+  const finalizeAfterStop = useCallback(async (releaseSession = false) => {
+    if (finalizingRef.current) {
+      return { accepted: true, checkpointSequence: checkpointSequenceRef.current, audioIndex: audioIndexRef.current };
+    }
+    finalizingRef.current = true;
+    try {
+      await wait(0);
+      await flushCheckpoints();
+      if (!sessionIdRef.current) {
+        return { accepted: true, checkpointSequence: checkpointSequenceRef.current, audioIndex: audioIndexRef.current };
+      }
+      const result = await submitCheckpoint(undefined, true, releaseSession);
+      if (!result.accepted) {
+        if (result.reason === "no-active-session") {
+          sessionIdRef.current = null;
+          finalCheckpointRef.current = true;
+          return result;
+        }
+        throw new Error(`Could not finalize recording: ${result.reason}`);
+      }
+      return result;
+    } finally {
+      finalizingRef.current = false;
+    }
+  }, [flushCheckpoints, submitCheckpoint]);
+
+  const releaseStreams = useCallback(() => {
+    stopScreenPreview(screenRef.current);
+    screenRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    micRef.current?.getTracks().forEach((track) => track.stop());
+    micRef.current = null;
+  }, []);
+
+  const stopTranscription = useCallback(async () => {
+    await transcriptionSessionRef.current?.stop().catch(() => {});
+    transcriptionSessionRef.current = null;
+  }, []);
+
+  const stopMediaRecorder = useCallback(async () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    if (recorder.state !== "inactive") {
+      const stopped = new Promise<void>((resolve) => {
+        const finish = () => resolve();
+        const onStopped = () => {
+          window.clearTimeout(timeout);
+          finish();
+        };
+        const timeout = window.setTimeout(() => {
+          recorder.removeEventListener("stop", onStopped);
+          finish();
+        }, MEDIA_RECORDER_STOP_TIMEOUT_MS);
+        recorder.addEventListener("stop", onStopped, { once: true });
+      });
+      try {
+        recorder.stop();
+        await stopped;
+      } catch {
+        // The stream may already be inactive after a failed start.
+      }
+    }
+    mediaRecorderRef.current = null;
+  }, []);
+  const refreshRecovery = useCallback(async () => {
+    const sessions = await bridge?.recover() ?? [];
+    setRecoverable(sessions);
+  }, [bridge]);
+
+  const finalizeUnexpectedEnd = useCallback(async (info: { code: number | null; reason?: string }) => {
+    if (finalizingRef.current || !sessionIdRef.current) return;
+    stoppingRef.current = true;
+    setError(info.reason || "The native recorder stopped unexpectedly.");
+    try {
+      await wait(0);
+      await stopTranscription();
+      await stopMediaRecorder();
+      releaseStreams();
+      await flushCheckpoints();
+      await finalizeAfterStop();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      stoppingRef.current = false;
+      if (mountedRef.current) {
+        sessionIdRef.current = null;
+        finalCheckpointRef.current = true;
+        setReviewOnly(true);
+        updatePhase("review");
+        await refreshRecovery();
+      }
+    }
+  }, [finalizeAfterStop, flushCheckpoints, releaseStreams, refreshRecovery, stopMediaRecorder, stopTranscription]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    let alive = true;
+    bridge?.recover()
+      .then((sessions) => {
+        if (!alive) return;
+        setRecoverable(sessions);
+      })
+      .catch(() => {
+        if (alive) setRecoverable([]);
+      });
+    return () => {
+      alive = false;
+      mountedRef.current = false;
+    };
+  }, [bridge]);
+
   useEffect(() => {
     if (!bridge) return;
     const offEvent = bridge.onEvent((native) => {
-      if (phaseRef.current !== "recording") return;
-      const result = appendNativeEvent(eventsRef.current, native);
-      if (result.addedId) {
-        // A frame is worth keeping for visual/context-changing moments (clicks,
-        // app switches, scrolls, downloads) but not for typing bursts or
-        // clipboard ops — those add no visual evidence and a typing frame can
-        // catch field contents. Secure-field typing never reaches here (the
-        // native helper suppresses it), but skip typing frames regardless.
-        const noFrame = native.type === "typing" || native.type === "clipboard";
-        const screenshot = noFrame ? undefined : takeScreenshot();
-        if (screenshot) {
-          const index = result.events.findIndex((event) => event.id === result.addedId);
-          if (index >= 0) result.events[index] = { ...result.events[index]!, screenshot };
-        }
+      if (phaseRef.current !== "starting" && phaseRef.current !== "recording") return;
+      if (!sessionIdRef.current) {
+        if (phaseRef.current === "starting") startupEventsRef.current.push(native);
+        return;
       }
-      eventsRef.current = result.events;
-      setEvents(result.events);
+      const pending = startupEventsRef.current.splice(0);
+      for (const event of pending) recordNativeEvent(event);
+      recordNativeEvent(native);
     });
     const offEnd = bridge.onEnd((info) => {
-      if (phaseRef.current === "recording" && info.code !== 0) {
-        setError(info.reason || "The native recorder stopped unexpectedly.");
-      }
+      if (phaseRef.current === "recording" && info.code !== 0) void finalizeUnexpectedEnd(info);
     });
     return () => { offEvent(); offEnd(); };
-  }, [bridge, takeScreenshot]);
+  }, [bridge, finalizeUnexpectedEnd, recordNativeEvent]);
 
   useEffect(() => {
     let alive = true;
@@ -157,25 +380,70 @@ export function SkillRecorderPage() {
 
   useEffect(() => {
     if (phase !== "recording") return;
-    const tick = () => setElapsed(Date.now() - startedRef.current);
+    const tick = () => {
+      const next = Math.max(0, Date.now() - startedAtRef.current);
+      durationRef.current = next;
+      setElapsed(next);
+    };
     tick();
     const timer = setInterval(tick, 250);
     return () => clearInterval(timer);
   }, [phase]);
 
-  const releaseStreams = useCallback(() => {
-    stopScreenPreview(screenRef.current);
-    screenRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
-    micRef.current?.getTracks().forEach((track) => track.stop());
-    micRef.current = null;
-  }, []);
-
   useEffect(() => () => {
-    void bridge?.stop();
-    void transcriptionSessionRef.current?.stop();
-    releaseStreams();
-  }, [bridge, releaseStreams]);
+    const shouldFinalize = sessionIdRef.current && (phaseRef.current === "starting" || phaseRef.current === "recording");
+    stoppingRef.current = true;
+    if (shouldFinalize) {
+      void (async () => {
+        try {
+          await bridge?.stop();
+        } catch {
+          // Finalize the durable draft even if native stop reporting failed.
+        }
+        await wait(0);
+        await stopTranscription();
+        await stopMediaRecorder();
+        releaseStreams();
+        try {
+          await finalizeAfterStop(true);
+        } catch {
+          // Recovery keeps the durable draft available after an unmount.
+        }
+      })();
+    } else {
+      void bridge?.stop().catch(() => {});
+      void stopTranscription();
+      releaseStreams();
+    }
+  }, [bridge, finalizeAfterStop, releaseStreams, stopMediaRecorder, stopTranscription]);
+
+  const resumeRecovery = async (summary: SessionSummary) => {
+    if (!bridge) return;
+    setError("");
+    try {
+      const result = await bridge.resume(summary.sessionId);
+      sessionIdRef.current = result.sessionId;
+      checkpointSequenceRef.current = result.checkpointSequence;
+      durationRef.current = result.durationMs;
+      eventsRef.current = result.events;
+      transcriptRef.current = result.transcript;
+      partialTranscriptRef.current = result.partialTranscript;
+      audioDataRef.current = result.audio;
+      finalCheckpointRef.current = true;
+      setEvents(result.events);
+      setTranscript(result.transcript);
+      setPartialTranscript(result.partialTranscript);
+      setElapsed(result.durationMs);
+      setName("");
+      setDescription("");
+      setSaved(null);
+      setReviewOnly(true);
+      setRecoverable([]);
+      updatePhase("review");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  };
 
   const start = async () => {
     setError("");
@@ -192,13 +460,39 @@ export function SkillRecorderPage() {
       setError("Skill recording is currently available in the macOS desktop app.");
       return;
     }
-    updatePhase("starting");
+    const attempt = ++startAttemptRef.current;
+    stoppingRef.current = false;
+    finalizingRef.current = false;
+    finalCheckpointRef.current = false;
+    sessionIdRef.current = null;
+    checkpointSequenceRef.current = 0;
+    audioIndexRef.current = 0;
+    startedAtRef.current = Date.now();
+    durationRef.current = 0;
+    eventsRef.current = [];
+    audioChunksRef.current = [];
+    audioDataRef.current = "";
+    transcriptRef.current = "";
+    partialTranscriptRef.current = "";
+    setEvents([]);
+    setTranscript("");
+    setPartialTranscript("");
+    setElapsed(0);
+    setReviewOnly(false);
     try {
       const selected = await requestScreenPreview({
         beginIntent: () => window.ogb!.beginScreenPreviewIntent(),
         getDisplayMedia: (constraints) => navigator.mediaDevices.getDisplayMedia(constraints),
       });
-      if (!selected.ok) throw new Error(selected.message);
+      if (!selected.ok) {
+        setError(t(selected.messageKey));
+        updatePhase("idle");
+        return;
+      }
+      if (!mountedRef.current || attempt !== startAttemptRef.current) {
+        stopScreenPreview(selected.stream);
+        return;
+      }
       screenRef.current = selected.stream;
       const video = videoRef.current;
       if (!video) throw new Error("The recorder preview is unavailable");
@@ -207,49 +501,76 @@ export function SkillRecorderPage() {
 
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       micRef.current = mic;
-      audioChunksRef.current = [];
       const preferredAudio = "audio/webm;codecs=opus";
       const recorder = new MediaRecorder(
         mic,
         MediaRecorder.isTypeSupported(preferredAudio) ? { mimeType: preferredAudio } : undefined,
       );
       recorder.ondataavailable = (event) => {
-        if (event.data.size) audioChunksRef.current.push(event.data);
+        if (!event.data.size) return;
+        audioChunksRef.current.push(event.data);
+        const mime = recorder.mimeType.split(";")[0] || "audio/webm";
+        void submitCheckpoint({ blob: event.data, mime }, false);
       };
       recorder.start(1_000);
-      mediaRecorderRef.current = recorder;
-
-      await bridge.start();
-      eventsRef.current = [];
-      setEvents([]);
-      transcriptRef.current = "";
-      setTranscript("");
-      setPartialTranscript("");
-      cloudTranscriptRef.current = { turns: new Map(), finalText: "", partialText: "" };
-      transcriptionSessionRef.current = await startAssemblyAITranscription({
+      const started = await bridge.start();
+      sessionIdRef.current = started.sessionId;
+      const pending = startupEventsRef.current.splice(0);
+      for (const event of pending) recordNativeEvent(event);
+      if (!mountedRef.current || attempt !== startAttemptRef.current) {
+        await bridge.stop().catch(() => {});
+        await wait(0);
+        await stopMediaRecorder();
+        releaseStreams();
+        try {
+          await finalizeAfterStop(true);
+        } catch {
+          // The main-process draft remains recoverable if finalization fails.
+        }
+        return;
+      }
+      const transcription = await startAssemblyAITranscription({
         stream: mic,
         getToken: () => window.ogb!.transcription!.streamingToken(),
         onTurn: (turn) => {
           const next = mergeAssemblyAITurn(cloudTranscriptRef.current, turn);
           cloudTranscriptRef.current = next;
           transcriptRef.current = next.finalText;
+          partialTranscriptRef.current = next.partialText;
           setTranscript(next.finalText);
           setPartialTranscript(next.partialText);
         },
         onError: (message) => setError(message),
       });
-      audioDataRef.current = "";
-      startedRef.current = Date.now();
-      setElapsed(0);
+      if (!mountedRef.current || attempt !== startAttemptRef.current) {
+        await transcription.stop().catch(() => {});
+        await bridge.stop().catch(() => {});
+        await wait(0);
+        await stopMediaRecorder();
+        releaseStreams();
+        try {
+          await finalizeAfterStop(true);
+        } catch {
+          // The main-process draft remains recoverable if finalization fails.
+        }
+        return;
+      }
+      transcriptionSessionRef.current = transcription;
       updatePhase("recording");
     } catch (caught) {
       await bridge.stop().catch(() => {});
-      await transcriptionSessionRef.current?.stop().catch(() => {});
-      transcriptionSessionRef.current = null;
-      if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current?.stop();
-      mediaRecorderRef.current = null;
+      await stopTranscription();
+      await stopMediaRecorder();
       releaseStreams();
-      updatePhase("idle");
+      if (sessionIdRef.current) {
+        phaseRef.current = "recording";
+        try {
+          await finalizeAfterStop();
+        } catch (finalError) {
+          setError(finalError instanceof Error ? finalError.message : String(finalError));
+        }
+      }
+      updatePhase(sessionIdRef.current ? "review" : "idle");
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
@@ -257,62 +578,63 @@ export function SkillRecorderPage() {
   const stop = async () => {
     if (stoppingRef.current || phaseRef.current !== "recording") return;
     stoppingRef.current = true;
-    setElapsed(Date.now() - startedRef.current);
+    durationRef.current = Math.max(0, Date.now() - startedAtRef.current);
+    setElapsed(durationRef.current);
+    let stopError: unknown;
     try {
       await bridge?.stop();
-      await transcriptionSessionRef.current?.stop().catch(() => {
-        setError("Cloud transcription did not close cleanly; the original audio is still available.");
-      });
-      transcriptionSessionRef.current = null;
-      const capturedTranscript = [
-        cloudTranscriptRef.current.finalText,
-        cloudTranscriptRef.current.partialText,
-      ].filter(Boolean).join(" ");
-      transcriptRef.current = capturedTranscript;
-      setTranscript(capturedTranscript);
-      setPartialTranscript("");
-      const recorder = mediaRecorderRef.current;
-      if (recorder && recorder.state !== "inactive") {
-        const stopped = new Promise<void>((resolve) => recorder.addEventListener("stop", () => resolve(), { once: true }));
-        recorder.stop();
-        await stopped;
-      }
-      mediaRecorderRef.current = null;
+    } catch (caught) {
+      stopError = caught;
+      if (mountedRef.current) setError(caught instanceof Error ? caught.message : String(caught));
+    }
+    try {
+      await wait(0);
+      await stopTranscription();
+      await stopMediaRecorder();
       if (audioChunksRef.current.length) {
-        const mime = recorder?.mimeType.split(";")[0] || "audio/webm";
+        const mime = audioChunksRef.current[0]?.type.split(";")[0] || "audio/webm";
         audioDataRef.current = await blobDataUrl(new Blob(audioChunksRef.current, { type: mime }));
       }
       releaseStreams();
-      updatePhase("review");
+      await flushCheckpoints();
+      await finalizeAfterStop();
     } catch (caught) {
-      await transcriptionSessionRef.current?.stop().catch(() => {});
-      transcriptionSessionRef.current = null;
-      if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current?.stop();
-      mediaRecorderRef.current = null;
-      releaseStreams();
-      updatePhase("review");
-      setError(caught instanceof Error ? caught.message : String(caught));
+      if (mountedRef.current) setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       stoppingRef.current = false;
+      if (mountedRef.current) updatePhase("review");
+    }
+    if (stopError && mountedRef.current) {
+      setError(stopError instanceof Error ? stopError.message : String(stopError));
     }
   };
-
   const discard = async () => {
-    await bridge?.stop().catch(() => {});
-    await transcriptionSessionRef.current?.stop().catch(() => {});
-    transcriptionSessionRef.current = null;
-    if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
+    const sessionId = sessionIdRef.current;
+    startAttemptRef.current += 1;
+    finalizingRef.current = false;
+    stoppingRef.current = false;
+    if (sessionId) await bridge?.discard(sessionId).catch(() => {});
+    await stopTranscription();
+    await stopMediaRecorder();
     releaseStreams();
+    sessionIdRef.current = null;
+    checkpointSequenceRef.current = 0;
     eventsRef.current = [];
+    audioChunksRef.current = [];
+    audioDataRef.current = "";
+    transcriptRef.current = "";
+    partialTranscriptRef.current = "";
     setEvents([]);
     setTranscript("");
     setPartialTranscript("");
     setName("");
     setDescription("");
     setSaved(null);
+    setRecoverable([]);
+    setReviewOnly(false);
     setError("");
     updatePhase("idle");
+    await refreshRecovery().catch(() => {});
   };
 
   const removeEvent = (id: string) => {
@@ -322,20 +644,40 @@ export function SkillRecorderPage() {
   };
 
   const save = async () => {
-    if (!bridge || !name.trim()) return;
+    if (!bridge || !name.trim() || !sessionIdRef.current || checkpointSequenceRef.current < 1) return;
     updatePhase("saving");
     setError("");
     try {
+      const sessionId = sessionIdRef.current;
+      if (!finalCheckpointRef.current) {
+        const finalResult = await submitCheckpoint(undefined, true);
+        if (!finalResult.accepted) throw new Error(`Could not finalize recording: ${finalResult.reason}`);
+      }
       const result = await bridge.save({
         name,
         description,
-        durationMs: elapsed,
+        sessionId,
+        checkpointSequence: checkpointSequenceRef.current,
+        durationMs: durationRef.current,
         transcript: transcriptRef.current,
-        transcription: { provider: "assemblyai", model: "u3-rt-pro" },
+        transcription: { provider: "assemblyai", model: "universal-3-5-pro" },
         audio: audioDataRef.current || undefined,
-        events: eventsRef.current,
+        events: eventsRef.current.map(({ screenshot: _screenshot, ...event }) => event),
       });
+      if (result.cleanupFailed) {
+        setError(result.id || result.path
+          ? "The skill was created, but the draft could not be cleaned up. The original recording was retained."
+          : "The draft could not be cleaned up and was retained for recovery.");
+        await refreshRecovery();
+        updatePhase("review");
+        return;
+      }
       setSaved(result);
+      sessionIdRef.current = null;
+      finalCheckpointRef.current = false;
+      checkpointSequenceRef.current = 0;
+      setRecoverable([]);
+      setReviewOnly(false);
       updatePhase("saved");
     } catch (caught) {
       updatePhase("review");
@@ -343,9 +685,25 @@ export function SkillRecorderPage() {
     }
   };
 
-  const restart = () => void discard();
-  const recording = phase === "recording";
+  const restart = () => {
+    if (phaseRef.current === "saved") {
+      sessionIdRef.current = null;
+      checkpointSequenceRef.current = 0;
+      setName("");
+      setDescription("");
+      setSaved(null);
+      setRecoverable([]);
+      setReviewOnly(false);
+      setError("");
+      updatePhase("idle");
+      void refreshRecovery();
+      return;
+    }
+    void discard();
+  };
 
+  const recording = phase === "recording";
+  const canSave = (phase === "review" || phase === "saving") && finalCheckpointRef.current && Boolean(name.trim()) && checkpointSequenceRef.current >= 1;
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app text-ink">
       <video ref={videoRef} muted playsInline className="pointer-events-none absolute size-px opacity-0" />
@@ -415,6 +773,25 @@ export function SkillRecorderPage() {
                   </button>
                 </div>
 
+                {recoverable.length > 0 && (
+                  <div className="mt-4 rounded-2xl border border-accent/30 bg-accent/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <FileText size={17} className="mt-0.5 text-accent-text" />
+                      <div className="min-w-0 flex-1">
+<div className="text-[12px] font-medium">Recovered recording</div>
+                        <p className="mt-1 text-[11px] leading-4 text-ink-secondary">A durable draft survived the last session. Live microphone, screen, and transcription streams were not resumed.</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {recoverable.map((summary) => (
+                            <button key={summary.sessionId} type="button" onClick={() => void resumeRecovery(summary)} className="rounded-xl bg-accent px-3 py-2 text-[11px] font-medium text-white hover:brightness-110">
+                              Review {formatRecordingTime(summary.durationMs)} · {summary.eventCount} steps
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <button type="button" disabled={phase === "starting" || !transcriptionConfigured} onClick={() => void start()} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-3.5 text-[14px] font-semibold text-white hover:brightness-110 disabled:opacity-40">
                   {phase === "starting" ? <><Circle size={15} className="animate-pulse" /> Getting ready…</> : <><Circle size={14} fill="currentColor" /> Start recording</>}
                 </button>
@@ -445,6 +822,11 @@ export function SkillRecorderPage() {
             </div>
           ) : phase === "review" || phase === "saving" ? (
             <div>
+              {reviewOnly && (
+                <div className="mb-5 rounded-2xl border border-accent/30 bg-accent/5 p-4 text-[12px] text-ink-secondary">
+                  <span className="font-medium text-ink">Review-only recovery.</span> The durable draft was restored, but microphone, screen, and AssemblyAI sessions were not resumed.
+                </div>
+              )}
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-success">Recording complete</div>
@@ -491,7 +873,7 @@ export function SkillRecorderPage() {
                     <div className="flex items-center justify-between"><span className="flex items-center gap-2"><Mic size={13} /> Narration</span><span>{transcript ? "Included" : "Audio only"}</span></div>
                     <div className="flex items-center justify-between"><span className="flex items-center gap-2"><ShieldCheck size={13} /> Storage</span><span>Local</span></div>
                   </div>
-                  <button type="button" disabled={!name.trim() || phase === "saving"} onClick={() => void save()} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-[13px] font-semibold text-white disabled:opacity-40">
+                  <button type="button" disabled={!canSave} onClick={() => void save()} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-[13px] font-semibold text-white disabled:opacity-40">
                     <Sparkles size={15} /> {phase === "saving" ? "Creating skill…" : "Create skill"}
                   </button>
                 </aside>

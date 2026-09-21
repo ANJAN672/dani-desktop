@@ -11,6 +11,7 @@ export type BotUpdatePatch = Partial<
     | "notifications"
     | "cloudBackend"
     | "autoStartVps"
+    | "autoReview"
     | "color"
     | "mascotExpression"
     | "avatarUrl"

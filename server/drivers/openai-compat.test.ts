@@ -1,3 +1,6 @@
+vi.mock("../dani-free/supervisor.ts", () => ({
+  ensureDaniFreeProxy: vi.fn(async () => "http://dani-free.test/v1"),
+}));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordEvents } from "../testing/events.ts";
 import { OpenAICompatDriver } from "./openai-compat.ts";
@@ -101,6 +104,93 @@ describe("OpenAICompatDriver", () => {
         { id: "vendor/model-b", label: "vendor/model-b", custom: true },
       ],
     });
+    await inst.dispose();
+  });
+  it("discovers managed Dani-Free models without an API key", async () => {
+    const fetchModels = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe("http://dani-free.test/v1/models");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBeNull();
+      expect(headers.get("x-dani-privacy")).toBe("private");
+      return new Response(JSON.stringify({ data: [{ id: "dani-free/model", name: "Free model" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchModels);
+
+    const inst = await OpenAICompatDriver.create({
+      instanceId: "test-dani-free",
+      displayName: "Dani-Free",
+      enabled: true,
+      config: { url: "https://unused.invalid/v1", apiKeyEnv: "UNUSED_API_KEY", localManagedProxy: "dani-free", tools: true },
+      environment: {},
+    });
+
+    await inst.refreshModels?.();
+    expect(inst.models).toEqual({
+      default: "dani-free/model",
+      options: [{ id: "dani-free/model", label: "Free model", custom: true }],
+    });
+    expect(await inst.snapshot()).toMatchObject({ state: "available", authenticated: true });
+    expect(fetchModels).toHaveBeenCalled();
+    await inst.dispose();
+  });
+
+  it("sends managed Dani-Free turns without an API key", async () => {
+    const fetchTurn = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "dani-free/model" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      expect(url).toBe("http://dani-free.test/v1/chat/completions");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBeNull();
+      expect(headers.get("x-dani-privacy")).toBe("private");
+      expect(headers.get("content-type")).toBe("application/json");
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"hello"}}]}\n' +
+          'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n' +
+          "data: [DONE]\n",
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchTurn);
+
+    const inst = await OpenAICompatDriver.create({
+      instanceId: "test-dani-free-turn",
+      displayName: "Dani-Free",
+      enabled: true,
+      config: { url: "https://unused.invalid/v1", apiKeyEnv: "UNUSED_API_KEY", localManagedProxy: "dani-free", model: "dani-free/model" },
+      environment: {},
+    });
+    const recorder = recordEvents(inst.adapter);
+
+    await inst.adapter.sendTurn({ threadId: "managed-thread", text: "hello", model: "dani-free/model" });
+    const completed = await recorder.until((event) => event.type === "turn.completed");
+
+    expect(completed).toMatchObject({ ok: true, usage: { input: 1, output: 1 } });
+    expect(fetchTurn).toHaveBeenCalled();
+    recorder.stop();
+    await inst.dispose();
+  });
+
+  it("does not expose seeded OpenRouter or Groq models when managed discovery fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+    const inst = await OpenAICompatDriver.create({
+      instanceId: "test-dani-free-failure",
+      displayName: "Dani-Free",
+      enabled: true,
+      config: { url: "https://unused.invalid/v1", apiKeyEnv: "UNUSED_API_KEY", localManagedProxy: "dani-free" },
+      environment: {},
+    });
+
+    await inst.refreshModels?.();
+    expect(inst.models).toEqual({ default: "", options: [] });
+    expect(JSON.stringify(inst.models)).not.toMatch(/OpenRouter|Groq|openrouter|groq/);
     await inst.dispose();
   });
 

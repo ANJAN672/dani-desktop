@@ -5,14 +5,40 @@ import { api, useStore, type Bot } from "@/state/store";
 import { BrowserProfilesManager } from "./BrowserProfilesManager";
 import { BrowserViewport, type BrowserFrame } from "./BrowserViewport";
 import { createBrowserInputQueue } from "@/lib/browser-input-queue";
-
 interface BrowserTab { tabId: string; title: string; url: string; active: boolean }
 type ViewerFrame = BrowserFrame & { viewerId: string; generation: number };
+export type BrowserPanelControlSnapshot = { held: boolean; helpReason: string | null };
+export interface LiveBrowserDurableControl {
+  held: boolean;
+  helpReason: string | null;
+}
+export interface LiveBrowserProps {
+  bot: Bot;
+  durableControl?: LiveBrowserDurableControl;
+  durableControlPending?: boolean;
+  onDurableControl?: (action: "take" | "release") => Promise<boolean>;
+  onCollapse?: () => void;
+}
+type BrowserPanelProps =
+  | { bot: Bot; size?: "compact" }
+  | {
+      bot: Bot;
+      size: "expanded";
+      control: BrowserPanelControlSnapshot;
+      controlPending: boolean;
+      onControl: (action: "take" | "release") => Promise<boolean>;
+      onCollapse: () => void;
+    };
 const button = "rounded-md p-1.5 text-ink-secondary hover:bg-inset hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed";
-
 /** Closing a panel releases its lease. A new connection never silently
  * restores permission to type, and never replays old browser frames. */
-export function LiveBrowser({ bot }: { bot: Bot }) {
+export function LiveBrowser({
+  bot,
+  durableControl,
+  durableControlPending = false,
+  onDurableControl,
+  onCollapse,
+}: LiveBrowserProps) {
   const { state } = useStore();
   const [attempt, setAttempt] = useState(0);
   const [frame, setFrame] = useState<ViewerFrame | null>(null);
@@ -21,6 +47,11 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
   const [connected, setConnected] = useState(false);
   const [control, setControl] = useState({ held: false, controlling: false, owned: false });
   const [pending, setPending] = useState(false);
+  const durableHeldElsewhere = Boolean(durableControl?.held && durableControl.helpReason !== null);
+  const effectiveControl = durableControl
+    ? { held: durableControl.held, controlling: durableControl.held && !durableHeldElsewhere, owned: durableControl.held && !durableHeldElsewhere }
+    : control;
+  const effectivePending = durableControl ? durableControlPending : pending;
   const [error, setError] = useState("");
   const [showProfiles, setShowProfiles] = useState(false);
   const [showTyping, setShowTyping] = useState(false);
@@ -112,7 +143,7 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
     };
   }, [bot.id, bot.browserProfile, attempt, action]);
 
-  const execute = async (body: Record<string, unknown>) => {
+  const execute = async (body: Record<string, unknown>, durableAction?: () => Promise<boolean>) => {
     if (pendingOperation.current !== null) return;
     const expected = viewer.current;
     const current = generation.current;
@@ -122,8 +153,13 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
     try {
       await queue?.drain();
       if (generation.current !== current || viewer.current !== expected) return;
-      await action(body, expected);
-      if (generation.current === current && body.type === "restart") reconnect();
+      if (durableAction) {
+        const ok = await durableAction();
+        if (!ok) setError("Browser control did not change. Try again.");
+      } else {
+        await action(body, expected);
+        if (generation.current === current && body.type === "restart") reconnect();
+      }
     }
     catch (cause) { if (generation.current === current) setError(cause instanceof Error ? cause.message : String(cause)); }
     finally {
@@ -132,7 +168,7 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
       }
     }
   };
-  const driving = control.controlling && connected && !pending;
+  const driving = effectiveControl.controlling && connected && !effectivePending;
   return <div ref={panel} className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-hairline/40 bg-card text-ink">
     <div className="flex min-h-12 items-center gap-1 px-2 pt-1.5">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -145,6 +181,7 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
       </div>
       <button className={button} title="Full screen" aria-label="Full screen" onClick={() => { void panel.current?.requestFullscreen().catch(() => setError("Full screen is unavailable in this browser.")); }}><Maximize2 size={16} /></button>
       <button className={`${button} rounded-xl bg-inset p-2`} title={`Browser profile: ${profileName}`} aria-label="Browser profiles" aria-expanded={showProfiles} onClick={() => setShowProfiles(true)}><UserRound size={16} /></button>
+      {onCollapse && <button className={button} title="Back to the panel" aria-label="Back to the panel" onClick={onCollapse}><X size={16} /></button>}
     </div>
     <form className="flex h-12 items-center gap-1 border-b border-hairline/40 px-2" onSubmit={(e) => { e.preventDefault(); if (driving && address.trim()) void execute({ type: "navigate", url: /^https?:\/\//i.test(address.trim()) ? address.trim() : `https://${address.trim()}` }); }}>
       <div className="flex shrink-0 items-center">
@@ -153,16 +190,16 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
         <button type="button" className={button} disabled={!driving} aria-label="Reload page" onClick={() => void execute({ type: "reload" })}><RotateCw size={17} /></button>
       </div>
       <input ref={addressInput} aria-label="Browser address" readOnly={!driving} value={address} onChange={(e) => setAddress(e.target.value)} onFocus={(e) => { urlEditing.current = true; if (driving) e.target.select(); }} onBlur={() => { urlEditing.current = false; }} placeholder={connected ? "about:blank" : "Connecting…"} spellCheck={false} className="mx-1 min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1.5 text-center text-[12px] outline-none placeholder:text-ink-secondary focus:bg-inset focus:text-left" />
-      <button type="button" disabled={!connected || pending || (control.held && !control.owned)} onClick={() => void execute({ type: control.owned ? "release" : "take" })} title={control.owned ? "Return to bot — browser tools are paused while you control this profile" : control.held ? "This profile is controlled in another window" : "Take control to click, type, or sign in"} aria-label={control.owned ? "Return to bot" : "Take control"} aria-pressed={control.owned} className={`${button} flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] sm:text-[12px] ${control.owned ? "bg-accent/15 text-accent" : ""}`}>
-        {pending ? <Loader2 size={16} className="animate-spin" /> : <Hand size={16} className="hidden sm:block" />}
-        <span>{control.owned ? "Return to bot" : "Take control"}</span>
+      <button type="button" disabled={!connected || effectivePending || (effectiveControl.held && !effectiveControl.owned)} onClick={() => void execute({ type: effectiveControl.owned ? "release" : "take" }, onDurableControl ? () => onDurableControl(effectiveControl.owned ? "release" : "take") : undefined)} title={effectiveControl.owned ? "Return to bot — browser tools are paused while you control this profile" : effectiveControl.held ? "This profile is controlled in another window" : "Take control to click, type, or sign in"} aria-label={effectiveControl.owned ? "Return to bot" : "Take control"} aria-pressed={effectiveControl.owned} className={`${button} flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] sm:text-[12px] ${effectiveControl.owned ? "bg-accent/15 text-accent" : ""}`}>
+        {effectivePending ? <Loader2 size={16} className="animate-spin" /> : <Hand size={16} className="hidden sm:block" />}
+        <span>{effectiveControl.owned ? "Return to bot" : "Take control"}</span>
       </button>
       <details className="relative shrink-0">
         <summary className={`${button} list-none cursor-pointer [&::-webkit-details-marker]:hidden`} aria-label="Browser menu" title="Browser menu"><EllipsisVertical size={17} /></summary>
         <div className="absolute right-0 top-full z-20 mt-2 flex w-44 flex-col rounded-xl border border-hairline/50 bg-card p-1.5 text-[12px] shadow-xl">
           <button type="button" className="rounded-md px-3 py-2 text-left hover:bg-inset disabled:opacity-40" disabled={!driving} onClick={(e) => { e.currentTarget.closest("details")?.removeAttribute("open"); setShowTyping(true); }}>Type or paste text…</button>
           <button type="button" className="rounded-md px-3 py-2 text-left hover:bg-inset" onClick={(e) => { e.currentTarget.closest("details")?.removeAttribute("open"); reconnect(); }}>Reconnect view</button>
-          <button type="button" className="rounded-md px-3 py-2 text-left hover:bg-inset disabled:opacity-40" disabled={!connected || pending} onClick={(e) => {
+          <button type="button" className="rounded-md px-3 py-2 text-left hover:bg-inset disabled:opacity-40" disabled={!connected || effectivePending} onClick={(e) => {
             e.currentTarget.closest("details")?.removeAttribute("open");
             if (!window.confirm("Restart this profile’s browser? Open tabs will close. Saved logins are kept. Stop any bots using it first.")) return;
             void execute({ type: "restart" });
@@ -176,11 +213,11 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
         onReturnToToolbar={() => addressInput.current?.focus()}
         acknowledge={(seq) => { if (generation.current === frame.generation && viewer.current === frame.viewerId) void action({ type: "ack", seq }, frame.viewerId).catch(() => {}); }}
         onDecodeError={() => { if (generation.current === frame.generation && viewer.current === frame.viewerId) setError("A browser frame could not be decoded. Close and reopen the panel to reconnect."); }} />
-        : <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center text-[13px] text-ink-secondary">{connected && control.held ? <Hand size={24} /> : error ? <Globe size={24} /> : <Loader2 size={24} className="animate-spin" />}<span>{control.held ? "Live view paused for human control" : error ? "Browser disconnected" : "Opening the live browser…"}</span></div>}
+        : <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center text-[13px] text-ink-secondary">{connected && effectiveControl.held ? <Hand size={24} /> : error ? <Globe size={24} /> : <Loader2 size={24} className="animate-spin" />}<span>{effectiveControl.held ? "Live view paused for human control" : error ? "Browser disconnected" : "Opening the live browser…"}</span></div>}
     </div>
     <dialog ref={profilesDialog} onClose={() => setShowProfiles(false)} onClick={(e) => { if (e.target === e.currentTarget) setShowProfiles(false); }} className="m-auto w-[min(420px,calc(100%-32px))] max-h-[80vh] overflow-auto rounded-2xl border border-hairline/50 bg-card p-5 text-ink shadow-2xl backdrop:bg-black/40">
       <div className="mb-4 flex items-center justify-between"><h2 className="text-[15px] font-medium">Browser profiles</h2><button className={button} aria-label="Close browser profiles" onClick={() => setShowProfiles(false)}><X size={16} /></button></div>
-      <BrowserProfilesManager bot={bot} disabled={pending || control.held} onProfileChanged={() => { setShowProfiles(false); reconnect(); }} />
+      <BrowserProfilesManager bot={bot} disabled={effectivePending || effectiveControl.held} onProfileChanged={() => { setShowProfiles(false); reconnect(); }} />
     </dialog>
     <dialog ref={typingDialog} onClose={() => setShowTyping(false)} className="m-auto w-[min(420px,calc(100%-32px))] rounded-2xl border border-hairline/50 bg-card p-5 text-ink shadow-2xl backdrop:bg-black/40">
       <div className="mb-3 flex items-center justify-between"><h2 className="text-[14px] font-medium">Type into the selected page field</h2><button className={button} aria-label="Close typing" onClick={() => setShowTyping(false)}><X size={16} /></button></div>
@@ -192,7 +229,22 @@ export function LiveBrowser({ bot }: { bot: Bot }) {
   </div>;
 }
 
-export function BrowserPanel({ bot }: { bot: Bot }) {
+export function BrowserPanel(props: BrowserPanelProps) {
+  if (props.size === "expanded") {
+    const { bot, control, controlPending, onControl, onCollapse } = props;
+    return (
+      <LiveBrowser
+        bot={bot}
+        durableControl={control}
+        durableControlPending={controlPending}
+        onDurableControl={onControl}
+        onCollapse={onCollapse}
+      />
+    );
+  }
+
+  const { bot } = props;
+
   const { state } = useStore();
   const engine = state.config?.browserEngine;
   const [requested, setRequested] = useState(false);

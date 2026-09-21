@@ -9,6 +9,8 @@ struct Context {
 
 final class Recorder {
     private let stopFile: String
+    private let lifecycleLock = NSLock()
+    private var stopped = false
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var timer: Timer?
@@ -35,9 +37,63 @@ final class Recorder {
     private let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
     private var knownDownloads: Set<String> = []
     private let partialExtensions: Set<String> = ["crdownload", "download", "part", "tmp"]
-
     init(stopFile: String) {
         self.stopFile = stopFile
+    }
+
+    var isStopped: Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return stopped
+    }
+
+    /// Stop all recorder resources once, from either the prompt watcher or the
+    /// recording timer. Cleanup is deliberately outside the state lock so a
+    /// watcher cannot deadlock with an event callback that is finishing.
+    func stop() {
+        lifecycleLock.lock()
+        guard !stopped else {
+            lifecycleLock.unlock()
+            return
+        }
+        stopped = true
+        let tap = self.tap
+        let source = self.source
+        let timer = self.timer
+        self.tap = nil
+        self.source = nil
+        self.timer = nil
+        lifecycleLock.unlock()
+
+        flushTyping()
+        if let tap = tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        if let source = source {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        timer?.invalidate()
+        CFRunLoopStop(CFRunLoopGetMain())
+    }
+
+    /// Request a stop when the marker is present, without holding the lifecycle
+    /// lock while performing run-loop cleanup.
+    func stopIfRequested() -> Bool {
+        lifecycleLock.lock()
+        let shouldStop = !stopped && FileManager.default.fileExists(atPath: stopFile)
+        lifecycleLock.unlock()
+        if shouldStop {
+            stop()
+            return true
+        }
+        return false
+    }
+
+    func reenableTapIfRunning() {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard !stopped, let tap = tap else { return }
+        CGEvent.tapEnable(tap: tap, enable: true)
     }
 
     private func nowMs() -> Int {
@@ -319,6 +375,10 @@ final class Recorder {
     // MARK: - Event handling
 
     func handle(type: CGEventType, event: CGEvent) {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard !stopped else { return }
+
         // Plain typing keys are aggregated in-process and never emitted as keycodes.
         if type == .keyDown {
             let flags = event.flags
@@ -382,6 +442,14 @@ final class Recorder {
     }
 
     func start() -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard !stopped else { return false }
+        if FileManager.default.fileExists(atPath: stopFile) {
+            stopped = true
+            return false
+        }
+
         // One-time short messaging timeout so click hit-tests and focus queries can
         // never hang the tap callback on a slow/unresponsive target app.
         AXUIElementSetMessagingTimeout(systemWide, 0.4)
@@ -396,9 +464,7 @@ final class Recorder {
             guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
             let recorder = Unmanaged<Recorder>.fromOpaque(refcon).takeUnretainedValue()
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                if let tap = recorder.tap {
-                    CGEvent.tapEnable(tap: tap, enable: true)
-                }
+                recorder.reenableTapIfRunning()
                 return Unmanaged.passUnretained(event)
             }
             recorder.handle(type: type, event: event)
@@ -419,11 +485,10 @@ final class Recorder {
         _ = emitContextIfChanged(force: true)
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            if FileManager.default.fileExists(atPath: self.stopFile) {
-                self.flushTyping()
-                CFRunLoopStop(CFRunLoopGetMain())
-                return
-            }
+            if self.stopIfRequested() { return }
+            self.lifecycleLock.lock()
+            defer { self.lifecycleLock.unlock() }
+            guard !self.stopped else { return }
             // End a typing burst that has gone idle.
             if self.typingCount > 0 && self.nowMs() - self.lastTypingMs > 1200 {
                 self.flushTyping()
@@ -445,36 +510,47 @@ guard let stopFile = argument("--stop-file") else {
     fputs("missing --stop-file\n", stderr)
     exit(2)
 }
-// LaunchServices gives the helper its TCC identity, but it also means the
-// parent cannot terminate us by killing the `open -W` waiter. Poll the stop
-// marker from process start — including during Accessibility's blocking
-// prompt — so a quit, a 5s ready-timeout, or a cancelled Teach-a-skill
-// session cannot leave a global event tap behind.
-var stopWatcher: DispatchSourceTimer?
-let stopTimer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
-let stopWatcherStopped = DispatchSemaphore(value: 0)
-stopTimer.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
-stopTimer.setEventHandler {
-    if FileManager.default.fileExists(atPath: stopFile) { exit(0) }
+
+func runRecorder() -> Int32 {
+    let recorder = Recorder(stopFile: stopFile)
+    defer { recorder.stop() }
+
+    // LaunchServices gives the helper its TCC identity, but it also means the
+    // parent cannot terminate us by killing the `open -W` waiter. Poll the stop
+    // marker from process start — including during Accessibility's blocking
+    // prompt — so a quit, a 5s ready-timeout, or a cancelled Teach-a-skill
+    // session cannot leave a global event tap behind.
+    let stopTimer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+    let stopWatcherStopped = DispatchSemaphore(value: 0)
+    stopTimer.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
+    stopTimer.setEventHandler {
+        _ = recorder.stopIfRequested()
+    }
+    stopTimer.setCancelHandler { stopWatcherStopped.signal() }
+    stopTimer.resume()
+
+    let trustOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+    guard AXIsProcessTrustedWithOptions(trustOptions) else {
+        fputs("Allow Dani Bot Recorder in Privacy & Security → Accessibility, then try again. Input Monitoring may also be requested.\n", stderr)
+        return 3
+    }
+
+    // Recording has its own stop-file timer, which flushes any pending typing
+    // before stopping the run loop. Hand off to that graceful path now that the
+    // blocking Accessibility prompt is finished.
+    if recorder.isStopped || recorder.stopIfRequested() {
+        return 0
+    }
+    stopTimer.cancel()
+    stopWatcherStopped.wait()
+
+
+    guard recorder.start() else {
+        fputs("input monitoring permission is required\n", stderr)
+        return recorder.isStopped ? 0 : 4
+    }
+    RunLoop.main.run()
+    return 0
 }
-stopTimer.setCancelHandler { stopWatcherStopped.signal() }
-stopWatcher = stopTimer
-stopTimer.resume()
-let trustOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-guard AXIsProcessTrustedWithOptions(trustOptions) else {
-    fputs("Allow Dani Bot Recorder in Privacy & Security → Accessibility, then try again. Input Monitoring may also be requested.\n", stderr)
-    exit(3)
-}
-// Recording has its own stop-file timer, which flushes any pending typing
-// before stopping the run loop. Hand off to that graceful path now that the
-// blocking Accessibility prompt is finished.
-if FileManager.default.fileExists(atPath: stopFile) { exit(0) }
-stopTimer.cancel()
-stopWatcherStopped.wait()
-stopWatcher = nil
-let recorder = Recorder(stopFile: stopFile)
-guard recorder.start() else {
-    fputs("input monitoring permission is required\n", stderr)
-    exit(4)
-}
-RunLoop.main.run()
+
+exit(runRecorder())

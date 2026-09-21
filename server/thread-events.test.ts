@@ -146,6 +146,27 @@ describe("readThreadEvents", () => {
     const page = readThreadEvents({ eventsDir, nativeDir, threadId: "t1" });
     expect(page.entries.map((entry) => (entry.data as { eventId: string }).eventId)).toEqual(["valid-retry"]);
   });
+  it("keeps explicit provider maintenance events with exact-instance thresholds", () => {
+    const eventsDir = tmp();
+    const maintenance = {
+      eventId: "maint-1",
+      provider: "openaiCompat",
+      providerInstanceId: "instance-a",
+      threadId: "t1",
+      createdAt: "1",
+      type: "provider.maintenance",
+      reason: "threshold crossed",
+      threshold: { kind: "consecutive-errors", count: 3 },
+    };
+    writeFileSync(
+      join(eventsDir, "t1.ndjson"),
+      line(maintenance) +
+        line({ ...maintenance, eventId: "bad-count", threshold: { kind: "consecutive-errors", count: "3" } }) +
+        line({ ...maintenance, eventId: "missing-instance", providerInstanceId: undefined }),
+    );
+    const page = readThreadEvents({ eventsDir, nativeDir: tmp(), threadId: "t1" });
+    expect(page.entries.map((entry) => (entry.data as { eventId: string }).eventId)).toEqual(["maint-1"]);
+  });
 
   it("keeps walking backward when a corrupt tail record would otherwise consume the limit", () => {
     const eventsDir = tmp();

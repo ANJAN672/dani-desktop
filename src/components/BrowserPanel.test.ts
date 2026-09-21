@@ -28,11 +28,10 @@ vi.mock("@/lib/browser-input-queue", () => ({ createBrowserInputQueue: () => {
   const queue = { enqueue: vi.fn(), clear: vi.fn(), drain: vi.fn().mockResolvedValue(undefined) };
   fixture.queues.push(queue); return queue;
 } }));
-import { LiveBrowser } from "./BrowserPanel";
+import { BrowserPanel, LiveBrowser, type LiveBrowserProps } from "./BrowserPanel";
 import { BrowserViewport } from "./BrowserViewport";
 import { BrowserProfilesManager } from "./BrowserProfilesManager";
 import { api } from "@/state/store";
-
 class FixtureEventSource {
   static instances: FixtureEventSource[] = [];
   listeners = new Map<string, Array<(event: MessageEvent) => void>>();
@@ -283,5 +282,48 @@ describe("live browser control affordance", () => {
     expect(html).toContain('<span>Return to bot</span>');
     expect(html).toContain('aria-label="Return to bot" aria-pressed="true"');
     expect(html).not.toContain('<span>Take control</span>');
+  });
+});
+describe("expanded browser workspace", () => {
+  it("delegates lease transitions to durable control and keeps browser actions on the live endpoint", async () => {
+    const onControl = vi.fn().mockResolvedValue(true);
+    const onCollapse = vi.fn();
+    let tree!: ReactElement;
+    function Capture() {
+      tree = BrowserPanel({
+        bot,
+        size: "expanded",
+        control: { held: false, helpReason: null },
+        controlPending: false,
+        onControl,
+        onCollapse,
+      }) as ReactElement;
+      return tree;
+    }
+    renderToStaticMarkup(createElement(Capture));
+
+    const live = tree as ReactElement<LiveBrowserProps>;
+    expect(live.type).toBe(LiveBrowser);
+    expect(live.props.durableControl).toEqual({ held: false, helpReason: null });
+    expect(live.props.onDurableControl).toBe(onControl);
+    await live.props.onDurableControl!("take");
+    expect(onControl).toHaveBeenCalledOnce();
+    expect(onControl).toHaveBeenCalledWith("take");
+
+    const connectionEffect = fixture.effects.length + 2;
+    let standalone!: ReturnType<typeof LiveBrowser>;
+    function Standalone() { standalone = LiveBrowser({ bot }); return standalone; }
+    renderToStaticMarkup(createElement(Standalone));
+    const nodes = elements(standalone);
+    fixture.effects[connectionEffect]!();
+    expect(FixtureEventSource.instances.length).toBe(1);
+    FixtureEventSource.instances[0]!.emit("ready", { viewerId: "current-viewer" });
+    vi.mocked(api).mockClear();
+    click(nodes, "New tab");
+    await settle();
+    expect(api).toHaveBeenCalledWith("/api/bots/pepper/browser/action", {
+      method: "POST",
+      body: JSON.stringify({ type: "tab-new", viewerId: "current-viewer" }),
+    });
   });
 });

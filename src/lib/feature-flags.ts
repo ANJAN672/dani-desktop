@@ -26,6 +26,11 @@ export function skillAuthoringEnabled(config: FeatureFlagConfig | null | undefin
   return config?.features?.skillAuthoring !== false;
 }
 
+/** Whether the native skill recorder is available in this desktop build. */
+export function skillRecorderEnabled(config: FeatureFlagConfig | null | undefined): boolean {
+  return config?.features?.skillAuthoring !== false;
+}
+
 /** The experimental built-in browser is unavailable until the person using
  * the app explicitly opts in. Each bot also has its own switch. */
 export function builtInBrowserEnabled(config: FeatureFlagConfig | null | undefined): boolean {

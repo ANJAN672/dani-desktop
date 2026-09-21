@@ -38,12 +38,6 @@ files:
   - "!electron/resources/speech-helper.swift"
   - "!electron/resources/speech-helper-Info.plist"
   - "!electron/resources/DaniBot Speech.app/**"
-  # The Teach a skill recorder is gone, but a machine that once ran
-  # `pnpm build:recorder` may still hold its helper build; never ship it.
-  - "!electron/resources/recorder-helper"
-  - "!electron/resources/recorder-helper.swift"
-  - "!electron/resources/recorder-helper-Info.plist"
-  - "!electron/resources/DaniBot Recorder.app/**"
   - "!**/node_modules/**"
   - package.json
 
@@ -95,10 +89,12 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # the dictation helper is a signed background app — Windows and Linux never see it
+  # Native helpers are signed app bundles kept outside the Electron ASAR.
   extraResources:
     - from: electron/resources/DaniBot Speech.app
       to: DaniBot Speech.app
+    - from: electron/resources/Dani Bot Recorder.app
+      to: Dani Bot Recorder.app
     # CUA must live outside ASAR. prepare-cua stages the signed executable and
     # a self-contained JS/native SDK bundle selected for macOS arm64.
     # ${arch} resolves per built arch — each bundle carries its own natives

@@ -46,6 +46,7 @@ interface RuntimeOptions<Config> {
   apiKey: string;
   apiUrl: string;
   models: () => ModelCatalog;
+  localManagedProxy?: "dani-free";
   requestBody(model: string, messages: OpenAIChatMessage[], stream: boolean): Record<string, unknown>;
   httpErrorLabel: string;
   missingKeyError: string;
@@ -109,10 +110,15 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
       const activeSignal = signal
         ? AbortSignal.any([signal, timeoutController.signal])
         : timeoutController.signal;
-
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (options.localManagedProxy === "dani-free") {
+        headers["x-dani-privacy"] = "private";
+      } else {
+        headers.authorization = `Bearer ${options.apiKey}`;
+      }
       const response = await fetch(`${options.apiUrl}/chat/completions`, {
         method: "POST",
-        headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
+        headers,
         body: JSON.stringify(options.requestBody(model, messages, stream)),
         signal: activeSignal,
       });
@@ -199,7 +205,7 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
   ];
 
   const sendTurn = async (turn: SendTurnInput) => {
-    if (!options.apiKey) throw new Error(options.missingKeyError);
+    if (!options.apiKey && options.localManagedProxy !== "dani-free") throw new Error(options.missingKeyError);
     if (active.has(turn.threadId)) throw new Error("a turn is already running on this thread");
 
     const turnId = newId();
@@ -294,13 +300,16 @@ export function createOpenAIChatRuntime<Config>(options: RuntimeOptions<Config>)
     driverKind: options.driverKind,
     displayName: input.displayName,
     enabled: input.enabled,
+    localManagedProxy: options.localManagedProxy,
     get models() {
       return options.models();
     },
     ...(options.refreshModels ? { refreshModels: options.refreshModels } : {}),
-    snapshot: async () => options.apiKey
+    snapshot: async () => options.localManagedProxy
       ? { state: "available", authenticated: true, version: null, ...(options.billing ? { billing: options.billing } : {}) }
-      : { state: "unavailable", reason: options.unavailableReason },
+      : options.apiKey
+        ? { state: "available", authenticated: true, version: null, ...(options.billing ? { billing: options.billing } : {}) }
+        : { state: "unavailable", reason: options.unavailableReason },
     adapter: {
       provider: options.driverKind,
       capabilities: { sessionModelSwitch: "in-session" },

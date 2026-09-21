@@ -204,6 +204,13 @@ import {
 } from "./send-idempotency.ts";
 import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
+import { providerRuntime } from "./provider-runtime.ts";
+import { ProviderMaintenanceCoordinator, type ProviderMaintenanceSignal } from "./provider-maintenance.ts";
+import {
+  captureProviderMaintenanceWork as captureProviderWork,
+} from "./provider-maintenance-work.ts";
+import { ProviderRetryMaintenanceMonitor } from "./provider-retry-maintenance.ts";
+import type { SendTurnInput } from "./contracts.ts";
 import { selectDefaultModelSelection } from "./default-model-selection.ts";
 import { cancelPeerApprovalsFor, cancelPeerApprovalsForThread, dismissStalePeerCards, requestPeerApproval, resolvePeerComms, type ApprovalBus } from "./peer-approval.ts";
 import { peerProvenanceNote, withPeerProvenance } from "./peer-provenance.ts";
@@ -612,6 +619,7 @@ utilityParentPort?.on("message", (event) => {
 });
 
 const bus = new EventBus();
+const providerRetryMaintenance = new ProviderRetryMaintenanceMonitor();
 bus.attach(registry.instances());
 
 // ── peer-agent comms wiring ────────────────────────────────────────────
@@ -887,7 +895,7 @@ async function interruptDirectThread(botId: string, threadId: string): Promise<v
   const owner = botForThread(botId, threadId);
   cancelDirectTurnDispatch(botId, threadId);
   revokeInternalCapabilitiesForThread(threadId);
-  await (owner ? registry.get(owner.modelSelection.instanceId) : undefined)?.adapter.interruptTurn(threadId);
+  await providerRuntime((owner ? registry.get(owner.modelSelection.instanceId) : undefined))?.interruptTurn(threadId);
   closeOpenApprovals(threadId);
 }
 
@@ -1274,7 +1282,7 @@ function checkedModelSelection(
       };
     }
   }
-  const allowed: readonly string[] = target?.adapter.capabilities.effortLevels ?? [];
+  const allowed: readonly string[] = providerRuntime(target)?.capabilities.effortLevels ?? [];
   if (target && selection.effort !== undefined && !allowed.includes(selection.effort)) {
     return { ok: false, status: 400, error: `effort "${selection.effort}" is not offered by this bot's engine` };
   }
@@ -1437,7 +1445,7 @@ function previewSystemPrompt(bot: BotRecord) {
     .filter(Boolean)
     .join(" ");
   const instance = registry.get(bot.modelSelection.instanceId);
-  const caps = instance?.adapter.capabilities;
+  const caps = providerRuntime(instance)?.capabilities;
   const computerPromptKind: ComputerPromptKind | null =
     bot.computer === "vm"
       ? caps?.computerMcp ? localVmMode(cfg) === "per-bot" ? "vm-private" : "vm-shared" : null
@@ -1508,7 +1516,7 @@ async function botOverview(bot: BotRecord): Promise<BotOverview> {
     composio.connectorAvailability(cfg),
     () => composio.connectedServices(cfg),
   );
-  const engine = registry.get(bot.modelSelection.instanceId)?.adapter.capabilities ?? null;
+  const engine = providerRuntime(registry.get(bot.modelSelection.instanceId))?.capabilities ?? null;
   const sectionPeers = reachablePeers(store.bots, bot).length;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // Same flush as GET /history: profile-change rows queue in
@@ -2814,7 +2822,7 @@ async function answerRequest(
   let outcome: RequestOutcome = "unavailable";
   if (instance) {
     try {
-      outcome = await instance.adapter.respondToRequest(threadId, requestId, { behavior, message, always: always && behavior === "allow" });
+      outcome = await providerRuntime(instance)?.respondToRequest(threadId, requestId, { behavior, message, always: always && behavior === "allow" });
     } catch {
       outcome = "unavailable";
     }
@@ -2959,7 +2967,7 @@ const watchdog = new TurnWatchdog({
     const instance = routineRun?.runOn === "cloud"
       ? registry.instances().find((candidate) => candidate.driverKind === "boxAgent")
       : bot ? registry.get(bot.modelSelection.instanceId) : null;
-    void instance?.adapter.interruptTurn(turn.threadId).catch(() => {});
+    void providerRuntime(instance)?.interruptTurn(turn.threadId).catch(() => {});
     const minutes = Math.round(TURN_STALL_MS / 60_000);
     if (routineRun?.target === "bot") {
       routines?.failThread(turn.threadId, `No activity for ${minutes} minutes — the routine was stopped`);
@@ -3365,6 +3373,39 @@ async function localVmInventoryPayload() {
 
 bus.subscribe((event: RuntimeEvent) => {
   if (shouldIgnoreProviderEvent(event)) return;
+  if (event.type === "turn.retrying") {
+    const signal = providerRetryMaintenance.observe(event);
+    if (signal) {
+      bus.publish({
+        eventId: newId(),
+        type: "provider.maintenance",
+        provider: event.provider,
+        providerInstanceId: signal.instanceId,
+        threadId: event.threadId,
+        turnId: event.turnId,
+        createdAt: new Date().toISOString(),
+        reason: signal.reason,
+        threshold: signal.threshold,
+      });
+    }
+  }
+  if (event.type === "provider.maintenance") {
+    if (!event.providerInstanceId) return;
+    void maintainProviderInstanceExact({
+      instanceId: event.providerInstanceId,
+      reason: event.reason,
+      threshold: event.threshold,
+    }).then(() => {
+      providerRetryMaintenance.acknowledge(event.providerInstanceId!);
+    }).catch((error) => {
+      providerRetryMaintenance.retry(event.providerInstanceId!);
+      console.error("provider maintenance failed", error);
+    });
+    return;
+  }
+  if ((event.type === "turn.completed" || event.type === "session.exited") && event.providerInstanceId) {
+    providerRetryMaintenance.complete(event.providerInstanceId);
+  }
   const localVmTarget = localVmThreadTargets.get(event.threadId);
   if (localVmTarget) {
     localVmLeaseFor(localVmTarget).touch(event.threadId);
@@ -3574,7 +3615,7 @@ bus.subscribe((event: RuntimeEvent) => {
         void (async () => {
           try {
             if (!instance) throw new Error("provider unavailable");
-            const outcome = await instance.adapter.respondToRequest(event.threadId, requestId, { behavior: "allow" });
+            const outcome = await providerRuntime(instance)?.respondToRequest(event.threadId, requestId, { behavior: "allow" });
             if (outcome === "unavailable") throw new Error("the ask is no longer open");
             pushMessage({
               role: "bot",
@@ -4683,7 +4724,7 @@ async function startTurn(
   // path-free prompt and bounded inputs instead of needing a Read tool;
   // path-reading drivers retain the attachment tag as their compatibility route.
   const resolvedImages = extractTurnImages(text);
-  const usesNativeImageInput = instance.adapter.capabilities.nativeImageInput === true;
+  const usesNativeImageInput = providerRuntime(instance)?.capabilities.nativeImageInput === true;
   const providerText = usesNativeImageInput ? resolvedImages.text : text;
   const turnImages = usesNativeImageInput ? resolvedImages.images : [];
   const commsDepth = opts?.commsDepth ?? 0;
@@ -4707,7 +4748,7 @@ async function startTurn(
   const effort = opts?.runOn === "cloud" ? undefined : bot.modelSelection.effort;
   // A selection can be persisted while its engine is offline. Re-check when
   // the engine returns so an old or unsupported value never reaches a CLI.
-  if (effort && !instance.adapter.capabilities.effortLevels?.includes(effort)) {
+  if (effort && !providerRuntime(instance)?.capabilities.effortLevels?.includes(effort)) {
     throw Object.assign(
       new Error(`effort "${effort}" is not offered by this bot's engine — choose another level in settings`),
       { status: 409 },
@@ -4786,7 +4827,7 @@ async function startTurn(
   // the setup prompt block, and the peer-comms integration below: a driver
   // that never mounts agent tools (or a turn already at the comms-depth cap)
   // must not be steered into — or told about — tools it cannot call.
-  const agentsMounted = commsDepth < MAX_COMMS_DEPTH && instance.adapter.capabilities.agentsMcp === true;
+  const agentsMounted = commsDepth < MAX_COMMS_DEPTH && providerRuntime(instance)?.capabilities.agentsMcp === true;
   const skillAuthoring = skillAuthoringEnabled(cfg) && agentsMounted;
   // Setup mode's turn-text rewrite (parseSetupCommand/expandSetupTurnText)
   // must not run ahead of a system prompt that can't explain it: a driver
@@ -4853,12 +4894,12 @@ async function startTurn(
 
   void (async () => {
     try {
-      const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
+      const integrations: NonNullable<SendTurnInput["integrations"]> = {};
       let browser: Awaited<ReturnType<typeof browserIntegration>> = null;
       const selectedSkills = selectBundledSkills(
         providerText,
         [
-          ...(instance.adapter.capabilities.phoneMcp === true ? ["phoneMcp"] : []),
+          ...(providerRuntime(instance)?.capabilities.phoneMcp === true ? ["phoneMcp"] : []),
           ...(skillAuthoring ? ["skillAuthoring"] : []),
         ],
         availableSkills(),
@@ -4871,14 +4912,14 @@ async function startTurn(
       // them — a key in the config says the connections exist, not that
       // this engine can reach them — and only to a bot the user has not
       // switched off: the key is workspace-wide, the grant is per bot.
-      if (bot.composio !== false && composio.configured(cfg) && instance.adapter.capabilities.composioMcp === true) {
+      if (bot.composio !== false && composio.configured(cfg) && providerRuntime(instance)?.capabilities.composioMcp === true) {
         const connection = await connectedAppsIntegration(bot.id, threadId, dispatchClaimId);
         if (connection) integrations.composio = connection;
       }
       // user-configured MCP servers (config.json mcpServers): same rule as
       // composio — only to a driver that can mount them. Their tools are
       // never pre-allowed, so every call rides the normal permission flow.
-      if (instance.adapter.capabilities.customMcp === true) {
+      if (providerRuntime(instance)?.capabilities.customMcp === true) {
         const custom = customMcpServers(cfg, bot.mcpServers);
         if (Object.keys(custom).length) integrations.custom = custom;
       }
@@ -4925,9 +4966,9 @@ async function startTurn(
       // Cloud routines always use Box/BoxAgent. The per-bot backend applies
       // only to ordinary turns that mount a computer into the local agent.
       const cloudBackend = opts?.runOn === "cloud" || bot.cloudBackend !== "vps" ? "box" : "vps";
-      const mountsComputerMcp = instance.adapter.capabilities.computerMcp === true;
+      const mountsComputerMcp = providerRuntime(instance)?.capabilities.computerMcp === true;
       const mountsCloudComputer = mountsComputerMcp || instance.driverKind === "boxAgent";
-      const mountsLocalComputer = instance.adapter.capabilities.localComputerMcp === true;
+      const mountsLocalComputer = providerRuntime(instance)?.capabilities.localComputerMcp === true;
       // Where this turn's hands may land. The bot's "Works on" choice is
       // strict; a browser-only bot gets no computer at all, and a bot whose
       // browser is withheld (workspace flag, its own switch, or an engine
@@ -4936,7 +4977,7 @@ async function startTurn(
       const browserOn =
         builtInBrowserEnabled(cfg) &&
         bot.browser !== false &&
-        instance.adapter.capabilities.browserMcp === true;
+        providerRuntime(instance)?.capabilities.browserMcp === true;
       const plan = resolveSurface({
         destination: opts?.runOn === "cloud" ? "cloud" : bot.computer, // cloud routine overrides the MAUS default
         browserOn,
@@ -5209,7 +5250,7 @@ async function startTurn(
         plan.browser &&
         builtInBrowserEnabled(cfg) &&
         liveBot.browser !== false &&
-        instance.adapter.capabilities.browserMcp === true
+        providerRuntime(instance)?.capabilities.browserMcp === true
       ) {
         const selectedProfile = liveBot.browserProfile;
         browser = await browserIntegration(bot.id, selectedProfile, { threadId, generation: dispatchClaimId });
@@ -5273,7 +5314,7 @@ async function startTurn(
         { id: "webhook", label: "Webhook provenance", text: opts?.automationSource === "webhook" ? WEBHOOK_PROMPT : "" },
         { id: "mentions", label: "Mentions", text: mentionPrompt(tagged) },
       ]);
-      const dispatch = await guardTurnDispatch(instance.adapter.sendTurn({
+      const dispatch = await guardTurnDispatch(providerRuntime(instance)?.sendTurn({
         threadId,
         botId: bot.id,
         text: turnText,
@@ -5293,7 +5334,7 @@ async function startTurn(
         integrations,
         cwd,
       }), () => !directTurnClaimExists(bot.id, dispatchClaimId, threadId), async () => {
-        await instance.adapter.interruptTurn(threadId).catch(() => {});
+        await providerRuntime(instance)?.interruptTurn(threadId).catch(() => {});
       });
       if (dispatch.cancelled) {
         retireProviderTurn(dispatch.value.turnId);
@@ -5552,8 +5593,7 @@ async function interruptRoutineGroupGoal(
   const bot = speaker ? store.bot(speaker.botId) : undefined;
   cancelGroupTurnOperations(groupId, threadId, outcome);
   revokeInternalCapabilitiesForThread(threadId);
-  await (bot ? registry.get(bot.modelSelection.instanceId) : undefined)
-    ?.adapter.interruptTurn(threadId)
+  await providerRuntime((bot ? registry.get(bot.modelSelection.instanceId) : undefined))?.interruptTurn(threadId)
     .catch(() => {});
   closeOpenApprovals(threadId);
 }
@@ -5588,7 +5628,7 @@ async function stopBotForEmergencyApprovalDowngrade(botId: string): Promise<void
     cancelGroupTurnOperations(groupTurn.group.id, groupTurn.threadId);
     const results = await Promise.allSettled([
       directStop,
-      registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(groupTurn.threadId),
+      providerRuntime(registry.get(bot.modelSelection.instanceId))?.interruptTurn(groupTurn.threadId),
     ]);
     closeOpenApprovals(groupTurn.threadId);
     const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
@@ -5676,7 +5716,7 @@ routines = new RoutineManager({
         ? registry.get(bot.modelSelection.instanceId)
         : null;
     try {
-      await instance?.adapter.interruptTurn(threadId);
+      await providerRuntime(instance)?.interruptTurn(threadId);
     } finally {
       closeOpenApprovals(threadId);
     }
@@ -6178,14 +6218,14 @@ async function runGroupMemberTurn(
   };
   let roomHandoffSourceSucceeded = false;
   try {
-  const integrations: NonNullable<Parameters<typeof instance.adapter.sendTurn>[0]["integrations"]> = {};
+  const integrations: NonNullable<SendTurnInput["integrations"]> = {};
   const skillAuthoring =
     skillAuthoringEnabled(cfg) &&
     hop === 0 &&
     !skillAuthoringClaim.claimed &&
     !cardContinuation &&
-    instance.adapter.capabilities.agentsMcp === true;
-  if ((hop < MAX_COMMS_DEPTH || orchestration?.roomHandoffId) && instance.adapter.capabilities.agentsMcp === true) {
+    providerRuntime(instance)?.capabilities.agentsMcp === true;
+  if ((hop < MAX_COMMS_DEPTH || orchestration?.roomHandoffId) && providerRuntime(instance)?.capabilities.agentsMcp === true) {
     integrations.agents = agentsIntegration(bot.id, threadId, hop, skillAuthoring, internalGeneration, orchestration?.roomHandoffId, !orchestration || Boolean(orchestration.roomHandoffId));
   }
   const latestUser = [...store.activePath(threadId)].reverse().find(
@@ -6194,7 +6234,7 @@ async function runGroupMemberTurn(
   const resolvedLatestImages = latestUser?.text && !cardContinuation
     ? extractTurnImages(latestUser.text)
     : { text: latestUser?.text ?? "", images: [] };
-  const usesNativeImageInput = instance.adapter.capabilities.nativeImageInput === true;
+  const usesNativeImageInput = providerRuntime(instance)?.capabilities.nativeImageInput === true;
   const roomContext = serializeRoomContext(
     threadId,
     userName,
@@ -6208,7 +6248,7 @@ async function runGroupMemberTurn(
   const selectedSkills = mergeSkills(
     selectBundledSkills(
       roomContext,
-      instance.adapter.capabilities.phoneMcp === true ? ["phoneMcp"] : [],
+      providerRuntime(instance)?.capabilities.phoneMcp === true ? ["phoneMcp"] : [],
       skills,
     ),
     selectBundledSkills(
@@ -6222,7 +6262,7 @@ async function runGroupMemberTurn(
     integrations.phone = phoneIntegration();
   }
   try {
-    if (bot.composio !== false && composio.configured(cfg) && instance.adapter.capabilities.composioMcp === true) {
+    if (bot.composio !== false && composio.configured(cfg) && providerRuntime(instance)?.capabilities.composioMcp === true) {
       const connection = await connectedAppsIntegration(bot.id, threadId, internalGeneration);
       if (connection) integrations.composio = connection;
     }
@@ -6238,7 +6278,7 @@ async function runGroupMemberTurn(
     return true;
   }
   // user-configured MCP servers: same gating as the 1:1 site above.
-  if (instance.adapter.capabilities.customMcp === true) {
+  if (providerRuntime(instance)?.capabilities.customMcp === true) {
     const custom = customMcpServers(cfg, bot.mcpServers);
     if (Object.keys(custom).length) integrations.custom = custom;
   }
@@ -6366,7 +6406,7 @@ async function runGroupMemberTurn(
     browserOn:
       builtInBrowserEnabled(cfg) &&
       readyBot.browser !== false &&
-      instance.adapter.capabilities.browserMcp === true,
+      providerRuntime(instance)?.capabilities.browserMcp === true,
   });
   if (roomPlan.browser) {
     const selectedProfile = readyBot.browserProfile;
@@ -6386,7 +6426,7 @@ async function runGroupMemberTurn(
   // Room and Goal turns use the speaker's desktop, never the coordinator's.
   // Claim the same lease as direct turns before asynchronous VM setup.
   if (readyBot.computer === "vm") {
-    if (instance.adapter.capabilities.computerMcp !== true || instance.driverKind === "boxAgent") {
+    if (providerRuntime(instance)?.capabilities.computerMcp !== true || instance.driverKind === "boxAgent") {
       throw new Error("this model engine cannot use the Local VM");
     }
     // A distinct identity fences cleanup even in shared mode on the same room thread.
@@ -6540,7 +6580,7 @@ async function runGroupMemberTurn(
     let unregisterStall = () => {};
     const deadline = new RoomTurnDeadline(timeoutMinutes, () => {
       abandonProviderTurn();
-      void instance.adapter.interruptTurn(threadId).catch(() => {});
+      void providerRuntime(instance)?.interruptTurn(threadId).catch(() => {});
       store.appendMessage(threadId, {
         role: "bot",
         kind: "activity",
@@ -6584,7 +6624,7 @@ async function runGroupMemberTurn(
     watchdog.watch(threadId, bot.id);
     onProviderHandshakeStarted?.();
     providerDispatched = true;
-    guardTurnDispatch(instance.adapter.sendTurn({
+    guardTurnDispatch(providerRuntime(instance)?.sendTurn({
         threadId,
         botId: readyBot.id,
         text,
@@ -6600,7 +6640,7 @@ async function runGroupMemberTurn(
         // Stop may have landed while the adapter was authenticating, before
         // it had an active process for the first interrupt to reach. Now that
         // sendTurn completed setup, revoke again and interrupt the real turn.
-        await instance.adapter.interruptTurn(threadId).catch(() => {});
+        await providerRuntime(instance)?.interruptTurn(threadId).catch(() => {});
       })
       .then((dispatch) => {
         providerTurnId = dispatch.value.turnId;
@@ -8438,21 +8478,116 @@ async function describeInstances() {
   });
 }
 
-async function persistProviderInstance(instanceId: string, instances: NonNullable<AppConfig["instances"]>) {
-  saveConfig({ instances }, { replaceInstances: true });
-  cfg.instances = instances;
-  providerAuthSessions.clearInstance(instanceId);
-  bus.detach(instanceId);
-  // No whole-fleet reload: other bots keep their live CLI processes, event
-  // subscriptions and approval capabilities while this one is replaced.
-  if (Object.hasOwn(instances, instanceId)) {
-    await registry.load({ [instanceId]: instanceConfigs(cfg)[instanceId] });
-    const live = registry.get(instanceId);
-    if (live) bus.attach([live]);
-  } else {
-    await registry.dispose(instanceId);
+ async function persistProviderInstance(instanceId: string, instances: NonNullable<AppConfig["instances"]>) {
+   saveConfig({ instances }, { replaceInstances: true });
+   cfg.instances = instances;
+   providerAuthSessions.clearInstance(instanceId);
+   bus.detach(instanceId);
+   // No whole-fleet reload: other bots keep their live CLI processes, event
+   // subscriptions and approval capabilities while this one is replaced.
+   if (Object.hasOwn(instances, instanceId)) {
+     await registry.load({ [instanceId]: instanceConfigs(cfg)[instanceId] });
+     const live = registry.get(instanceId);
+     if (live) bus.attach([live]);
+   } else {
+     await registry.dispose(instanceId);
+   }
+   resetPathCache();
+ }
+interface CapturedProviderWork {
+  readonly threadId: string;
+  readonly bot: BotRecord;
+  readonly owner: TurnOwner;
+  readonly group?: { readonly id: string; readonly speaker: { readonly botId: string; readonly name: string; readonly color: string } };
+}
+
+function captureProviderMaintenanceWork(instanceId: string): CapturedProviderWork[] {
+  return captureProviderWork(instanceId, {
+    bots: store.bots,
+    tasks: (botId) => store.tasks(botId),
+    isBusy: threadBusy,
+    ownerForThread: botForThread,
+    directGeneration: (threadId) => directTurnGenerationByThread.get(threadId),
+    groupOperations: groupTurnOperations,
+    groupSpeakers,
+    groupForThread: (threadId) => store.groupByThread(threadId),
+    botById: (botId) => store.bot(botId) ?? undefined,
+    turnResourceOwners,
+    randomGeneration: randomUUID,
+  });
+}
+
+async function cancelProviderMaintenanceWork(work: readonly CapturedProviderWork[], instanceId: string, signal: ProviderMaintenanceSignal): Promise<void> {
+  const current = registry.get(instanceId);
+  await Promise.all(work.map(async (entry) => {
+    if (entry.group) {
+      cancelGroupTurnOperations(entry.group.id, entry.threadId, { status: "stopped", detail: signal.reason });
+    } else {
+      cancelDirectTurnDispatch(entry.bot.id, entry.threadId);
+    }
+    revokeInternalCapabilitiesForThread(entry.threadId);
+    closeOpenApprovals(entry.threadId);
+    await providerRuntime(current)?.interruptTurn(entry.threadId).catch(() => {});
+  }));
+}
+
+function settleProviderMaintenanceWork(work: readonly CapturedProviderWork[], signal: ProviderMaintenanceSignal): void {
+  for (const entry of work) {
+    stopScreenPoller(entry.bot.id, entry.threadId);
+    releaseLocalVmThread(entry.threadId);
+    releaseTurnResources(entry.owner);
+    if (entry.group) {
+      const group = store.group(entry.group.id);
+      if (group && groupSpeakers.get(entry.threadId)?.botId === entry.group.speaker.botId) {
+        groupSpeakers.delete(entry.threadId);
+        store.patchGroup(group.id, { busyBotId: null });
+      }
+      if (group) store.setActivity(entry.bot.id, "idle");
+    } else {
+      if (activeVpsThreads.get(entry.bot.id) === entry.threadId) activeVpsThreads.delete(entry.bot.id);
+      directTurnBots.delete(entry.threadId);
+      if (store.taskByThread(entry.bot.id, entry.threadId)) {
+        store.appendMessage(entry.threadId, {
+          role: "bot", kind: "activity",
+          tool: { name: `error: turn interrupted — provider maintenance: ${signal.reason.slice(0, 120)}`, ok: false },
+        });
+        store.setTaskActivity(entry.bot.id, entry.threadId, "idle");
+      }
+      settleDirectFollowup(entry.owner.generation);
+    }
+    watchdog.settle(entry.threadId);
+    closeOpenApprovals(entry.threadId);
+    finalizeDelegationWatch(entry.threadId, false, "", "Delegated turn did not finish — provider maintenance");
+    routines?.failThread(entry.threadId, "Provider maintenance interrupted this thread");
+    retryDelegationsWaitingOn(entry.bot.id);
   }
-  resetPathCache();
+}
+
+async function maintainProviderInstanceExact(signal: ProviderMaintenanceSignal) {
+  let work: CapturedProviderWork[] = [];
+  const coordinator = new ProviderMaintenanceCoordinator({
+    registry,
+    bus,
+    providerFleetReloading: () => providerFleetReloading,
+    providerInstancesChanging,
+    configForInstance: (instanceId) => instanceConfigs(cfg)[instanceId],
+    cancelActiveWork: async (instanceId, receivedSignal) => {
+      work = captureProviderMaintenanceWork(instanceId);
+      await cancelProviderMaintenanceWork(work, instanceId, receivedSignal);
+    },
+    settleInstanceWork: async (instanceId, receivedSignal) => {
+      settleProviderMaintenanceWork(work, receivedSignal);
+      providerAuthSessions.clearInstance(instanceId);
+      resetPathCache();
+    },
+  });
+  try {
+    return await coordinator.maintain(signal);
+  } finally {
+    drainQueuedSends();
+    drainConnectorResumes();
+    drainSecretResumes();
+  }
 }
 
 /** Rebuild the provider fleet after a config change so new keys take
@@ -11661,7 +11796,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       for (const { threadId } of interruptTargets) cancelGroupTurnOperations(group.id, threadId);
       for (const { threadId, instance } of interruptTargets) {
         revokeInternalCapabilitiesForThread(threadId);
-        await instance?.adapter.interruptTurn(threadId).catch(() => {});
+        await providerRuntime(instance)?.interruptTurn(threadId).catch(() => {});
         closeOpenApprovals(threadId);
       }
       return json(res, 200, { ok: true });
@@ -12237,7 +12372,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         if (groupTurn) {
           cancelGroupTurnOperations(groupTurn.group.id, groupTurn.threadId);
           revokeInternalCapabilitiesForThread(groupTurn.threadId);
-          await registry.get(existingBot.modelSelection.instanceId)?.adapter.interruptTurn(groupTurn.threadId).catch(() => {});
+          await providerRuntime(registry.get(existingBot.modelSelection.instanceId))?.interruptTurn(groupTurn.threadId).catch(() => {});
           closeOpenApprovals(groupTurn.threadId);
         }
       }
@@ -12333,7 +12468,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
             if (groupTurn) {
               cancelGroupTurnOperations(groupTurn.group.id, groupTurn.threadId);
               revokeInternalCapabilitiesForThread(groupTurn.threadId);
-              await instance?.adapter.interruptTurn(groupTurn.threadId).catch(() => {});
+              await providerRuntime(instance)?.interruptTurn(groupTurn.threadId).catch(() => {});
               closeOpenApprovals(groupTurn.threadId);
             }
           }),
@@ -13002,14 +13137,14 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           // existing server-side queue records it atomically for the next turn.
           if (currentAtStart.busy) {
             const instance = registry.get(currentAtStart.modelSelection.instanceId);
+            const runtime = providerRuntime(instance);
             let steered = false;
             // A live text steer has no image side channel. Keep an attachment
             // message intact for the next ordinary turn, where central image
             // admission can hand it to the provider natively.
             const carriesImages = extractTurnImages(text).images.length > 0;
-            if (!carriesImages && instance?.adapter.capabilities.queueing && instance.adapter.steer) {
-              steered = await instance.adapter
-                .steer(threadId, promptWithReply(text, replyTo, cfg.profile?.name?.trim() || "User"))
+            if (!carriesImages && runtime?.capabilities.queueing && runtime?.steer) {
+              steered = await runtime.steer(threadId, promptWithReply(text, replyTo, cfg.profile?.name?.trim() || "User"))
                 .catch(() => false);
             }
             // steer() is awaited adapter work. The turn can settle, the task can
@@ -13296,7 +13431,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         }
         cancelGroupTurnOperations(busyGroup.group.id, busyGroup.threadId);
         revokeInternalCapabilitiesForThread(busyGroup.threadId);
-        await instance?.adapter.interruptTurn(busyGroup.threadId).catch(() => {});
+        await providerRuntime(instance)?.interruptTurn(busyGroup.threadId).catch(() => {});
         closeOpenApprovals(busyGroup.threadId);
         return json(res, 200, { ok: true });
       }

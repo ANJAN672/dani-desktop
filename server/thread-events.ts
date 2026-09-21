@@ -237,10 +237,21 @@ function isRuntimeEvent(value: unknown): value is RuntimeEvent {
           value.source === "unavailable" ||
           value.source === "peer")
       );
-    case "thread.token-usage.updated":
-      return typeof value.input === "number" && typeof value.output === "number";
-    case "runtime.error":
-      return typeof value.message === "string" && (value.setup === undefined || typeof value.setup === "boolean");
+     case "thread.token-usage.updated":
+       return typeof value.input === "number" && typeof value.output === "number";
+    case "provider.maintenance":
+      return (
+        typeof value.providerInstanceId === "string" &&
+        value.providerInstanceId.length > 0 &&
+        typeof value.reason === "string" &&
+        value.reason.length > 0 &&
+        isRecord(value.threshold) &&
+        typeof value.threshold.kind === "string" &&
+        typeof value.threshold.count === "number" &&
+        Number.isFinite(value.threshold.count)
+      );
+     case "runtime.error":
+       return typeof value.message === "string" && (value.setup === undefined || typeof value.setup === "boolean");
     default:
       return false;
   }

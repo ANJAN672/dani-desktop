@@ -5,12 +5,24 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { startCua, stopCua, registerCuaIpc, setCuaStateListener } from "./cua.mjs";
-import { createAndroidDeviceController } from "./android-device.mjs";
-import { finishSpeech, startSpeech, stopSpeech } from "./speech.mjs";
-import { openBlankTerminal } from "./terminal-launch.mjs";
-import { pasteMenuItem } from "./paste-menu-item.mjs";
-import { attachUpdaterWindow, startUpdater, registerUpdaterIpc } from "./updater.mjs";
+import {
+  checkpointRecorderSession,
+  discardRecorderSession,
+  recorderPermissionStatus,
+  recoverRecorderSessions,
+  resumeRecorderSession,
+  saveSkillRecording,
+  startRecorder,
+  stopRecorder,
+  recorderStatus,
+} from "./skill-recorder.mjs";
+import {
+  transcriptionStatus,
+  transcriptionStreamingToken,
+  withTranscriptionKey,
+} from "./transcription-bridge.mjs";
+
+// Electron
 import {
   buildDiagnosticsReport,
   diagnosticsFileName,
@@ -584,6 +596,18 @@ export async function updateSecureCredentialDocument(derive, afterPersist) {
   } finally {
     secureCredentials = secureCredentialState.read();
   }
+}
+async function setTranscriptionKey(value) {
+  const next = withTranscriptionKey(secureCredentialState?.read() ?? secureCredentials, value);
+  if (app.isPackaged && !(await safeStorage.isAsyncEncryptionAvailable())) {
+    throw new Error("The operating-system credential store is unavailable");
+  }
+  await updateSecureCredentialDocument(() => next);
+  return transcriptionStatus(secureCredentialState?.read() ?? secureCredentials, process.env);
+}
+
+async function transcriptionStreamingTokenFromStore() {
+  return transcriptionStreamingToken(secureCredentialState?.read() ?? secureCredentials, process.env);
 }
 
 async function ensurePhoneSecretIdentity() {
@@ -1986,9 +2010,6 @@ ipcMain.handle("companion:pairing", localOnly("companion:pairing", (_event, open
 ipcMain.handle("companion:cloud-desktop", localOnly("companion:cloud-desktop", (_event, deviceId, allowed) =>
   companionCloudDesktopAccess(deviceId, Boolean(allowed)).then(() => desktopCompanionState()),
 ));
-ipcMain.handle("companion:revoke", localOnly("companion:revoke", (_event, deviceId) =>
-  companionRevoke(deviceId).then(() => desktopCompanionState()),
-));
 
 function publicDesktopRemoteState() {
   return desktopRemoteAccess
@@ -2006,6 +2027,7 @@ function requireMainWindowSender(event) {
   if (!sender || sender !== mainWindow || sender.isDestroyed()) {
     throw new Error("The desktop client window is unavailable");
   }
+  return sender;
 }
 
 function relaunchAfterDesktopRemoteChange() {
@@ -2156,6 +2178,69 @@ async function broadcastDesktopCapabilities() {
   }
 }
 
+ipcMain.handle(
+  "skill-recorder:permissions",
+  localOnly("skill-recorder:permissions", () => recorderPermissionStatus()),
+);
+
+ipcMain.handle("skill-recorder:start", localOnly("skill-recorder:start", (event) => {
+  const win = requireMainWindowSender(event);
+  return startRecorder(win);
+}));
+
+ipcMain.handle(
+  "skill-recorder:status",
+  localOnly("skill-recorder:status", () => recorderStatus()),
+);
+
+ipcMain.handle(
+  "skill-recorder:recover",
+  localOnly("skill-recorder:recover", () => recoverRecorderSessions()),
+);
+
+ipcMain.handle("skill-recorder:resume", localOnly("skill-recorder:resume", (event, sessionId) => {
+  requireMainWindowSender(event);
+  return resumeRecorderSession(sessionId);
+}));
+
+ipcMain.handle("skill-recorder:checkpoint", localOnly("skill-recorder:checkpoint", (event, payload) => {
+  requireMainWindowSender(event);
+  return checkpointRecorderSession(payload);
+}));
+
+ipcMain.handle("skill-recorder:discard", localOnly("skill-recorder:discard", (event, sessionId) => {
+  requireMainWindowSender(event);
+  return discardRecorderSession(sessionId);
+}));
+
+ipcMain.handle("skill-recorder:stop", localOnly("skill-recorder:stop", () => stopRecorder()));
+
+ipcMain.handle(
+  "skill-recorder:save",
+  localOnly("skill-recorder:save", (event, payload) => {
+    requireMainWindowSender(event);
+    return saveSkillRecording(payload, { dataRoot: desktopDataDir() });
+  }),
+);
+
+ipcMain.handle("transcription:status", localOnly("transcription:status", () => transcriptionStatus(
+  secureCredentialState?.read() ?? secureCredentials,
+  process.env,
+)));
+
+ipcMain.handle("transcription:set-key", localOnly("transcription:set-key", (event, value) => {
+  requireMainWindowSender(event);
+  return setTranscriptionKey(value);
+}));
+
+ipcMain.handle(
+  "transcription:streaming-token",
+  localOnly("transcription:streaming-token", (event) => {
+    requireMainWindowSender(event);
+    return transcriptionStreamingTokenFromStore();
+  }),
+);
+
 setCuaStateListener((connection) => {
   cuaReady = Promise.resolve(connection);
   void broadcastDesktopCapabilities().catch((error) => {
@@ -2190,18 +2275,6 @@ app.whenReady().then(async () => {
   }
   if (process.platform === "darwin") app.dock.setIcon(APP_ICON);
   secureCredentials = await loadSecureCredentials();
-  // The AssemblyAI key only fed the removed Teach a skill recorder, and its
-  // set/clear handler went with it; drop the orphaned secret rather than
-  // keep a third-party key at rest with no way to remove it.
-  if (secureCredentials && Object.hasOwn(secureCredentials, "assemblyAiApiKey") && !credentialStoreUnavailable) {
-    try {
-      const { assemblyAiApiKey: _removed, ...rest } = secureCredentials;
-      await saveSecureCredentials(rest);
-      secureCredentials = rest;
-    } catch (error) {
-      slog(`orphaned AssemblyAI key not removed: ${error?.message ?? error}`);
-    }
-  }
   if (app.isPackaged) {
     await secureComposioConfig();
     await secureWorkspaceConfig();
