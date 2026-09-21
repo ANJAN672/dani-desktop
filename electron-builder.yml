@@ -187,6 +187,9 @@ linux:
       Keywords: AI;Agents;Chat;Productivity;
 
 deb:
+  # package.json "name" (dani-desktop) is the fpm default; the published
+  # package is danibot, matching docs/linux-desktop.md and the verifier.
+  packageName: danibot
   packageCategory: utils
   priority: optional
   # dpkg can preserve legacy directory modes during an upgrade. This
