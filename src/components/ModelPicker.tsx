@@ -5,12 +5,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search } from "lucide-react";
 import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import { filterCustomModels, partitionCustomModels, suggestedModels } from "@/lib/custom-models";
-import { isCustomOnly, splitEngineRail } from "@/lib/engine-rail";
-import { ProviderMark } from "./ProviderIcons";
+import { isCustomOnly } from "@/lib/engine-rail";
 import { EngineSetup, EngineUpdateNotice, needsCli, needsSignIn } from "./EngineSetup";
 import { EngineGroupLabel } from "./EngineGroupLabel";
 import { cn } from "@/lib/cn";
-import { COMPACT_SQUARE } from "@/lib/compact-chip";
 
 type ModelOption = InstanceInfo["models"]["options"][number];
 const COMPACT_MODEL_COUNT = 5;
@@ -118,7 +116,6 @@ export function ModelPicker({
 }) {
   const { state, dispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStore();
   const [open, setOpen] = useState(false);
-  const [railId, setRailId] = useState<string | null>(null);
   const [pane, setPane] = useState<"main" | "custom">("main");
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -127,9 +124,9 @@ export function ModelPicker({
   const refreshingRef = useRef(false);
 
   const selection = bot.modelSelection;
-  const active = state.instances.find((instance) => instance.instanceId === selection.instanceId);
-  const railInstance =
-    state.instances.find((instance) => instance.instanceId === (railId ?? selection.instanceId)) ?? state.instances[0];
+  const hermes = state.instances.find((instance) => instance.driverKind === "hermesAgent");
+  const active = hermes;
+  const railInstance = hermes;
 
   const refreshLocalInstances = useCallback(() => {
     if (refreshingRef.current) return;
@@ -149,7 +146,8 @@ export function ModelPicker({
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setRefreshing(true);
-    const instanceId = railId ?? selection.instanceId;
+    const instanceId = hermes?.instanceId;
+    if (!instanceId) return;
     void refreshInstances()
       .then(() => refreshInstanceModels(instanceId))
       .catch(() => {
@@ -159,7 +157,7 @@ export function ModelPicker({
         refreshingRef.current = false;
         setRefreshing(false);
       });
-  }, [railId, refreshInstanceModels, refreshInstances, selection.instanceId]);
+  }, [hermes?.instanceId, refreshInstanceModels, refreshInstances]);
 
   useEffect(() => {
     if (open) refreshLocalInstances();
@@ -203,12 +201,7 @@ export function ModelPicker({
     resetList();
   };
 
-  const selectRail = (instance: InstanceInfo) => {
-    setRailId(instance.instanceId);
-    const official = instance.models.options.filter((option) => !option.custom);
-    setPane(isCustomOnly(instance) || official.length === 0 ? "custom" : "main");
-    resetList();
-  };
+
 
   const pick = (instance: InstanceInfo, model: string) => {
     if (bot.busy) return;
@@ -260,10 +253,9 @@ export function ModelPicker({
       disabled={Boolean(bot.busy)}
       onClick={() => {
         if (bot.busy) return;
-        setRailId(selection.instanceId);
         setOpen((wasOpen) => {
           const next = !wasOpen;
-          if (next) openFor(state.instances.find((instance) => instance.instanceId === selection.instanceId));
+          if (next) openFor(hermes);
           return next;
         });
       }}
@@ -274,7 +266,6 @@ export function ModelPicker({
         // in a narrow chat header fold to a rounded square with just the
         // provider mark; the model name rides the tooltip (a bot with no
         // resolved engine keeps its label — the mark is what would hide it)
-        !contained && active && COMPACT_SQUARE,
       )}
       title={
         bot.busy
@@ -286,7 +277,6 @@ export function ModelPicker({
           : selection.model
       }
     >
-      {active && <ProviderMark driverKind={active.driverKind} size={14} />}
       <span className={cn("max-w-[160px] truncate", !contained && active && "@max-4xl/chathead:hidden")}>
         {modelLabel(active, selection.model)}
         {active && modelProvider(active, selection.model) && (
@@ -324,56 +314,15 @@ export function ModelPicker({
             "flex overflow-hidden rounded-2xl border border-hairline/50 bg-card",
             contained
               ? "relative mt-3 w-full max-h-[min(420px,50dvh)]"
-              : "absolute right-0 top-full z-30 mt-2 w-[380px] max-h-[min(480px,calc(100dvh-7rem))] shadow-2xl shadow-black/50",
+              : "absolute right-0 top-full z-30 mt-2 w-[320px] max-h-[min(480px,calc(100dvh-7rem))] shadow-2xl shadow-black/50",
           )}
         >
-          <div className="flex w-14 shrink-0 flex-col gap-1 overflow-y-auto border-r border-hairline/40 bg-panel p-2">
-            {(() => {
-              const { subscription, custom: local } = splitEngineRail(state.instances);
-              const railButton = (instance: InstanceInfo) => {
-                const selected = instance.instanceId === railInstance?.instanceId;
-                const attention = needsCli(instance) || needsSignIn(instance) || Boolean(instance.snapshot.update);
-                return (
-                  <button
-                    type="button"
-                    key={instance.instanceId}
-                    onClick={() => selectRail(instance)}
-                    aria-label={instance.displayName}
-                    aria-pressed={selected}
-                    title={`${instance.displayName} · ${engineStatus(instance)}`}
-                    className={cn(
-                      "relative flex size-9 items-center justify-center rounded-lg",
-                      selected ? "bg-control ring-1 ring-hairline/50" : "hover:bg-control/60",
-                    )}
-                  >
-                    <ProviderMark driverKind={instance.driverKind} size={18} />
-                    {attention && (
-                      <span className="absolute bottom-0.5 right-0.5 size-1.5 rounded-full bg-warning ring-2 ring-panel" />
-                    )}
-                  </button>
-                );
-              };
-              return (
-                <>
-                  {subscription.length > 0 && (
-                    <EngineGroupLabel className="px-0 pb-0.5 pt-0.5 text-center text-[9px]">Cloud</EngineGroupLabel>
-                  )}
-                  {subscription.map(railButton)}
-                  {local.length > 0 && (
-                    <EngineGroupLabel className="px-0 pb-0.5 pt-2 text-center text-[9px]">Local</EngineGroupLabel>
-                  )}
-                  {local.map(railButton)}
-                </>
-              );
-            })()}
-          </div>
-
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {railInstance ? (
               <>
                 <div className="shrink-0 px-4 pb-2 pt-3.5">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="truncate text-[14px] font-semibold text-ink">{railInstance.displayName}</div>
+                    <div className="truncate text-[14px] font-semibold text-ink">Choose model</div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
@@ -540,7 +489,7 @@ export function ModelPicker({
                 )}
               </>
             ) : (
-              <div className="px-4 py-5 text-[13px] text-ink-secondary">No model providers are available.</div>
+              <div className="px-4 py-5 text-[13px] text-ink-secondary">Hermes is not available.</div>
             )}
           </div>
         </div>

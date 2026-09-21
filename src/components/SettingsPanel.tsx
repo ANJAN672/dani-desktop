@@ -861,7 +861,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 <div>
                   <div className="text-[15px] font-medium text-ink">Model</div>
                   <div className="mt-0.5 text-[13px] text-ink-secondary">
-                    Which provider and model this bot runs on
+                    Which model this bot uses
                   </div>
                 </div>
               }
