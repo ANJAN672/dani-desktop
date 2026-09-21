@@ -439,6 +439,12 @@ export function builtInBrowserEnabled(cfg: AppConfig): boolean {
 
 // OMB_DATA_DIR isolates test/soak rigs from the user's real fleet.
 export const DATA_DIR = process.env.OMB_DATA_DIR ?? join(homedir(), ".danibot");
+
+/** Shape of the per-launch owner capability the server requires on every
+ * state-changing loopback route (server/request-auth.ts): 256 bits,
+ * base64url. Minted by the desktop parent, the CLI wrapper, or the server
+ * itself at boot depending on the mode. */
+export const OWNER_CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const LEGACY_DATA_DIRS = [join(homedir(), ".openmausbot"), join(homedir(), ".opengrokbot")];
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
@@ -550,6 +556,10 @@ export const WORKSPACE_CREDENTIAL_ENV = [
   // state. The built-in browser master is delivered privately in memory.
   "OMB_BROWSER_CONNECTION",
   "OMB_USER_DATA",
+  // The per-launch owner capability is not a third-party credential, but a
+  // spawned engine is exactly the "separate local process" the owner gate
+  // distrusts: it must never inherit the capability via the environment.
+  "OMB_OWNER_TOKEN",
 ] as const;
 
 /** Drop every workspace credential from a child-process env (in place). */

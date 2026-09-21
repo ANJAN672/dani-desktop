@@ -113,6 +113,7 @@ import {
   browserProfilePartitionTarget,
   syncCredentialEnv,
   withInstanceCli,
+  OWNER_CAPABILITY_PATTERN,
   vpsSshAlias,
   DATA_DIR,
   EVENTS_DIR,
@@ -362,7 +363,19 @@ const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID);
 const DESKTOP_MANAGED = process.env.OMB_DESKTOP_PARENT === "1";
 // Empty is deliberately a deny-all bootstrap state. Only Electron's private
 // utility-process port can replace it with the per-launch owner capability.
-let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : undefined;
+let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : resolveOwnerCapability();
+/** The owner capability for standalone/dev/CLI/headless boots. An
+ * operator-supplied OMB_OWNER_TOKEN is honored verbatim (dev tooling, CLI
+ * wrappers and test harnesses set it; it stays per-launch because nothing
+ * persists it). Otherwise a fresh token is minted. Deliberately NOT written
+ * back to process.env: spawned agent CLIs and probe wrappers must never
+ * inherit the capability — the printed boot line is the distribution
+ * channel. */
+function resolveOwnerCapability(): string {
+  const supplied = process.env.OMB_OWNER_TOKEN?.trim();
+  if (supplied && OWNER_CAPABILITY_PATTERN.test(supplied)) return supplied;
+  return randomBytes(32).toString("base64url");
+}
 // Where remote clients reach this server (a proxy's public address); pairing URLs use it.
 const PUBLIC_URL = process.env.OMB_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
 const cfg = loadConfig();
@@ -422,7 +435,7 @@ function applyDesktopMutationTokenMessage(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const message = raw as Record<string, unknown>;
   if (message.type !== "openmausbot:desktop-mutation-token") return false;
-  if (typeof message.token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(message.token)) {
+  if (typeof message.token !== "string" || !OWNER_CAPABILITY_PATTERN.test(message.token)) {
     throw new Error("invalid desktop mutation capability");
   }
   desktopMutationToken = message.token;
@@ -6933,6 +6946,10 @@ function cliProbeEnvironment(): NodeJS.ProcessEnv {
     "OMB_OPENAI_IMAGE_KEY",
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
+    // The per-launch owner capability is minted for this server process.
+    // An arbitrary probed wrapper is exactly the "separate local process"
+    // the owner gate distrusts, so it must never inherit the capability.
+    "OMB_OWNER_TOKEN",
   ]) {
     delete env[key];
   }
@@ -12244,6 +12261,13 @@ console.log(describeBrand(loadBrand()));
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`danibot server on http://127.0.0.1:${PORT}`);
+  // Every loopback client is untrusted: state-changing routes require the
+  // per-launch owner capability in the x-danibot-desktop-owner header.
+  // The operator provisions it per launch (the desktop app injects it below
+  // the renderer; dev browsers read localStorage "danibot.ownerToken"; CLI
+  // wrappers export it). A separate local process cannot reach any of those,
+  // which is exactly the property the gate enforces.
+  console.log(`[owner] OMB_OWNER_TOKEN=${desktopMutationToken}`);
 });
 
 const gracefulShutdown = createGracefulShutdown({
