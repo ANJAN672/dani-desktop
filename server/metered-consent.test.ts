@@ -24,10 +24,27 @@ describe("meteredConsentRefusal (spec 010 R8)", () => {
     expect(meteredConsentRefusal(metered, cfg(list), "grok-4")).not.toBeNull();
   });
 
-  it("never gates subscription, local, or unclassed engines", () => {
+  it("never gates subscription or local engines", () => {
     expect(meteredConsentRefusal({ ...metered, billingClass: "subscription" }, cfg([]), "m")).toBeNull();
     expect(meteredConsentRefusal({ ...metered, billingClass: "local" }, cfg([]), "m")).toBeNull();
-    expect(meteredConsentRefusal({ instanceId: "claude", displayName: "Claude" }, cfg([]), "m")).toBeNull();
+  });
+
+  it("fails closed on an unclassed engine - unknown never reads as free", () => {
+    const unclassed = { instanceId: "newpaid", displayName: "New Paid Engine" };
+    expect(turnBilling(unclassed, "m")).toBe("unknown");
+    const refusal = meteredConsentRefusal(unclassed, cfg([]), "m");
+    expect(refusal).toContain("unknown billing class");
+    expect(refusal).toContain("New Paid Engine");
+    expect(refusal).toContain('"m"');
+    // it does NOT claim the engine is metered - it says we cannot tell
+    expect(refusal).not.toContain("is metered -");
+  });
+
+  it("an acknowledged unclassed engine passes, per exact instance+model", () => {
+    const unclassed = { instanceId: "newpaid", displayName: "New Paid Engine" };
+    const list = withMeteredAcknowledgement(cfg([]), "newpaid", "m");
+    expect(meteredConsentRefusal(unclassed, cfg(list), "m")).toBeNull();
+    expect(meteredConsentRefusal(unclassed, cfg(list), "other-model")).not.toBeNull();
   });
 });
 
@@ -46,8 +63,13 @@ describe("hermes per-model billing (spec 010 R8)", () => {
     expect(meteredConsentRefusal(hermes, cfg([]), "ollama:qwen3")).toBeNull();
   });
 
-  it("an unknown provider never reads as free", () => {
+  it("an unknown provider never reads as free - it is gated until acknowledged", () => {
     expect(turnBilling(hermes, "somefuture:model")).toBe("unknown");
+    const refusal = meteredConsentRefusal(hermes, cfg([]), "somefuture:model");
+    expect(refusal).toContain("unknown billing class");
+    expect(refusal).toContain("via somefuture");
+    const list = withMeteredAcknowledgement(cfg([]), "hermes", "somefuture:model");
+    expect(meteredConsentRefusal(hermes, cfg(list), "somefuture:model")).toBeNull();
   });
 
   it("the acknowledgement is per model, not per hermes instance", () => {

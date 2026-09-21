@@ -16,9 +16,11 @@ export interface MeteredGateInstance {
  * class for key engines, or the per-provider policy for Hermes models
  * (`<provider>:<model>` ids - OpenRouter bills; Nous is a subscription;
  * local runtimes are free). Unknown never reads as free. */
-export function turnBilling(instance: MeteredGateInstance, model: string): "metered" | "subscription" | "local" | "unknown" | undefined {
+export function turnBilling(instance: MeteredGateInstance, model: string): "metered" | "subscription" | "local" | "unknown" {
   if (instance.driverKind === "hermesAgent") return hermesProviderCapability(model).billing;
-  return instance.billingClass;
+  // An engine that never declared its cost class is UNKNOWN, never free:
+  // that is what keeps a newly added paid provider from silently billing.
+  return instance.billingClass ?? "unknown";
 }
 
 /** The refusal message when this turn would spend money the user has not
@@ -30,14 +32,19 @@ export function meteredConsentRefusal(
   cfg: AppConfig,
   model: string,
 ): string | null {
-  if (turnBilling(instance, model) !== "metered") return null;
+  const billing = turnBilling(instance, model);
+  if (billing === "subscription" || billing === "local") return null;
   if (hasMeteredAcknowledgement(cfg, instance.instanceId, model)) return null;
   const viaProvider =
     instance.driverKind === "hermesAgent"
       ? ` via ${hermesProviderCapability(model).provider}`
       : "";
-  return (
-    `${instance.displayName ?? instance.instanceId}${viaProvider} is metered - runs on "${model}" bill this account. ` +
-    `Confirm metered use for this model before sending.`
-  );
+  const name = `${instance.displayName ?? instance.instanceId}${viaProvider}`;
+  // Fail closed: an unclassed engine gets the same one-tap acknowledgement
+  // as a known metered one, with copy that says WHY it is being asked.
+  return billing === "unknown"
+    ? `${name} has an unknown billing class - Dani cannot tell whether runs on "${model}" bill this account. ` +
+      `Confirm metered use for this model before sending, or ask the engine to declare its billing class.`
+    : `${name} is metered - runs on "${model}" bill this account. ` +
+      `Confirm metered use for this model before sending.`;
 }

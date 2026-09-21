@@ -41,6 +41,24 @@ async function resolveStatus(cfg: AppConfig): Promise<ResolvedStatus> {
 export async function localSpeechStatus(cfg: AppConfig): Promise<LocalSpeechStatus> {
   const { paths: _, ...status } = await resolveStatus(cfg); return status;
 }
+/** whisper-cli and kokoro-cli are heavyweight native processes (hundreds of
+ * MB, multiple threads each). Unbounded requests must never fork-bomb the
+ * host, so every spawn passes through this FIFO slot limiter. */
+export const MAX_CONCURRENT_SPEECH_PROCESSES = 2;
+let speechActive = 0;
+const speechWaiters: Array<() => void> = [];
+export async function withSpeechProcessSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (speechActive >= MAX_CONCURRENT_SPEECH_PROCESSES)
+    await new Promise<void>((resolveSlot) => speechWaiters.push(resolveSlot));
+  speechActive++;
+  try {
+    return await run();
+  } finally {
+    speechActive--;
+    speechWaiters.shift()?.();
+  }
+}
+
 function run(binary: string, args: string[], timeoutMs: number) {
   return new Promise<void>((resolveRun, reject) => {
     const child = spawn(binary, args, { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
@@ -54,12 +72,12 @@ function run(binary: string, args: string[], timeoutMs: number) {
 export async function transcribeLocalWav(cfg: AppConfig, wav: Uint8Array) {
   const status = await resolveStatus(cfg); if (!status.stt.ready) throw new Error(status.stt.reason || "Local STT is unavailable");
   const dir = await mkdtemp(join(tmpdir(), "dani-whisper-"));
-  try { const input = join(dir, "input.wav"), output = join(dir, "transcript"); await writeFile(input, wav, { mode: 0o600 }); await run(status.paths.whisper, ["-m", status.paths.whisperModel, "-f", input, "-otxt", "-of", output, "--no-prints"], 120_000); return (await readFile(`${output}.txt`, "utf8")).trim(); }
+  try { const input = join(dir, "input.wav"), output = join(dir, "transcript"); await writeFile(input, wav, { mode: 0o600 }); await withSpeechProcessSlot(() => run(status.paths.whisper, ["-m", status.paths.whisperModel, "-f", input, "-otxt", "-of", output, "--no-prints"], 120_000)); return (await readFile(`${output}.txt`, "utf8")).trim(); }
   finally { await rm(dir, { recursive: true, force: true }); }
 }
 export async function synthesizeLocal(cfg: AppConfig, text: string) {
   const status = await resolveStatus(cfg); if (!status.tts.ready) throw new Error(status.tts.reason || "Local TTS is unavailable");
   const dir = await mkdtemp(join(tmpdir(), "dani-kokoro-"));
-  try { const input = join(dir, "input.txt"), output = join(dir, "output.wav"); await writeFile(input, text, { encoding: "utf8", mode: 0o600 }); await run(status.paths.kokoro, [input, output, "--model", status.paths.kokoroModel, "--voices", status.paths.kokoroVoices, "--voice", "af_heart", "--lang", "en-us", "--format", "wav"], 120_000); return { bytes: new Uint8Array(await readFile(output)), mime: "audio/wav" }; }
+  try { const input = join(dir, "input.txt"), output = join(dir, "output.wav"); await writeFile(input, text, { encoding: "utf8", mode: 0o600 }); await withSpeechProcessSlot(() => run(status.paths.kokoro, [input, output, "--model", status.paths.kokoroModel, "--voices", status.paths.kokoroVoices, "--voice", "af_heart", "--lang", "en-us", "--format", "wav"], 120_000)); return { bytes: new Uint8Array(await readFile(output)), mime: "audio/wav" }; }
   finally { await rm(dir, { recursive: true, force: true }); }
 }

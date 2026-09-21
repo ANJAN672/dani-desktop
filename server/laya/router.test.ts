@@ -28,7 +28,7 @@ const decision = (over: Partial<Extract<LayaDecisionResult, { ok: true }>["decis
 
 const service = (result: LayaDecisionResult, installed = true) => ({
   decide: async () => result,
-  status: () => ({ installed, install: null, requiredDownloadBytes: 0, sidecar: "ready" as const, loadedIdentity: null }),
+  status: () => ({ installed, install: null, requiredDownloadBytes: 0, sidecarPresent: true, sidecar: "ready" as const, loadedIdentity: null }),
 });
 
 const input: RouteInput = {

@@ -1136,6 +1136,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
   return {
     instanceId,
     driverKind: DRIVER_KIND,
+    // Logged-in CLI subscription: config strips pay-as-you-go API-key env
+    // (PROVIDER_CREDENTIAL_ENV) so a spawned CLI cannot bill metered.
+    billingClass: "subscription",
     displayName: input.displayName,
     enabled: input.enabled,
     get models() {

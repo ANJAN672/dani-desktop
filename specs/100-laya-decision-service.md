@@ -278,3 +278,39 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
   not run against a real box end to end (needs the real checkpoint on a
   >=4GB host plus a live box); the layaCua event flow through the fold is
   exercised only by shape, not by a live run.
+
+## Slice 9 landed (2026-09-22): deep-review defect fixes
+
+- Spawn crash fixed: the sidecar child now has an 'error' listener - a
+  missing/unexecutable python binary is a typed UNAVAILABLE decision failure
+  and a truthful "crashed" sidecar state, never an uncaught exception that
+  downs the server. Test proves survival + typed retry failure.
+- Windows install path fixed: the venv interpreter resolves as
+  Scripts/python.exe on win32, bin/python elsewhere (layaVenvPythonPath,
+  unit-tested for win32/linux/darwin).
+- Metered gate fails closed: turnBilling now returns "unknown" (not
+  undefined) for unclassed engines, and meteredConsentRefusal gates BOTH
+  metered and unknown until the exact instance+model is acknowledged. The
+  unknown copy says "unknown billing class - cannot tell whether this bills"
+  rather than falsely claiming metered. Known fleet classified with
+  evidence: claude/codex/antigravity + ACP subscription-access agents are
+  "subscription" (config scrubs pay-as-you-go API-key env so login CLIs
+  cannot bill metered); grok/minimax/openai-compat were already "metered";
+  hermes stays per-model. BEHAVIOR CHANGE: engines that remain unclassed
+  (customAcp, qwen, pi, boxAgent/computer) now require a one-tap metered
+  acknowledgement per model - intentional fail-closed, flag for product.
+- Local speech fork guard: whisper/kokoro spawns pass through a bounded
+  FIFO slot limiter (MAX_CONCURRENT_SPEECH_PROCESSES=2); tests prove the
+  cap holds under 7 overlapping requests and slots release on failure.
+- Packaging: bundle-server.mjs now ships server/laya/sidecar/ at both
+  packaged resolution spots (dist-server/sidecar/ for the bundled server,
+  dist-server/laya/sidecar/ for the tsc shape); the service resolves both
+  and fails truthfully ("the python sidecar is missing at <path>") when a
+  build lacks it - status().sidecarPresent exposes this. The packaged app
+  still needs a host python3: the consented install builds the venv at
+  first run. Embedding a python interpreter in the bundle is out of scope.
+- Validation: tsc clean; 665/666 driver tests (1 pre-existing skip);
+  72/72 laya+metered+speech tests; 190/190 index harness. UNTESTED: the
+  esbuild bundle output itself (build-time step, no packaged app here);
+  win32 path resolution on real Windows; the limiter against real
+  whisper/kokoro binaries.

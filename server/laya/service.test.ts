@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { LAYA_DECISION_SCHEMA_ID, LAYA_DECISION_SCHEMA_VERSION, type LayaDecisionRequest } from "./contract.ts";
-import { LayaDecisionService } from "./service.ts";
+import { LayaDecisionService, layaVenvPythonPath } from "./service.ts";
 import { LAYA_TYPED_DECISIONS } from "./manifest.ts";
 
 const roots: string[] = [];
@@ -104,5 +104,65 @@ describe.skipIf(!pythonAvailable)("laya sidecar protocol (real python, no model)
     ]);
     expect(bad).toMatchObject({ ok: false, error: { kind: "BAD_METHOD" } });
     expect(pong).toMatchObject({ ok: true, result: { pong: true } });
+  });
+});
+
+describe("LayaDecisionService host failures (deep-review fixes)", () => {
+  const LAYA_REVISION = LAYA_TYPED_DECISIONS.revision;
+  const fakeInstall = (cacheDir: string) => {
+    // The consented install's durable marker plus the pinned snapshot dir,
+    // so decide() proceeds to the sidecar stage.
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(
+      join(cacheDir, "laya-installed-typed-decisions.json"),
+      JSON.stringify({
+        subfolder: LAYA_TYPED_DECISIONS.subfolder,
+        revision: LAYA_REVISION,
+        weightsSha256: LAYA_TYPED_DECISIONS.files.find((f) => f.path.endsWith("model.safetensors"))?.sha256 ?? "",
+        verifiedAt: new Date().toISOString(),
+        sdkVersion: "0.3.5",
+      }),
+    );
+    mkdirSync(join(cacheDir, "hf", "models--convaiinnovations--laya", "snapshots", LAYA_REVISION), { recursive: true });
+  };
+
+  it("a missing python binary yields a typed UNAVAILABLE failure, never a process crash", async () => {
+    if (!pythonAvailable) return;
+    const cacheDir = root();
+    fakeInstall(cacheDir);
+    const svc = new LayaDecisionService({ cacheDir, pythonPath: "/nonexistent/laya-python-definitely-missing" });
+    const r = await svc.decide(request());
+    expect(r).toMatchObject({ ok: false, failure: "UNAVAILABLE" });
+    if (!r.ok) expect(r.message).toContain("could not start");
+    // The service stays truthfully crashed and keeps failing typed on retry.
+    expect(svc.status().sidecar).toBe("crashed");
+    const retry = await svc.decide(request());
+    expect(retry).toMatchObject({ ok: false, failure: "UNAVAILABLE" });
+    await svc.close();
+  });
+
+  it("a missing python sidecar yields a typed UNAVAILABLE failure with the real path", async () => {
+    const cacheDir = root();
+    fakeInstall(cacheDir);
+    const missing = join(cacheDir, "no-such-sidecar.py");
+    const svc = new LayaDecisionService({ cacheDir, sidecarPath: missing });
+    expect(svc.status().sidecarPresent).toBe(false);
+    const r = await svc.decide(request());
+    expect(r).toMatchObject({ ok: false, failure: "UNAVAILABLE" });
+    if (!r.ok) expect(r.message).toContain(missing);
+    await svc.close();
+  });
+
+  it("the default build resolves a present sidecar", () => {
+    const svc = new LayaDecisionService({ cacheDir: root() });
+    expect(svc.status().sidecarPresent).toBe(true);
+  });
+});
+
+describe("layaVenvPythonPath", () => {
+  it("uses Scripts/python.exe on win32 and bin/python elsewhere", () => {
+    expect(layaVenvPythonPath("/c", "win32")).toBe(join("/c", "venv", "Scripts", "python.exe"));
+    expect(layaVenvPythonPath("/c", "linux")).toBe(join("/c", "venv", "bin", "python"));
+    expect(layaVenvPythonPath("/c", "darwin")).toBe(join("/c", "venv", "bin", "python"));
   });
 });

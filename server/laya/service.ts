@@ -28,7 +28,24 @@ import {
 } from "./contract.ts";
 import { LAYA_SDK, LAYA_TYPED_DECISIONS, type LayaCheckpointPin } from "./manifest.ts";
 
-const SIDECAR_PATH = join(dirname(fileURLToPath(import.meta.url)), "sidecar", "laya_sidecar.py");
+// The sidecar sits beside this module in every build shape: dev runs from
+// server/laya/, the tsc build keeps the laya/ nesting, and the esbuild
+// packaged bundle inlines this module at the bundle root (bundle-server.mjs
+// ships the script at both relative spots).
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const SIDECAR_CANDIDATES = [
+  join(MODULE_DIR, "sidecar", "laya_sidecar.py"),
+  join(MODULE_DIR, "laya", "sidecar", "laya_sidecar.py"),
+];
+const SIDECAR_PATH = SIDECAR_CANDIDATES.find((p) => existsSync(p)) ?? SIDECAR_CANDIDATES[0];
+
+/** The install venv's interpreter: Scripts/python.exe on Windows,
+ * bin/python everywhere else. */
+export function layaVenvPythonPath(cacheDir: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32"
+    ? join(cacheDir, "venv", "Scripts", "python.exe")
+    : join(cacheDir, "venv", "bin", "python");
+}
 const DEFAULT_LOAD_TIMEOUT_MS = 300_000;
 const DEFAULT_IDLE_UNLOAD_MS = 15 * 60_000;
 // Starting point only: on 2026-09-22 the real checkpoint (vendor-hosted demo,
@@ -38,6 +55,8 @@ const DEFAULT_MIN_CONFIDENCE = 0.02;
 const DEFAULT_MIN_ACT_PROBABILITY = 0.5;
 
 export interface LayaServiceOptions {
+  /** Override the bundled sidecar script location (tests, custom layouts). */
+  sidecarPath?: string;
   checkpoint?: LayaCheckpointPin;
   /** Durable app-data directory: python venv, HF cache, install marker. */
   cacheDir: string;
@@ -61,6 +80,8 @@ export interface LayaInstallState {
 export type LayaSidecarState = "stopped" | "starting" | "loading" | "ready" | "crashed";
 
 export interface LayaServiceStatus {
+  /** The bundled python sidecar script exists on this build. */
+  sidecarPresent: boolean;
   installed: boolean;
   install: LayaInstallState | null;
   requiredDownloadBytes: number;
@@ -96,6 +117,7 @@ export class LayaDecisionService {
   private readonly logger: (line: string) => void;
 
   private pythonPath: string;
+  private readonly sidecarPath: string;
   private child: ChildProcessWithoutNullStreams | null = null;
   private state: LayaSidecarState = "stopped";
   private loadedIdentity: { repo: string; subfolder: string; revision: string } | null = null;
@@ -114,6 +136,7 @@ export class LayaDecisionService {
     this.idleUnloadMs = options.idleUnloadMs ?? DEFAULT_IDLE_UNLOAD_MS;
     this.logger = options.logger ?? (() => undefined);
     this.pythonPath = options.pythonPath ?? "python3";
+    this.sidecarPath = options.sidecarPath ?? SIDECAR_PATH;
   }
 
   private get markerPath(): string {
@@ -140,6 +163,7 @@ export class LayaDecisionService {
   status(): LayaServiceStatus {
     const install = this.installState();
     return {
+      sidecarPresent: existsSync(this.sidecarPath),
       installed: install !== null,
       install,
       requiredDownloadBytes: this.checkpoint.downloadBytes,
@@ -156,7 +180,7 @@ export class LayaDecisionService {
    */
   async install(): Promise<{ verified: string[] }> {
     if (this.closed) throw new Error("LayaDecisionService is closed");
-    const venvPython = join(this.cacheDir, "venv", "bin", "python");
+    const venvPython = layaVenvPythonPath(this.cacheDir);
     mkdirSync(this.cacheDir, { recursive: true });
     if (!existsSync(venvPython)) {
       this.logger(`laya: creating python venv in ${this.cacheDir}`);
@@ -366,13 +390,34 @@ export class LayaDecisionService {
       return Promise.resolve();
     if (this.closed) return Promise.reject(new Error("service is closed"));
     this.stopChild();
+    // Fail truthfully, never crash: a packaged build without the python
+    // sidecar (or a host without python) reports UNAVAILABLE through the
+    // normal typed-failure path.
+    if (!existsSync(this.sidecarPath))
+      return Promise.reject(new Error(`the python sidecar is missing at ${this.sidecarPath} - this build cannot run Laya`));
     this.state = "starting";
-    this.logger(`laya: spawning sidecar (${this.pythonPath} ${SIDECAR_PATH})`);
-    const child = spawn(this.pythonPath, [SIDECAR_PATH], {
+    this.logger(`laya: spawning sidecar (${this.pythonPath} ${this.sidecarPath})`);
+    const child = spawn(this.pythonPath, [this.sidecarPath], {
       env: { ...process.env, USE_TF: "0", HF_HOME: join(this.cacheDir, "hf") },
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
+    // A failed spawn (missing/unexecutable python) emits 'error'; without a
+    // listener that event is an uncaught exception and downs the server.
+    // Treat it exactly like a crash: typed state, every pending call rejected.
+    child.on("error", (error) => {
+      this.logger(`laya sidecar failed to spawn: ${error.message}`);
+      if (this.state !== "stopped") this.state = "crashed";
+      this.loadedIdentity = null;
+      this.child = null;
+      for (const call of this.pending.values()) {
+        clearTimeout(call.timer);
+        const spawnError = new Error(`sidecar could not start: ${error.message}`) as Error & { layaKind?: string };
+        spawnError.layaKind = "UNAVAILABLE";
+        call.reject(spawnError);
+      }
+      this.pending.clear();
+    });
     child.stderr.on("data", (chunk: Buffer) => {
       for (const line of chunk.toString("utf8").split("\n")) {
         if (line.trim()) this.logger(`laya sidecar: ${line}`);
@@ -443,6 +488,7 @@ export class LayaDecisionService {
   private stopChild(): void {
     if (this.child) {
       this.child.removeAllListeners("exit");
+      this.child.removeAllListeners("error");
       this.child.kill("SIGKILL");
       this.child = null;
     }

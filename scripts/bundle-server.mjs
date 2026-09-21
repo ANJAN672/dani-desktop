@@ -77,6 +77,18 @@ await build({
   plugins: [yamlEsmPlugin],
 });
 
+// The Laya decision service's python sidecar is not a JS entry point: it is
+// spawned by path relative to the running module (dev: server/laya/sidecar/;
+// tsc build: dist-server/laya/sidecar/; this bundle inlines service.ts at the
+// root: dist-server/sidecar/). Ship it at BOTH packaged spots so every shape
+// resolves. The packaged app still needs a host python3 - the consented
+// install builds the venv at first run; embedding a python interpreter in
+// the bundle is deliberately out of scope.
+import { cpSync } from "node:fs";
+const sidecarSrc = join(server, "laya", "sidecar");
+cpSync(sidecarSrc, join(root, "dist-server", "sidecar"), { recursive: true });
+cpSync(sidecarSrc, join(root, "dist-server", "laya", "sidecar"), { recursive: true });
+
 // External MCP clients launch this as an independent stdio process. Keep its
 // source under scripts for a pleasant checkout command (`pnpm mcp`), but ship
 // the bundled output beside the packaged harness so release users do not need

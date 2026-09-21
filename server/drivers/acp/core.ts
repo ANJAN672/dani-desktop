@@ -1020,6 +1020,12 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
       return {
         instanceId,
         driverKind: DRIVER_KIND,
+        // ACP agents with subscription access run on the logged-in CLI
+        // account; config strips pay-as-you-go API-key env
+        // (PROVIDER_CREDENTIAL_ENV) so they cannot bill metered. Anything
+        // else (custom access) stays unclassed: the metered gate fails
+        // closed on it rather than guessing.
+        ...(support.access === "custom" ? {} : { billingClass: "subscription" as const }),
         displayName: input.displayName,
         enabled: input.enabled,
         get models() {
