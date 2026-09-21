@@ -10,8 +10,8 @@
 export const WORKSPACE_CREDENTIALS = [
   { section: "xai", field: "key", name: "xaiApiKey", env: "XAI_API_KEY" },
   { section: "box", field: "token", name: "boxToken", env: "BOX_TOKEN" },
-  { section: "tts", field: "key", name: "ttsKey", env: "OMB_TTS_KEY" },
-  { section: "imageGen", field: "key", name: "openaiImageApiKey", env: "OMB_OPENAI_IMAGE_KEY" },
+  { section: "tts", field: "key", name: "ttsKey", env: "DANI_TTS_KEY", legacyEnv: "OMB_TTS_KEY" },
+  { section: "imageGen", field: "key", name: "openaiImageApiKey", env: "DANI_OPENAI_IMAGE_KEY", legacyEnv: "OMB_OPENAI_IMAGE_KEY" },
   { section: "opencodeGo", field: "apiKey", name: "opencodeGoApiKey", env: "OPENCODE_API_KEY" },
 ];
 
@@ -62,9 +62,13 @@ export function migrateWorkspaceCredentials(config, credentials) {
  * The server treats each var as authoritative over its config.json field. */
 export function workspaceCredentialEnv(credentials) {
   const env = {};
-  for (const { name, env: envName } of WORKSPACE_CREDENTIALS) {
+  for (const { name, env: envName, legacyEnv } of WORKSPACE_CREDENTIALS) {
     const value = credentials?.[name];
-    if (typeof value === "string" && value) env[envName] = value;
+    if (typeof value === "string" && value) {
+      env[envName] = value;
+      // the spawned server prefers the current name but still reads the legacy one
+      if (legacyEnv) env[legacyEnv] = value;
+    }
   }
   return env;
 }

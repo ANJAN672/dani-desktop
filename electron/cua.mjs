@@ -45,7 +45,7 @@ const STANDALONE_SOCKET = path.join(
   app.getPath("home"),
   "Library/Caches/cua-driver/cua-driver.sock",
 );
-const HOST_BUNDLE_ID = "com.openmausbot.app";
+const HOST_BUNDLE_ID = "com.danibot.app";
 const CUA_ENV = { CUA_DRIVER_RS_TELEMETRY_ENABLED: "0" };
 process.env.CUA_DRIVER_RS_TELEMETRY_ENABLED ??= "0";
 
@@ -146,7 +146,7 @@ async function loadEmbeddedSdk() {
     ]);
     return { ...embedded, ...permissions };
   }
-  process.env.OPENMAUSBOT_CUA_SDK_LIBRARY = path.join(
+  process.env.DANIBOT_CUA_SDK_LIBRARY = path.join(
     process.resourcesPath,
     "cua-sdk",
     "native",
@@ -226,7 +226,7 @@ export async function startCua() {
   }
 
   const wantEmbedded =
-    app.isPackaged || process.env.OPENMAUSBOT_CUA_EMBEDDED === "1";
+    app.isPackaged || process.env.DANIBOT_CUA_EMBEDDED === "1";
   let nextConnection;
 
   if (wantEmbedded) {
