@@ -7,7 +7,7 @@ import { hermesProviderCapability } from "./hermes-provider-policy.ts";
 
 export interface MeteredGateInstance {
   instanceId: string;
-  displayName: string;
+  displayName?: string;
   driverKind?: string;
   billingClass?: "metered" | "subscription" | "local";
 }
@@ -37,7 +37,7 @@ export function meteredConsentRefusal(
       ? ` via ${hermesProviderCapability(model).provider}`
       : "";
   return (
-    `${instance.displayName}${viaProvider} is metered - runs on "${model}" bill this account. ` +
+    `${instance.displayName ?? instance.instanceId}${viaProvider} is metered - runs on "${model}" bill this account. ` +
     `Confirm metered use for this model before sending.`
   );
 }

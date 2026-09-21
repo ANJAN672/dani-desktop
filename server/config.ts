@@ -307,6 +307,8 @@ export interface AppConfig {
   /** Named browser sessions any bot can be pointed at. */
   browserProfiles?: BrowserProfile[];
   instances?: InstanceConfigMap;
+  /** Explicit acknowledgement for each metered instance/model pair. */
+  meteredAcknowledgements?: Array<{ instanceId: string; model: string; acknowledgedAt: string }>;
 }
 export type BrowserProfile = z.output<typeof browserProfileSchema> & {
   /** Exact durable Electron partition inherited from #567. Internal and
