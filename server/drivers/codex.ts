@@ -538,11 +538,15 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             args: [SPAWNED_PROXIES.computer],
             env: {
               ELECTRON_RUN_AS_NODE: "1",
+              DANI_BOX_ID: proxyEnv.OGB_BOX_ID ?? "",
               OGB_BOX_ID: proxyEnv.OGB_BOX_ID ?? "",
+              DANI_BOX_TOKEN: proxyEnv.OGB_BOX_TOKEN ?? "",
               OGB_BOX_TOKEN: proxyEnv.OGB_BOX_TOKEN ?? "",
               // who-is-driving endpoint, so a person taking the wheel in the
               // panel pauses this bot's hands mid-turn
+              DANI_CONTROL_URL: proxyEnv.OMB_CONTROL_URL ?? "",
               OMB_CONTROL_URL: proxyEnv.OMB_CONTROL_URL ?? "",
+              DANI_CONTROL_TOKEN: proxyEnv.OMB_CONTROL_TOKEN ?? "",
               OMB_CONTROL_TOKEN: proxyEnv.OMB_CONTROL_TOKEN ?? "",
             },
           });

@@ -23,20 +23,20 @@
 // Speaks raw JSON-RPC 2.0 over stdio (no MCP SDK — house style, matches
 // computer-proxy / permission-proxy). All state comes from env, injected by
 // the harness when it builds the integration:
-//   OMB_HARNESS_URL  base URL of the harness (http://127.0.0.1:8799)
-//   OMB_BOT_ID       the calling bot's id (excluded from list_bots; sender)
-//   OMB_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
-//   OMB_TURN_DEPTH   this turn's comms depth (the harness refuses recursion)
+//   DANI_HARNESS_URL  base URL of the harness (http://127.0.0.1:8799)
+//   DANI_BOT_ID       the calling bot's id (excluded from list_bots; sender)
+//   DANI_COMMS_TOKEN  shared secret for the localhost-only internal endpoints
+//   DANI_TURN_DEPTH   this turn's comms depth (the harness refuses recursion)
 import readline from "node:readline";
 
 import { CREDENTIAL_TARGETS, isCredentialTargetId } from "../../shared/credential-request.ts";
 
-const HARNESS = process.env.OMB_HARNESS_URL ?? "http://127.0.0.1:8799";
-const BOT_ID = process.env.OMB_BOT_ID ?? "";
-const THREAD_ID = process.env.OMB_THREAD_ID ?? "";
-const TOKEN = process.env.OMB_COMMS_TOKEN ?? "";
-const DEPTH = Number(process.env.OMB_TURN_DEPTH ?? "0") || 0;
-const SKILL_AUTHORING_ENABLED = process.env.OMB_SKILL_AUTHORING_ENABLED === "1";
+const HARNESS = (process.env.DANI_HARNESS_URL ?? process.env.OMB_HARNESS_URL) ?? "http://127.0.0.1:8799";
+const BOT_ID = (process.env.DANI_BOT_ID ?? process.env.OMB_BOT_ID) ?? "";
+const THREAD_ID = (process.env.DANI_THREAD_ID ?? process.env.OMB_THREAD_ID) ?? "";
+const TOKEN = (process.env.DANI_COMMS_TOKEN ?? process.env.OMB_COMMS_TOKEN) ?? "";
+const DEPTH = Number((process.env.DANI_TURN_DEPTH ?? process.env.OMB_TURN_DEPTH) ?? "0") || 0;
+const SKILL_AUTHORING_ENABLED = (process.env.DANI_SKILL_AUTHORING_ENABLED ?? process.env.OMB_SKILL_AUTHORING_ENABLED) === "1";
 const MAX_CREATED_PER_TURN = 4;
 let createdThisTurn = 0;
 // Same spirit as MAX_CREATED_PER_TURN above and MAX_QUEUED_PER_THREAD in

@@ -586,7 +586,7 @@ describe("connection security and discovery", () => {
 
   it("requires an explicit destination before sending a bearer token", async () => {
     process.env.OPENMAUSBOT_TOKEN = "proxy-token";
-    await expect(resolveBaseUrl()).rejects.toThrow("OPENMAUSBOT_URL or OMB_PORT");
+    await expect(resolveBaseUrl()).rejects.toThrow("DANIBOT_URL or DANI_PORT");
   });
 
   it("validates direct tool arguments", () => {

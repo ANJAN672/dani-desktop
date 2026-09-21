@@ -1105,7 +1105,7 @@ export function containerComputerMcp(
     // through `ps` for the life of the bridge.
     env: {
       ELECTRON_RUN_AS_NODE: "1",
-      ...(control ? { OMB_CONTROL_URL: control.url, OMB_CONTROL_TOKEN: control.token } : {}),
+      ...(control ? { DANI_CONTROL_URL: control.url, DANI_CONTROL_TOKEN: control.token, OMB_CONTROL_URL: control.url, OMB_CONTROL_TOKEN: control.token } : {}),
     },
   };
 }
@@ -1171,10 +1171,17 @@ export function computerProxyEnv(
   computer: { boxId?: string; token?: string; control?: { url: string; token: string } },
 ): NodeJS.ProcessEnv {
   return {
+    DANI_BOX_ID: computer.boxId ?? "",
     OGB_BOX_ID: computer.boxId ?? "",
+    DANI_BOX_TOKEN: computer.token ?? "",
     OGB_BOX_TOKEN: computer.token ?? "",
     ...(computer.control
-      ? { OMB_CONTROL_URL: computer.control.url, OMB_CONTROL_TOKEN: computer.control.token }
+      ? {
+          DANI_CONTROL_URL: computer.control.url,
+          DANI_CONTROL_TOKEN: computer.control.token,
+          OMB_CONTROL_URL: computer.control.url,
+          OMB_CONTROL_TOKEN: computer.control.token,
+        }
       : {}),
   };
 }

@@ -99,7 +99,7 @@ export function loadEnvironmentId(dataDir: string): string {
 }
 
 /** The desktop app passes its own version; a checkout reads package.json;
- * an image sets OMB_APP_VERSION at build time. */
+ * an image sets DANI_APP_VERSION (legacy OMB_APP_VERSION) at build time. */
 export function serverVersion(): string {
   const fromEnv = (process.env.DANI_APP_VERSION ?? process.env.OMB_APP_VERSION)?.trim();
   if (fromEnv) return fromEnv;
@@ -116,7 +116,7 @@ export function serverVersion(): string {
 export function environmentDescriptor(input: { environmentId: string; desktopManaged: boolean }): EnvironmentDescriptor {
   return {
     environmentId: input.environmentId,
-    label: process.env.OMB_ENVIRONMENT_LABEL?.trim() || hostname(),
+    label: (process.env.DANI_ENVIRONMENT_LABEL ?? process.env.OMB_ENVIRONMENT_LABEL)?.trim() || hostname(),
     platform: process.platform,
     version: serverVersion(),
     capabilities: {

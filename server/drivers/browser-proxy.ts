@@ -11,11 +11,11 @@
 //
 // Speaks raw JSON-RPC 2.0 over stdio (house style: agents-proxy/phone-proxy).
 // State comes from env, injected by the harness:
-//   OMB_BROWSER_URL    loopback host, e.g. http://127.0.0.1:52144
-//   OMB_BROWSER_TOKEN  capability scoped to this bot + browser profile
-//   OMB_BOT_ID         which bot's tab to drive (one view per bot)
-//   OMB_BROWSER_PROFILE named shared session the bot is pointed at ("" = own)
-//   OMB_CONTROL_URL / OMB_CONTROL_TOKEN  who-is-driving endpoint: while the
+//   DANI_BROWSER_URL    loopback host, e.g. http://127.0.0.1:52144
+//   DANI_BROWSER_TOKEN  capability scoped to this bot + browser profile
+//   DANI_BOT_ID         which bot's tab to drive (one view per bot)
+//   DANI_BROWSER_PROFILE named shared session the bot is pointed at ("" = own)
+//   DANI_CONTROL_URL / DANI_CONTROL_TOKEN  who-is-driving endpoint: while the
 //                      person holds the wheel in the panel, actions refuse
 import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
@@ -24,10 +24,10 @@ import { z } from "zod";
 import { safeBrowserUrl } from "../computer-observation.ts";
 import { createControlClient } from "../control-client.ts";
 
-const HOST = (process.env.OMB_BROWSER_URL ?? "").replace(/\/$/, "");
-const TOKEN = process.env.OMB_BROWSER_TOKEN ?? "";
-const BOT_ID = process.env.OMB_BOT_ID ?? "";
-const PROFILE = process.env.OMB_BROWSER_PROFILE ?? "";
+const HOST = ((process.env.DANI_BROWSER_URL ?? process.env.OMB_BROWSER_URL) ?? "").replace(/\/$/, "");
+const TOKEN = (process.env.DANI_BROWSER_TOKEN ?? process.env.OMB_BROWSER_TOKEN) ?? "";
+const BOT_ID = (process.env.DANI_BOT_ID ?? process.env.OMB_BOT_ID) ?? "";
+const PROFILE = (process.env.DANI_BROWSER_PROFILE ?? process.env.OMB_BROWSER_PROFILE) ?? "";
 const control = createControlClient();
 
 // ── what the host answers ────────────────────────────────────────────────

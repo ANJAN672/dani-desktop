@@ -437,7 +437,7 @@ export function builtInBrowserEnabled(cfg: AppConfig): boolean {
   return cfg.features?.browser === true;
 }
 
-// OMB_DATA_DIR isolates test/soak rigs from the user's real fleet.
+// DANI_DATA_DIR (legacy OMB_DATA_DIR) isolates test/soak rigs from the user's real fleet.
 export const DATA_DIR = process.env.DANI_DATA_DIR ?? process.env.OMB_DATA_DIR ?? join(homedir(), ".danibot");
 const LEGACY_DATA_DIRS = [join(homedir(), ".openmausbot"), join(homedir(), ".opengrokbot")];
 export const EVENTS_DIR = join(DATA_DIR, "events");

@@ -47,9 +47,9 @@ import {
   semanticBrowserCommand,
 } from "./remote-computer.ts";
 
-const BOX_API = process.env.OGB_BOX_API ?? "https://ascii.dev/api/box/v1";
-const boxId = process.env.OGB_BOX_ID ?? "";
-const token = process.env.OGB_BOX_TOKEN ?? "";
+const BOX_API = (process.env.DANI_BOX_API ?? process.env.OGB_BOX_API) ?? "https://ascii.dev/api/box/v1";
+const boxId = (process.env.DANI_BOX_ID ?? process.env.OGB_BOX_ID) ?? "";
+const token = (process.env.DANI_BOX_TOKEN ?? process.env.OGB_BOX_TOKEN) ?? "";
 
 // Who-is-driving: while the person holds control in the app, every tool
 // below is refused (not queued — a queued click lands after they've moved
@@ -57,8 +57,8 @@ const token = process.env.OGB_BOX_TOKEN ?? "";
 // safest screen for the model to see is the one AFTER the hand-back.
 /** Poll cadence while waiting for a hand-back, and the patience ceiling.
  * Env-tunable so the contract test doesn't spend wall-clock on it. */
-const CONTROL_POLL_MS = Math.max(Number(process.env.OMB_CONTROL_POLL_MS) || 1_500, 25);
-const CONTROL_WAIT_MS = Math.max(Number(process.env.OMB_CONTROL_WAIT_MS) || 600_000, 100);
+const CONTROL_POLL_MS = Math.max(Number((process.env.DANI_CONTROL_POLL_MS ?? process.env.OMB_CONTROL_POLL_MS)) || 1_500, 25);
+const CONTROL_WAIT_MS = Math.max(Number((process.env.DANI_CONTROL_WAIT_MS ?? process.env.OMB_CONTROL_WAIT_MS)) || 600_000, 100);
 // The cache must never outlive the poll cadence, or a hand-back would be
 // seen a stale cache-window late.
 const control = createControlClient({ cacheMs: Math.min(750, CONTROL_POLL_MS) });

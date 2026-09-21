@@ -364,7 +364,7 @@ const DESKTOP_MANAGED = (process.env.DANI_DESKTOP_PARENT ?? process.env.OMB_DESK
 // utility-process port can replace it with the per-launch owner capability.
 let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : undefined;
 // Where remote clients reach this server (a proxy's public address); pairing URLs use it.
-const PUBLIC_URL = process.env.OMB_PUBLIC_URL?.trim().replace(/\/+$/, "") || null;
+const PUBLIC_URL = (process.env.DANI_PUBLIC_URL ?? process.env.OMB_PUBLIC_URL)?.trim().replace(/\/+$/, "") || null;
 const cfg = loadConfig();
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
@@ -610,11 +610,17 @@ function agentsIntegration(
     args: [agentsProxyPath],
     env: {
       ...AGENTS_NODE_FLAG,
+      DANI_HARNESS_URL: `http://127.0.0.1:${PORT}`,
       OMB_HARNESS_URL: `http://127.0.0.1:${PORT}`,
+      DANI_BOT_ID: botId,
       OMB_BOT_ID: botId,
+      DANI_THREAD_ID: threadId,
       OMB_THREAD_ID: threadId,
+      DANI_COMMS_TOKEN: token,
       OMB_COMMS_TOKEN: token,
+      DANI_TURN_DEPTH: String(depth),
       OMB_TURN_DEPTH: String(depth),
+      DANI_SKILL_AUTHORING_ENABLED: skillAuthoring ? "1" : "0",
       OMB_SKILL_AUTHORING_ENABLED: skillAuthoring ? "1" : "0",
     },
   };
@@ -860,11 +866,17 @@ async function browserIntegration(
       args: [SPAWNED_PROXIES.browser],
       env: {
         ...AGENTS_NODE_FLAG,
+        DANI_BROWSER_URL: connection.url,
         OMB_BROWSER_URL: connection.url,
+        DANI_BROWSER_TOKEN: capability.token,
         OMB_BROWSER_TOKEN: capability.token,
+        DANI_BROWSER_PROFILE: partitionId,
         OMB_BROWSER_PROFILE: partitionId,
+        DANI_BOT_ID: botId,
         OMB_BOT_ID: botId,
+        DANI_CONTROL_URL: control.url,
         OMB_CONTROL_URL: control.url,
+        DANI_CONTROL_TOKEN: control.token,
         OMB_CONTROL_TOKEN: control.token,
       },
     },
@@ -873,7 +885,8 @@ async function browserIntegration(
 
 function phoneIntegration() {
   const env: Record<string, string> = { ...AGENTS_NODE_FLAG };
-  if (process.env.OMB_ADB_PATH) env.OMB_ADB_PATH = process.env.OMB_ADB_PATH;
+  const adbPath = process.env.DANI_ADB_PATH ?? process.env.OMB_ADB_PATH;
+  if (adbPath) { env.DANI_ADB_PATH = adbPath; env.OMB_ADB_PATH = adbPath; }
   const resourcesPath = process.env.DANI_RESOURCES_PATH ?? process.env.OMB_RESOURCES_PATH;
   if (resourcesPath) { env.DANI_RESOURCES_PATH = resourcesPath; env.OMB_RESOURCES_PATH = resourcesPath; }
   if (process.env.PH_ANDROID_SERIAL) env.PH_ANDROID_SERIAL = process.env.PH_ANDROID_SERIAL;
@@ -1001,7 +1014,7 @@ function askBotAndWait(targetBotId: string, message: string, depth: number, from
 // default selection for new bots: Dani runs the compatible Hermes runtime or fails closed
 async function defaultSelection() {
   const described = await registry.describe();
-  const selected = selectDaniDefault(described, process.env.OMB_TEST_DEFAULT_INSTANCE_ID);
+  const selected = selectDaniDefault(described, (process.env.DANI_TEST_DEFAULT_INSTANCE_ID ?? process.env.OMB_TEST_DEFAULT_INSTANCE_ID));
   return { instanceId: selected.instanceId, model: selected.model };
 }
 
@@ -1994,7 +2007,7 @@ sessions.onSessionRevoked((sessionId) => {
  * correctly through its own Last-Event-ID with no client code at all. */
 const STREAM_ID = randomUUID().slice(0, 8);
 const REPLAY_MAX = 500;
-const configuredSseHeartbeatMs = Number(process.env.OMB_SSE_HEARTBEAT_MS);
+const configuredSseHeartbeatMs = Number((process.env.DANI_SSE_HEARTBEAT_MS ?? process.env.OMB_SSE_HEARTBEAT_MS));
 const SSE_HEARTBEAT_MS =
   Number.isFinite(configuredSseHeartbeatMs) && configuredSseHeartbeatMs > 0
     ? configuredSseHeartbeatMs
@@ -2169,16 +2182,16 @@ const repeats = new RepeatDetector({ thresholds: [5, 10, 20], maxKeysPerThread: 
 // left its bot busy forever. The watchdog stops a turn whose thread has emitted NOTHING for stallMs —
 // activity-based, so an hour-long turn that keeps streaming is never
 // touched, and turns parked on a human approval are exempt.
-const TURN_STALL_MS = Math.max(60_000, Number(process.env.OMB_TURN_STALL_MS) || 20 * 60_000);
+const TURN_STALL_MS = Math.max(60_000, Number((process.env.DANI_TURN_STALL_MS ?? process.env.OMB_TURN_STALL_MS)) || 20 * 60_000);
 /** How long ask_bot waits synchronously before the ask is converted into a
  * delegation claim ticket (the peer's turn keeps running either way). */
-const ASK_BOT_TIMEOUT_MS = Math.max(5_000, Number(process.env.OMB_ASK_BOT_TIMEOUT_MS) || 4 * 60_000);
+const ASK_BOT_TIMEOUT_MS = Math.max(5_000, Number((process.env.DANI_ASK_BOT_TIMEOUT_MS ?? process.env.OMB_ASK_BOT_TIMEOUT_MS)) || 4 * 60_000);
 // A room waits for a busy teammate instead of dropping them, but never
 // forever: a bot parked on a permission card in another chat is "busy" until
 // a human returns. Past this cap a goal's lead is told the teammate could not
 // free up and reassigns, and a chat round moves on with a chip that says so —
 // the wait ends as data, not as a dead room. Tests shrink it.
-const GROUP_GOAL_WAIT_MAX_MS = Math.max(1_000, Number(process.env.OMB_GOAL_WAIT_MAX_MS) || 30 * 60_000);
+const GROUP_GOAL_WAIT_MAX_MS = Math.max(1_000, Number((process.env.DANI_GOAL_WAIT_MAX_MS ?? process.env.OMB_GOAL_WAIT_MAX_MS)) || 30 * 60_000);
 // Reassigning around a busy teammate is bounded too: after this many
 // exhausted waits in one run the team is blocked on availability, not stuck.
 const GROUP_GOAL_MAX_WAIT_EXHAUSTIONS = 3;
@@ -4039,7 +4052,7 @@ async function startTurn(
             const vpsControl = controlIntegration(bot.id, threadId, dispatchClaimId);
             integrations.localComputer = {
               ...vpsMcp,
-              env: { ...vpsMcp.env, OMB_CONTROL_URL: vpsControl.url, OMB_CONTROL_TOKEN: vpsControl.token },
+              env: { ...vpsMcp.env, DANI_CONTROL_URL: vpsControl.url, DANI_CONTROL_TOKEN: vpsControl.token, OMB_CONTROL_URL: vpsControl.url, OMB_CONTROL_TOKEN: vpsControl.token },
             };
             computerKind = "vps";
             previewCapture = () => vps.vpsComputerScreenshot(targetCfg, bot.id);
@@ -6931,8 +6944,11 @@ function cliProbeEnvironment(): NodeJS.ProcessEnv {
     "BOX_TOKEN",
     "OPENCODE_API_KEY",
     "COMPOSIO_API_KEY",
+    "DANI_COMPOSIO_BROKER_TOKEN",
     "OMB_COMPOSIO_BROKER_TOKEN",
+    "DANI_TTS_KEY",
     "OMB_TTS_KEY",
+    "DANI_OPENAI_IMAGE_KEY",
     "OMB_OPENAI_IMAGE_KEY",
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -7137,7 +7153,7 @@ let mcpProbesInFlight = 0;
 const claudeUpdatesInFlight = new Set<string>();
 
 // ── HTTP plumbing ─────────────────────────────────────────────────────
-/** The built UI, when this process serves it (OMB_STATIC_DIR: set by the
+/** The built UI, when this process serves it (DANI_STATIC_DIR, legacy OMB_STATIC_DIR: set by the
  * desktop app and by the container image). Public by design: it is the same
  * bundle anyone can download, holds no secrets, and a remote browser must be
  * able to load /pair before it has a session. Returns false when there is
@@ -7304,7 +7320,7 @@ const server = createServer(async (req, res) => {
         url: base ? `${base}/pair#code=${code}` : null,
         hint: base
           ? null
-          : "this server has no public address to put in a link: set OMB_PUBLIC_URL, or open /pair on the address you use and type the code",
+          : "this server has no public address to put in a link: set DANI_PUBLIC_URL, or open /pair on the address you use and type the code",
       });
     }
     if (method === "GET" && path === "/api/auth/pairing") return json(res, 200, { pairings: sessions.openPairings() });
@@ -7328,7 +7344,7 @@ const server = createServer(async (req, res) => {
     // unless the launcher explicitly sets that key; production builds never
     // set it.
     if (method === "POST" && path === "/api/testing/internal-capability") {
-      const expected = process.env.OMB_TEST_INTERNAL_CAPABILITY_KEY ?? "";
+      const expected = (process.env.DANI_TEST_INTERNAL_CAPABILITY_KEY ?? process.env.OMB_TEST_INTERNAL_CAPABILITY_KEY) ?? "";
       const capabilityHeader = req.headers["x-danibot-test-capability"] ?? req.headers["x-openmausbot-test-capability"];
       const actual = Array.isArray(capabilityHeader) ? "" : String(capabilityHeader ?? "");
       const expectedBytes = Buffer.from(expected);

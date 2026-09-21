@@ -26,7 +26,7 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * a custom server must never request one of these names or it could redirect
  * a built-in proxy or receive that proxy's bearer. */
 export function isHarnessOwnedMcpEnvName(name: string): boolean {
-  return name === "ELECTRON_RUN_AS_NODE" || name.startsWith("OMB_") || name.startsWith("OGB_");
+  return name === "ELECTRON_RUN_AS_NODE" || name.startsWith("DANI_") || name.startsWith("OMB_") || name.startsWith("OGB_");
 }
 
 function environmentNameError(name: string): string | null {

@@ -31,7 +31,7 @@ import {
 } from "./remote-computer.ts";
 
 // overridable so tests can point at a stub instead of the live provider
-const BOX_API = process.env.OMB_BOX_API || "https://ascii.dev/api/box/v1";
+const BOX_API = (process.env.DANI_BOX_API ?? process.env.OMB_BOX_API) || "https://ascii.dev/api/box/v1";
 const READY = new Set(["idle", "ready", "running"]);
 const SLEEPING = new Set(["archived", "archiving", "stopped", "stopping"]);
 const DEFAULT_BOX_TTL_SECONDS = 8 * 60 * 60;

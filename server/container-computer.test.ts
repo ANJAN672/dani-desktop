@@ -574,6 +574,8 @@ describe("containerComputerStatus", () => {
 describe("Cua integration", () => {
   it("hands cloud credentials only to the isolated remote adapter", () => {
     expect(computerProxyEnv({ boxId: "bx_1", token: "t" })).toEqual({
+      DANI_BOX_ID: "bx_1",
+      DANI_BOX_TOKEN: "t",
       OGB_BOX_ID: "bx_1",
       OGB_BOX_TOKEN: "t",
     });

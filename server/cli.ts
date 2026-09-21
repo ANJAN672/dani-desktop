@@ -246,13 +246,16 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
   if (!entry.staticDir) log("note: no built UI found next to the server; the API runs but browsers get no page (build with `pnpm exec vite build`)");
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    DANI_DATA_DIR: options.dataDir,
     OMB_DATA_DIR: options.dataDir,
+    DANI_PORT: String(options.port),
     OMB_PORT: String(options.port),
-    OMB_WEBHOOK_PORT: process.env.OMB_WEBHOOK_PORT || String(options.port + 1),
+    DANI_WEBHOOK_PORT: (process.env.DANI_WEBHOOK_PORT ?? process.env.OMB_WEBHOOK_PORT) || String(options.port + 1),
+    OMB_WEBHOOK_PORT: (process.env.DANI_WEBHOOK_PORT ?? process.env.OMB_WEBHOOK_PORT) || String(options.port + 1),
   };
-  if (entry.staticDir) env.OMB_STATIC_DIR = entry.staticDir;
-  if (entry.skillsDir && !process.env.OMB_SKILLS_DIR) env.OMB_SKILLS_DIR = entry.skillsDir;
-  if (options.label && !process.env.OMB_ENVIRONMENT_LABEL) env.OMB_ENVIRONMENT_LABEL = options.label;
+  if (entry.staticDir) { env.DANI_STATIC_DIR = entry.staticDir; env.OMB_STATIC_DIR = entry.staticDir; }
+  if (entry.skillsDir && !(process.env.DANI_SKILLS_DIR ?? process.env.OMB_SKILLS_DIR)) { env.DANI_SKILLS_DIR = entry.skillsDir; env.OMB_SKILLS_DIR = entry.skillsDir; }
+  if (options.label && !(process.env.DANI_ENVIRONMENT_LABEL ?? process.env.OMB_ENVIRONMENT_LABEL)) { env.DANI_ENVIRONMENT_LABEL = options.label; env.OMB_ENVIRONMENT_LABEL = options.label; }
   if (tailscale) {
     const served = await tailscaleServe(tailscale, options.port);
     if ("failure" in served) {
@@ -262,7 +265,7 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
     publicUrl = served.origin;
     log(`tailscale: serving https://${tailscale.dnsName} → http://127.0.0.1:${options.port} (only your tailnet can reach it)`);
   }
-  if (publicUrl) env.OMB_PUBLIC_URL = publicUrl;
+  if (publicUrl) { env.DANI_PUBLIC_URL = publicUrl; env.OMB_PUBLIC_URL = publicUrl; }
 
   const child: ChildProcess = spawn(entry.command, entry.args, { env, stdio: ["ignore", "inherit", "inherit"] });
   let exited: number | null = null;

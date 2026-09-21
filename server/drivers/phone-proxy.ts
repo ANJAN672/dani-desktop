@@ -42,8 +42,8 @@ export function resolveAdbPath(env: NodeJS.ProcessEnv = process.env, platform = 
   const executable = executableName(platform);
   const home = homedir();
   const candidates = [
-    env.OMB_ADB_PATH,
-    env.OMB_RESOURCES_PATH && join(env.OMB_RESOURCES_PATH, "android-platform-tools", platform, executable),
+    (env.DANI_ADB_PATH ?? env.OMB_ADB_PATH),
+    (env.DANI_RESOURCES_PATH ?? env.OMB_RESOURCES_PATH) && join((env.DANI_RESOURCES_PATH ?? env.OMB_RESOURCES_PATH)!, "android-platform-tools", platform, executable),
     ...(env.PATH ?? "").split(delimiter).map((entry) => entry && join(entry, executable)),
     platform === "darwin" && join(home, "Library/Android/sdk/platform-tools/adb"),
     platform === "darwin" && "/opt/homebrew/bin/adb",

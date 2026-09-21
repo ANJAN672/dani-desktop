@@ -621,11 +621,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       stderr: string;
     }
     const sessions = new Map<string, Session>();
-    const configuredIdleMinimum = Number(process.env.OMB_CLAUDE_SESSION_IDLE_MIN_MS);
+    const configuredIdleMinimum = Number((process.env.DANI_CLAUDE_SESSION_IDLE_MIN_MS ?? process.env.OMB_CLAUDE_SESSION_IDLE_MIN_MS));
     const sessionIdleMinimum = Number.isFinite(configuredIdleMinimum) && configuredIdleMinimum > 0
       ? configuredIdleMinimum
       : 10_000;
-    const SESSION_IDLE_MS = Math.max(sessionIdleMinimum, Number(process.env.OMB_CLAUDE_SESSION_IDLE_MS) || 10 * 60_000);
+    const SESSION_IDLE_MS = Math.max(sessionIdleMinimum, Number((process.env.DANI_CLAUDE_SESSION_IDLE_MS ?? process.env.OMB_CLAUDE_SESSION_IDLE_MS)) || 10 * 60_000);
 
     const closeSession = (threadId: string, why: string) => {
       const s = sessions.get(threadId);

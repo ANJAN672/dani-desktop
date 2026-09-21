@@ -261,7 +261,7 @@ export function configured(cfg: AppConfig): boolean {
   return connectionMode(cfg) !== "unavailable";
 }
 
-/** Three answers, not two. The desktop shell sets OMB_CREDENTIAL_STORE to
+/** Three answers, not two. The desktop shell sets DANI_CREDENTIAL_STORE (legacy OMB_CREDENTIAL_STORE) to
  * "unavailable" when it could not read credentials.bin this launch; without
  * that signal an unreadable store is indistinguishable from a user who never
  * connected anything, and the UI wipes a list it should have kept. */
@@ -269,7 +269,7 @@ export type ConnectorAvailability = "configured" | "unconfigured" | "unreadable"
 
 export function connectorAvailability(
   cfg: AppConfig,
-  storeState: string | undefined = process.env.OMB_CREDENTIAL_STORE,
+  storeState: string | undefined = (process.env.DANI_CREDENTIAL_STORE ?? process.env.OMB_CREDENTIAL_STORE),
 ): ConnectorAvailability {
   if (configured(cfg)) return "configured";
   return storeState === "unavailable" ? "unreadable" : "unconfigured";
@@ -546,14 +546,20 @@ export async function mcpIntegration(
       // The provider-facing bridge receives only this boot's loopback token.
       // Project/broker credentials stay in the harness process, so a coding
       // agent that prints its environment cannot export a durable secret.
+      DANI_CONNECTOR_UPSTREAM_URL: `${context.harnessUrl}/api/internal/connectors/mcp`,
       OMB_CONNECTOR_UPSTREAM_URL: `${context.harnessUrl}/api/internal/connectors/mcp`,
+      DANI_CONNECTOR_UPSTREAM_HEADERS: JSON.stringify({ authorization: `Bearer ${context.commsToken}` }),
       OMB_CONNECTOR_UPSTREAM_HEADERS: JSON.stringify({ authorization: `Bearer ${context.commsToken}` }),
+      DANI_HARNESS_URL: context.harnessUrl,
       OMB_HARNESS_URL: context.harnessUrl,
       // Distinct from the agents proxy token: Codex flattens mounted MCP env
       // variables into one process environment, so a shared name would let
       // the later agents mount overwrite this connector-scoped capability.
+      DANI_CONNECTOR_TOKEN: context.commsToken,
       OMB_CONNECTOR_TOKEN: context.commsToken,
+      DANI_BOT_ID: context.botId,
       OMB_BOT_ID: context.botId,
+      DANI_THREAD_ID: context.threadId,
       OMB_THREAD_ID: context.threadId,
     },
   };

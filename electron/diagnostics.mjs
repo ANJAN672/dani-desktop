@@ -17,13 +17,18 @@ export const CREDENTIAL_ENV_NAMES = [
   "OPENAI_COMPAT_URL",
   "BOX_TOKEN",
   "OPENCODE_API_KEY",
+  "DANI_TTS_KEY",
   "OMB_TTS_KEY",
+  "DANI_OPENAI_IMAGE_KEY",
   "OMB_OPENAI_IMAGE_KEY",
   "COMPOSIO_API_KEY",
+  "DANI_COMPOSIO_BROKER_TOKEN",
   "OMB_COMPOSIO_BROKER_TOKEN",
   // Browser capability files and app-owned state paths are private even
   // though they are not traditional API credentials.
+  "DANI_BROWSER_CONNECTION",
   "OMB_BROWSER_CONNECTION",
+  "DANI_USER_DATA",
   "OMB_USER_DATA",
 ];
 

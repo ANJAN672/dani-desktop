@@ -12,8 +12,9 @@ import { removeTempDir } from "./cleanup.ts";
 const home = mkdtempSync(join(tmpdir(), "omb-test-home-"));
 process.env.HOME = home;
 process.env.USERPROFILE = home;
-// OMB_DATA_DIR is an intentional production override, but tests must never
+// DANI_DATA_DIR (legacy OMB_DATA_DIR) is an intentional production override, but tests must never
 // let it escape the throwaway home they are about to delete.
+delete process.env.DANI_DATA_DIR;
 delete process.env.OMB_DATA_DIR;
 // Do not let a developer's Hermes global config path leak into per-test homes.
 delete process.env.HERMES_HOME;
@@ -22,7 +23,7 @@ delete process.env.HERMES_HOME;
 // Named explicitly all the same: the device tests delete this directory
 // wholesale, and "it is safe because of a line in another file" is not the
 // footing that delete should stand on.
-process.env.OMB_COMPANION_DIR = join(home, ".danibot-companion");
+process.env.DANI_COMPANION_DIR = join(home, ".danibot-companion");
 
 // SQLite keeps the database file open for the lifetime of its handle.
 // Windows will not remove a directory containing an open database, so close

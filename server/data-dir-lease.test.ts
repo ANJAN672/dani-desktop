@@ -57,7 +57,7 @@ describe("Dani Bot data-directory lease", () => {
   it("holds one directory until its matching handle releases it", () => {
     const dir = tempDataDir();
     const lease = acquireDataDirLease(dir);
-    const stored = JSON.parse(readFileSync(join(dir, "openmausbot-server.lease"), "utf8"));
+    const stored = JSON.parse(readFileSync(join(dir, "danibot-server.lease"), "utf8"));
 
     expect(stored).toEqual({
       version: 1,
@@ -77,7 +77,7 @@ describe("Dani Bot data-directory lease", () => {
 
   it("will not release a lease whose owner token changed", () => {
     const dir = tempDataDir();
-    const path = join(dir, "openmausbot-server.lease");
+    const path = join(dir, "danibot-server.lease");
     const lease = acquireDataDirLease(dir);
     const original = JSON.parse(readFileSync(path, "utf8"));
     const replacement = { ...original, token: randomUUID() };
@@ -143,7 +143,7 @@ describe("Dani Bot data-directory lease", () => {
 
   it("fails closed on a corrupt owner record", () => {
     const dir = tempDataDir();
-    const path = join(dir, "openmausbot-server.lease");
+    const path = join(dir, "danibot-server.lease");
     writeFileSync(path, "not-json\n", { mode: 0o600 });
 
     expect(() => acquireDataDirLease(dir)).toThrow(/lease is invalid.*refusing to start/i);

@@ -11,18 +11,18 @@ import { randomUUID } from "node:crypto";
 
 type Json = Record<string, unknown>;
 
-const UPSTREAM = process.env.OMB_CONNECTOR_UPSTREAM_URL ?? "";
-const HARNESS = process.env.OMB_HARNESS_URL ?? "http://127.0.0.1:8799";
-const BOT_ID = process.env.OMB_BOT_ID ?? "";
-const THREAD_ID = process.env.OMB_THREAD_ID ?? "";
-const TOKEN = process.env.OMB_CONNECTOR_TOKEN ?? process.env.OMB_COMMS_TOKEN ?? "";
+const UPSTREAM = (process.env.DANI_CONNECTOR_UPSTREAM_URL ?? process.env.OMB_CONNECTOR_UPSTREAM_URL) ?? "";
+const HARNESS = (process.env.DANI_HARNESS_URL ?? process.env.OMB_HARNESS_URL) ?? "http://127.0.0.1:8799";
+const BOT_ID = (process.env.DANI_BOT_ID ?? process.env.OMB_BOT_ID) ?? "";
+const THREAD_ID = (process.env.DANI_THREAD_ID ?? process.env.OMB_THREAD_ID) ?? "";
+const TOKEN = (process.env.DANI_CONNECTOR_TOKEN ?? process.env.OMB_CONNECTOR_TOKEN) ?? (process.env.DANI_COMMS_TOKEN ?? process.env.OMB_COMMS_TOKEN) ?? "";
 const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
 const INITIALIZE_RELAY_TIMEOUT_MS = 1_000;
 const RELAY_TIMEOUT_MS = 10 * 60_000;
 
 function parsedHeaders(): Record<string, string> {
   try {
-    const value: unknown = JSON.parse(process.env.OMB_CONNECTOR_UPSTREAM_HEADERS ?? "{}");
+    const value: unknown = JSON.parse((process.env.DANI_CONNECTOR_UPSTREAM_HEADERS ?? process.env.OMB_CONNECTOR_UPSTREAM_HEADERS) ?? "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     return Object.fromEntries(
       Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
