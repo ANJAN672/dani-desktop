@@ -12,7 +12,7 @@ Status: evidence snapshot, 2026-09-21. Baseline: `prod` at `11c5f3f3a5f681c4841a
 | Durable Hermes sessions | `server/dani-kernel/hermes-turn.ts` persists native cursors and interrupt state | CONFIRMED_BY_TEST |
 | Delegation | Existing `server/delegations.ts` plus new typed `server/dani-delegations.ts` | CONFIRMED_BY_TEST |
 | Memory sidecar | SQLite/FTS, provenance and conflict reconciliation in `server/memory-sidecar.ts` | CONFIRMED_BY_TEST |
-| Laya | Shadow recorder only; no execution authority in `server/laya-shadow.ts` | CONFIRMED_BY_TEST |
+| Laya | Shadow scorer wired and gated via `server/laya/shadow-scorer.ts` (spec 100 slice 3); no execution authority | CONFIRMED_BY_TEST |
 | Voice | Duplex controller/VAD/barge-in contracts exist; native cross-platform inference is not proven | PARTIAL |
 | Proactivity | Trigger, quiet-hours, retry and budget primitives exist; complete event-to-effect vertical slice is not proven | PARTIAL |
 | Windows first slice | No captured Windows on-device browser-download/restart proof | UNVERIFIED |

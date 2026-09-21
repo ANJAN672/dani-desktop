@@ -30,7 +30,7 @@ Truth labels: `VERIFIED` requires current test evidence on the named platform; `
 | Memory lifecycle | constitution §6 | `server/memory-sidecar.ts` | isolation, delete/retention, correction/retraction, staleness | PARTIAL |
 | Trigger/proactivity control | constitution §5 | skeleton only | registry/evaluator/wake/freshness/dedupe-window authorization | NOT DONE |
 | Initiative levels | constitution §5 | absent | silent/inform/prepare/act + novelty/budgets | NOT DONE |
-| Laya advisory-only | ADR-001 | `server/laya-shadow.ts` | measured shadow comparison | PARTIAL |
+| Laya advisory-only | ADR-001 | `server/laya-shadow.ts` + `server/laya/shadow-scorer.ts` (gated, non-blocking) | measured shadow comparison | PARTIAL |
 | Voice barge-in | constitution §4 | `src/lib/duplex-voice.ts` | native cross-platform E2E | IMPLEMENTED_UNVERIFIED |
 | Windows controlled download | specs 001/002 | not wired | real-device WD/EF/PI/DL/EV/FG gauntlet + filesystem proof | NOT DONE |
 | Offline/recovery | specs 001/002 | incomplete | offline and resumed recovery gauntlet | NOT DONE |
