@@ -223,3 +223,30 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
   endpoint (candidate parsing, lease refusal on observe+act, honest tool
   failure). UNVERIFIED: no real box driven; local-VM/VPS surfaces (cua MCP,
   not computer-proxy) have no driver yet.
+
+## Slice 7 landed (2026-09-22): settings UI + consented install surface
+
+- Experimental Settings now exposes all four opt-in flags next to the
+  existing switches: features.laya, features.layaShadow, features.layaRouting
+  (with prerequisite copy) and features.localSpeech. Toggling a laya gate
+  rebuilds only the laya stack (closeLayaStack + createLayaStack) - provider
+  turns and the kernel are untouched, no restart needed.
+- configStatus() now reports proactive + all three laya flags in features.
+  (Drive-by fix: features.proactive was already switchable but missing from
+  the status payload, so its switch could not render the stored state.)
+- Consented checkpoint download: GET /api/laya/status (gated, 404 while the
+  service gate is closed) reports installed/install state, sidecar state,
+  pinned checkpoint identity (repo, subfolder, revision, apache-2.0, byte
+  size) plus background install progress/failure. POST /api/laya/install
+  starts ONE background install (202) and is idempotent when installed.
+- Settings UI: a "Laya decision model" card appears while features.laya is
+  on. It states exactly what will be downloaded (pinned Hugging Face
+  checkpoint + pinned PyPI SDK, hash-verified, fully local) with the real
+  size in the install button; progress is a polling "Installing..." state,
+  failures surface the server error with a retry path.
+- Tests: 3 index.test.ts cases (404 while gated off, config feature flags
+  include every laya gate + proactive, status surface opens on toggle
+  without restart and closes again). UNTESTED: a real install run (needs
+  network + ~850MB download; exercise on a real host), the renderer card
+  visually, and install progress byte-reporting (the sidecar reports phase
+  lines only, so progress is indeterminate by design).

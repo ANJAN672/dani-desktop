@@ -353,7 +353,7 @@ export interface ConfigStatus {
   /** UI language override; "" (or absent) follows the system language. */
   language?: string;
   /** Opt-in flags. Absent means off. */
-  features?: { skillRecorder: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean; localSpeech?: boolean };
+  features?: { skillRecorder: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean; laya?: boolean; layaShadow?: boolean; layaRouting?: boolean; localSpeech?: boolean };
   /** Named browser sessions any bot can be pointed at. */
   browserProfiles?: BrowserProfile[];
   /** Explicit metered-use confirmations (spec 010 R8); never secret. */

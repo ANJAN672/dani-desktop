@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Coins, FlaskConical, Globe, KeyRound, Monitor, Search, TabletSmartphone, Terminal, Trash2, User, X } from "lucide-react";
 import { api, useStore, type AppSettingsSection, type ConfigStatus } from "@/state/store";
 import { analyticsEnabled, setAnalyticsEnabled } from "@/lib/analytics";
-import { builtInBrowserEnabled, proactiveEnabled, showToolCallsEnabled, skillRecorderEnabled } from "@/lib/feature-flags";
+import { builtInBrowserEnabled, layaEnabled, layaRoutingEnabled, layaShadowEnabled, localSpeechEnabled, proactiveEnabled, showToolCallsEnabled, skillRecorderEnabled } from "@/lib/feature-flags";
 import { localeChoices } from "@/locales";
 import { ApiKeyRow, VpsConnection } from "./ApiKeys";
 import { useUpdaterState } from "@/lib/updater";
@@ -239,17 +239,30 @@ function ToolCallsRow() {
   );
 }
 
+type ExperimentalFeature =
+  | "skillRecorder"
+  | "browser"
+  | "proactive"
+  | "laya"
+  | "layaShadow"
+  | "layaRouting"
+  | "localSpeech";
+
 function ExperimentalFeaturesRow() {
   const { state, dispatch } = useStore();
   const skillRecorder = skillRecorderEnabled(state.config);
   const browser = builtInBrowserEnabled(state.config);
   const proactive = proactiveEnabled(state.config);
+  const laya = layaEnabled(state.config);
+  const layaShadow = layaShadowEnabled(state.config);
+  const layaRouting = layaRoutingEnabled(state.config);
+  const localSpeech = localSpeechEnabled(state.config);
   const desktopBrowser = Boolean(window.dani?.browser);
   const browserBlockedOnWindows = window.dani?.platform === "win32" && !desktopBrowser;
-  const [saving, setSaving] = useState<"skillRecorder" | "browser" | "proactive" | null>(null);
+  const [saving, setSaving] = useState<ExperimentalFeature | null>(null);
   const [error, setError] = useState("");
 
-  const toggle = async (feature: "skillRecorder" | "browser" | "proactive", next: boolean) => {
+  const toggle = async (feature: ExperimentalFeature, next: boolean) => {
     if (saving) return;
     setSaving(feature);
     setError("");
@@ -322,6 +335,153 @@ function ExperimentalFeaturesRow() {
           className="disabled:cursor-wait disabled:opacity-50"
         />
       </div>
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-hairline/30 pt-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-medium text-ink">Laya decision service</div>
+          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+            A small local model that scores how a turn should be routed. Runs fully on this computer; off by default.
+          </div>
+        </div>
+        <Switch
+          checked={laya}
+          aria-label="Enable the Laya decision service"
+          disabled={saving !== null}
+          onClick={() => void toggle("laya", !laya)}
+          className="disabled:cursor-wait disabled:opacity-50"
+        />
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-hairline/30 pt-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-medium text-ink">Laya shadow scoring</div>
+          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+            Log what Laya would have decided on real turns so its routing can be measured before it acts. Needs the Laya decision service.
+          </div>
+        </div>
+        <Switch
+          checked={layaShadow}
+          aria-label="Enable Laya shadow scoring"
+          disabled={saving !== null}
+          onClick={() => void toggle("layaShadow", !layaShadow)}
+          className="disabled:cursor-wait disabled:opacity-50"
+        />
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-hairline/30 pt-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-medium text-ink">Laya bounded routing</div>
+          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+            Let Laya actually route turns: bounded computer-use runs on a cloud computer only, with Hermes as the fallback. Needs the Laya decision service.
+          </div>
+        </div>
+        <Switch
+          checked={layaRouting}
+          aria-label="Enable Laya bounded routing"
+          disabled={saving !== null}
+          onClick={() => void toggle("layaRouting", !layaRouting)}
+          className="disabled:cursor-wait disabled:opacity-50"
+        />
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-hairline/30 pt-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-medium text-ink">Local speech</div>
+          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+            On-device Whisper speech-to-text and Kokoro text-to-speech for calls, instead of a cloud voice service.
+          </div>
+        </div>
+        <Switch
+          checked={localSpeech}
+          aria-label="Enable local speech"
+          disabled={saving !== null}
+          onClick={() => void toggle("localSpeech", !localSpeech)}
+          className="disabled:cursor-wait disabled:opacity-50"
+        />
+      </div>
+      {error ? <p role="alert" className="mt-2 text-[12px] text-danger">{error}</p> : null}
+    </Card>
+  );
+}
+
+interface LayaServiceStatus {
+  installed: boolean;
+  installing: boolean;
+  installError: string | null;
+  sidecar: string;
+  install: { verifiedAt: string } | null;
+  checkpoint: { repo: string; subfolder: string; revision: string; license: string; downloadBytes: number };
+}
+
+/** Consented install of the pinned Laya checkpoint. The download is large,
+ * so the server installs in the background and this card polls for
+ * progress/failure. Rendered only while the service gate is on. */
+function LayaServiceCard() {
+  const [status, setStatus] = useState<LayaServiceStatus | null>(null);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    try {
+      setStatus(await api("/api/laya/status") as LayaServiceStatus);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load the Laya service status.");
+    }
+  };
+  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (!status?.installing) return;
+    const timer = setInterval(() => void load(), 2000);
+    return () => clearInterval(timer);
+  }, [status?.installing]);
+
+  const install = async () => {
+    setError("");
+    try {
+      await api("/api/laya/install", { method: "POST" });
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not start the Laya install.");
+    }
+  };
+
+  if (!status) {
+    return (
+      <Card title="Laya decision model" subtitle="Local routing model for the Laya decision service.">
+        <div className="text-[12px] text-ink-secondary">{error || "Loading model status…"}</div>
+      </Card>
+    );
+  }
+  const downloadMb = Math.round(status.checkpoint.downloadBytes / 1_000_000);
+  return (
+    <Card title="Laya decision model" subtitle="Local routing model for the Laya decision service.">
+      {status.installed ? (
+        <div className="text-[12px] leading-relaxed text-ink-secondary">
+          Installed: {status.checkpoint.repo}/{status.checkpoint.subfolder} at pinned revision{" "}
+          {status.checkpoint.revision.slice(0, 12)} ({status.checkpoint.license})
+          {status.install?.verifiedAt ? `, hash-verified ${new Date(status.install.verifiedAt).toLocaleDateString()}` : ""}.
+        </div>
+      ) : (
+        <>
+          <div className="text-[12px] leading-relaxed text-ink-secondary">
+            The model is not installed yet. Installing downloads the pinned checkpoint ({status.checkpoint.repo}/
+            {status.checkpoint.subfolder}, {status.checkpoint.license}) - about {downloadMb} MB from Hugging Face - and the
+            pinned laya Python SDK from PyPI. Every file is hash-verified before the model can run, and the model runs
+            fully on this computer.
+          </div>
+          {status.installing ? (
+            <div className="mt-3 text-[12px] text-ink-secondary" role="status">
+              Installing… downloading and hash-verifying the checkpoint. This can take several minutes; you can leave
+              this window while it runs.
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void install()}
+              className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-[13px] font-medium text-white hover:brightness-110"
+            >
+              Download and install (~{downloadMb} MB)
+            </button>
+          )}
+        </>
+      )}
+      {status.installError ? <p role="alert" className="mt-2 text-[12px] text-danger">Install failed: {status.installError}</p> : null}
       {error ? <p role="alert" className="mt-2 text-[12px] text-danger">{error}</p> : null}
     </Card>
   );
@@ -681,6 +841,7 @@ export function SettingsModal() {
             {section === "experimental" && (
               <>
                 <ExperimentalFeaturesRow />
+                {layaEnabled(state.config) && <LayaServiceCard />}
                 <BrowserProfilesRow />
               </>
             )}

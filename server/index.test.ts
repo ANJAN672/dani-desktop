@@ -8356,3 +8356,39 @@ describe("computer control API (who is driving)", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("laya decision service API (spec 100 R8)", () => {
+  it("404s while the service gate is closed", async () => {
+    expect((await api("GET", "/api/laya/status")).status).toBe(404);
+    expect((await api("POST", "/api/laya/install")).status).toBe(404);
+  });
+
+  it("reports every experimental gate in the config feature flags", async () => {
+    const { status, body } = await api("GET", "/api/config");
+    expect(status).toBe(200);
+    expect(typeof body.features.proactive).toBe("boolean");
+    expect(body.features.laya).toBe(false);
+    expect(body.features.layaShadow).toBe(false);
+    expect(body.features.layaRouting).toBe(false);
+  });
+
+  it("opens the status surface when the gate is toggled on, without a restart", async () => {
+    expect((await api("PUT", "/api/config", { features: { laya: true } })).status).toBe(200);
+    try {
+      const { status, body } = await api("GET", "/api/laya/status");
+      expect(status).toBe(200);
+      expect(body.installed).toBe(false);
+      expect(body.installing).toBe(false);
+      expect(body.checkpoint.repo).toBe("convaiinnovations/laya");
+      expect(body.checkpoint.subfolder).toBe("typed-decisions");
+      expect(body.checkpoint.revision).toMatch(/^[0-9a-f]{40}$/);
+      expect(body.checkpoint.license).toBe("apache-2.0");
+      expect(body.checkpoint.downloadBytes).toBeGreaterThan(100_000_000);
+      const cfg = await api("GET", "/api/config");
+      expect(cfg.body.features.laya).toBe(true);
+    } finally {
+      expect((await api("PUT", "/api/config", { features: { laya: false } })).status).toBe(200);
+      expect((await api("GET", "/api/laya/status")).status).toBe(404);
+    }
+  });
+});

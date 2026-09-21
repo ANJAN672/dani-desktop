@@ -131,7 +131,7 @@ import { LayaShadow } from "./laya-shadow.ts";
 import { LayaDecisionService } from "./laya/service.ts";
 import { LayaDecisionShadowScorer, routeShadowCandidates } from "./laya/shadow-scorer.ts";
 import { DaniTaskRouter } from "./laya/router.ts";
-import { LAYA_TYPED_DECISIONS, layaCheckpointBySubfolder } from "./laya/manifest.ts";
+import { LAYA_HUB_REPO, LAYA_LICENSE, LAYA_PINNED_REVISION, LAYA_TYPED_DECISIONS, layaCheckpointBySubfolder } from "./laya/manifest.ts";
 import { LayaCuaController } from "./laya/cua-controller.ts";
 import { BoxProxyCuaDriver } from "./laya/proxy-driver.ts";
 import {
@@ -519,6 +519,9 @@ let layaService: LayaDecisionService | null = null;
 let layaShadow: LayaShadow | null = null;
 let layaRouter: DaniTaskRouter | null = null;
 let layaCua: LayaCuaController | null = null;
+// One consented install at a time; the checkpoint download is far too large
+// for a request to hold open, so the UI polls /api/laya/status instead.
+let layaInstallRun: { running: boolean; error: string | null } = { running: false, error: null };
 function createLayaStack(): void {
   if (!layaEnabled(cfg)) return;
   const checkpoint = layaCheckpointBySubfolder(cfg.laya?.checkpoint ?? "typed-decisions") ?? LAYA_TYPED_DECISIONS;
@@ -7339,6 +7342,10 @@ async function configStatus() {
       skillRecorder: skillRecorderEnabled(cfg),
       showToolCalls: showToolCallsEnabled(cfg),
       browser: builtInBrowserEnabled(cfg),
+      proactive: proactiveEnabled(cfg),
+      laya: layaEnabled(cfg),
+      layaShadow: layaShadowEnabled(cfg),
+      layaRouting: layaRoutingEnabled(cfg),
       localSpeech: cfg.features?.localSpeech === true,
     },
     // partitionId is non-secret routing metadata. The renderer needs it to
@@ -11518,6 +11525,48 @@ const server = createServer(async (req, res) => {
       } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : String(error) }); }
     }
 
+    // spec 100 R8: consented checkpoint install + status for the settings
+    // UI. Both routes 404 while the service gate is closed. The install runs
+    // in the background - venv build, pinned SDK, 800+MB hash-verified
+    // checkpoint download - so the UI polls status for progress/failure.
+    if (method === "GET" && path === "/api/laya/status") {
+      if (!layaEnabled(cfg)) return json(res, 404, { error: "laya decision service is disabled" });
+      const checkpoint = layaCheckpointBySubfolder(cfg.laya?.checkpoint ?? "typed-decisions") ?? LAYA_TYPED_DECISIONS;
+      const status = layaService?.status() ?? null;
+      return json(res, 200, {
+        installed: status?.installed ?? false,
+        install: status?.install ?? null,
+        sidecar: status?.sidecar ?? "stopped",
+        installing: layaInstallRun.running,
+        installError: layaInstallRun.error,
+        checkpoint: {
+          repo: LAYA_HUB_REPO,
+          subfolder: checkpoint.subfolder || "english",
+          revision: LAYA_PINNED_REVISION,
+          license: LAYA_LICENSE,
+          downloadBytes: checkpoint.downloadBytes,
+        },
+      });
+    }
+    if (method === "POST" && path === "/api/laya/install") {
+      if (!layaEnabled(cfg)) return json(res, 404, { error: "laya decision service is disabled" });
+      if (!layaService) return json(res, 503, { error: "laya service unavailable" });
+      if (layaService.status().installed) return json(res, 200, { installed: true, installing: false });
+      if (!layaInstallRun.running) {
+        layaInstallRun = { running: true, error: null };
+        const service = layaService;
+        // A config reload can swap layaService mid-install; the completion
+        // handler only flips the tracker, and the fresh stack re-reads the
+        // install marker from disk, so the states stay truthful.
+        void service.install()
+          .then(() => { layaInstallRun = { running: false, error: null }; })
+          .catch((cause) => {
+            layaInstallRun = { running: false, error: cause instanceof Error ? cause.message : String(cause) };
+          });
+      }
+      return json(res, 202, { installing: true });
+    }
+
     // spec 100: one bounded CUA run against a bot's real cloud box, through
     // the existing computer proxy (same who-is-driving lease, same evidence
     // rules). Gated on BOTH the service and routing gates. This is the
@@ -12248,6 +12297,18 @@ const server = createServer(async (req, res) => {
       if (patch.features?.proactive !== undefined) {
         attachProactiveProposalListener();
         if (proactiveEnabled(cfg)) reconcileProactiveProposalCards();
+      }
+      // spec 100 R8: the laya stack follows its gates without a restart. This
+      // rebuild touches only the laya sidecar/service objects - provider
+      // turns and the kernel are left alone.
+      if (
+        patch.features &&
+        (patch.features.laya !== undefined ||
+          patch.features.layaShadow !== undefined ||
+          patch.features.layaRouting !== undefined)
+      ) {
+        await closeLayaStack();
+        createLayaStack();
       }
       let browserReferenceCleanupError: unknown = null;
       if (patch.browserProfiles !== undefined) {
