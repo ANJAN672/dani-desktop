@@ -5,12 +5,19 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { WorkingTimer } from "@/components/WorkingIndicator";
 
+/** Free-tier model ids carry a `-free` or `:free` suffix (Dani-Free proxy /
+ * OpenRouter convention). The hint must only fire for genuinely free models. */
+export function isFreeModel(model: string): boolean {
+  return model.includes(":free") || model.endsWith("-free");
+}
+
 export function TurnPresence({
   avatar,
   visible,
   label = "Thinking",
   answering = false,
   since = null,
+  slowHint = false,
 }: {
   avatar: ReactNode;
   visible: boolean;
@@ -18,6 +25,9 @@ export function TurnPresence({
   answering?: boolean;
   /** Turn start (epoch ms) — shows a self-ticking elapsed readout while working. */
   since?: number | null;
+  /** Show an honest "free models can be slow" hint while thinking. Set it
+      only when the active model is actually a free model. */
+  slowHint?: boolean;
 }) {
   const [mounted, setMounted] = useState(visible);
   const [phase, setPhase] = useState<"think" | "answer" | "out">(answering ? "answer" : "think");
@@ -64,6 +74,11 @@ export function TurnPresence({
             )}
           </span>
         ) : null}
+        {showWorking && slowHint && (
+          <span className="mt-1 text-[11px] text-ink-secondary/70">
+            Free models can be slow on first reply
+          </span>
+        )}
       </div>
     </div>
   );

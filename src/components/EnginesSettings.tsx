@@ -270,6 +270,18 @@ function EngineRow({ instance }: { instance: InstanceInfo }) {
             {instance.snapshot.version}
           </span>
         )}
+        {/* Per-engine readiness: the backend reports state + reason; surface
+            it so a glance shows what's usable and why the rest isn't. */}
+        {instance.snapshot.state === "unavailable" ? (
+          <span
+            className="shrink-0 truncate text-[11px] text-warning"
+            title={instance.snapshot.reason ?? "Unavailable"}
+          >
+            Unavailable{instance.snapshot.reason ? ` — ${instance.snapshot.reason}` : ""}
+          </span>
+        ) : (
+          <span className="shrink-0 text-[11px] text-success">Ready</span>
+        )}
         <span className="flex-1" />
         {instance.driverKind === "claudeAgent" && (
           <button

@@ -1170,6 +1170,10 @@ function EventDetails({
   const [working, setWorking] = useState(false);
   const runNowPending = useRef(false);
   const [error, setError] = useState("");
+  // Inline two-step delete: the native window.confirm() renders at the
+  // top-left corner of the display, far from this modal. Confirming here
+  // keeps the decision next to the event being deleted.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isCall = item.kind === "call";
   const routine = item.kind === "routine" ? item.routine : null;
   const run = item.kind === "routine" ? item.run : null;
@@ -1247,7 +1251,6 @@ function EventDetails({
   };
 
   const deleteEvent = async () => {
-    if (!window.confirm(`Delete “${title}”?`)) return;
     if (call) {
       await api(`/api/calendar-calls/${call.id}`, { method: "DELETE" });
       onCallChanged(call.id);
@@ -1311,7 +1314,31 @@ function EventDetails({
           <div className="ml-auto flex items-center gap-1">
             {(routine || call) && <button onClick={onEdit} className="rounded-lg px-3 py-2 text-[12px] text-ink-secondary hover:bg-raised hover:text-ink">Edit</button>}
             {routine && <button onClick={async () => { const response = await api(`/api/routines/${routine.id}`, { method: "PATCH", body: JSON.stringify({ enabled: !routine.enabled }) }); dispatch({ type: "routinePatched", routine: response.routine }); }} className="rounded-lg p-2 text-ink-secondary hover:bg-raised hover:text-ink" title={routine.enabled ? "Pause routine" : "Resume routine"}>{routine.enabled ? <Pause size={15} /> : <Play size={15} />}</button>}
-            {(routine || call) && <button onClick={() => void deleteEvent()} className="rounded-lg p-2 text-ink-secondary hover:bg-danger/10 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+            {(routine || call) && (
+              confirmingDelete ? (
+                <span className="flex items-center gap-1.5 text-[12px] text-ink-secondary">
+                  <span className="max-w-[220px] truncate">Delete “{title}”?</span>
+                  <button
+                    onClick={() => void deleteEvent()}
+                    disabled={working}
+                    className="rounded-lg bg-danger/15 px-3 py-1.5 font-semibold text-danger hover:bg-danger/25 disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={working}
+                    className="rounded-lg px-2.5 py-1.5 hover:bg-raised hover:text-ink disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button onClick={() => setConfirmingDelete(true)} className="rounded-lg p-2 text-ink-secondary hover:bg-danger/10 hover:text-danger" title="Delete">
+                  <Trash2 size={15} />
+                </button>
+              )
+            )}
           </div>
         </div>
       </div>

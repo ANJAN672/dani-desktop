@@ -38,7 +38,7 @@ import {
 } from "@/state/store";
 import { EngineSetup } from "./EngineSetup";
 import { BotAvatar, MausAvatar } from "./Avatar";
-import { TurnPresence } from "./TurnPresence";
+import { TurnPresence, isFreeModel } from "./TurnPresence";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
 import { stateForBot } from "@/lib/mascot";
 import { showWorkingDots } from "@/lib/turn-tail";
@@ -1341,6 +1341,7 @@ export function ChatView({ bot }: { bot: Bot }) {
             label={activityLabel}
             answering={popping !== null}
             since={busySince}
+            slowHint={isFreeModel(bot.modelSelection.model)}
           />
         </div>
       </div>

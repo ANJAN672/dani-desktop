@@ -16,7 +16,7 @@ import {
   type Message,
 } from "@/state/store";
 import { MausAvatar } from "./Avatar";
-import { TurnPresence } from "./TurnPresence";
+import { TurnPresence, isFreeModel } from "./TurnPresence";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
 import { normalizeState } from "@/lib/mascot";
 import { effectiveDefaultResponder, groupResponseHint } from "@/lib/group-routing";
@@ -1295,6 +1295,7 @@ export function GroupView({ group }: { group: Group }) {
               visible={presenceVisible}
               label={activityLabel}
               answering={popping !== null}
+              slowHint={isFreeModel(presenceSpeaker?.modelSelection.model ?? "")}
             />
           )}
         </div>
