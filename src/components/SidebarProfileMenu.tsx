@@ -120,7 +120,7 @@ interface UpdateEntry {
  * absent rather than dead. */
 function useUpdateItem(): UpdateEntry | null {
   const state = useUpdaterState();
-  const updater = window.ogb?.updater;
+  const updater = window.dani?.updater;
   const [pending, setPending] = useState(false);
   const [checkedAt, setCheckedAt] = useState(0);
   const status = state?.status ?? "idle";

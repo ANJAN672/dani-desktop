@@ -135,7 +135,7 @@ type SkillRecordingPayload = {
   }
 
   interface Window {
-    ogb?: {
+    dani?: {
       platform: NodeJS.Platform;
       /** Saved servers and the active one (desktop Server menu). Present on
        * the local server's UI; a remote server's page sees a reduced bridge. */

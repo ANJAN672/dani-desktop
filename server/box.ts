@@ -986,7 +986,7 @@ export async function execOnBox(cfg: AppConfig, botId: string, command: string) 
 // Base64 over command stdout is NOT reliable for the panel's full-size
 // frames (probed 2026-08-12: an otherwise-complete payload came back with
 // a corrupted length), so the frame is always fetched over HTTP here.
-const PANEL_PATH = "/tmp/ogb-panel.jpg";
+const PANEL_PATH = "/tmp/danibot-panel.jpg";
 const PANEL_WIDTH = 1024;
 const SHOT_CMD = [
   "export DISPLAY=${DISPLAY:-:0}",

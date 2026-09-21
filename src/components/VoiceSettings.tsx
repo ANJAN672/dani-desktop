@@ -116,8 +116,8 @@ export function VoiceSettings({
     if (!nextKey) return Promise.resolve();
     setSaving(true);
     setError(null);
-    const request = window.ogb?.setCredential
-      ? window.ogb.setCredential("ttsKey", nextKey)
+    const request = window.dani?.setCredential
+      ? window.dani.setCredential("ttsKey", nextKey)
       : api("/api/config", { method: "PUT", body: JSON.stringify({ tts: { key: nextKey } }) });
     return request
       .then((status: ConfigStatus) => {

@@ -42,7 +42,7 @@ export function UpdateBanner() {
   if (!s || s.status === "idle" || s.status === "checking") return null;
   const key = `${s.status}:${s.version ?? ""}`;
   if (dismissed === key) return null;
-  const updater = window.ogb!.updater!;
+  const updater = window.dani!.updater!;
 
   // while busy the card owns the moment: no dismissing, no second click
   const installing = s.status === "installing";

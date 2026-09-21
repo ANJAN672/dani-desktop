@@ -30,7 +30,7 @@ export function usePushToTalk(targetId: string, enabled: boolean, onError: () =>
   }, [enabled]);
 
   useEffect(() => {
-    const bridge = window.ogb;
+    const bridge = window.dani;
     if (!bridge?.speechFinish) return;
 
     const finish = () => {

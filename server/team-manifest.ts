@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { schemaIssue, type JsonValue } from "./schema.ts";
-import type { MausColor } from "./store.ts";
+import type { MascotColor } from "./store.ts";
 import { botMascotBody, type MascotBodyId } from "../shared/mascot-bodies.ts";
 import { takeImportName } from "../shared/import-name.ts";
 
@@ -23,7 +23,7 @@ const COLORS = [
   "yellow",
   "teal",
   "coral",
-] as const satisfies readonly MausColor[];
+] as const satisfies readonly MascotColor[];
 
 const requiredText = (max: number) =>
   z.string({ error: "must be text" }).trim().min(1, { message: "is required" }).max(max, { message: "is too long" });
@@ -92,7 +92,7 @@ export interface TeamManifestMember {
   title: string;
   description: string;
   appearance: {
-    color: MausColor;
+    color: MascotColor;
     mascotExpression?: string;
     mascotBody?: string;
   };
@@ -138,7 +138,7 @@ interface ExportableBot {
   name: string;
   title: string;
   description: string;
-  color: MausColor;
+  color: MascotColor;
   mascotExpression?: string | null;
   mascotBody?: string | null;
 }
@@ -210,7 +210,7 @@ export interface ImportedMemberProfile {
   name: string;
   title: string;
   description: string;
-  color: MausColor;
+  color: MascotColor;
   mascotExpression?: string;
   mascotBody?: MascotBodyId;
 }

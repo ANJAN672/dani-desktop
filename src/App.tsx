@@ -31,7 +31,7 @@ function Shell() {
   const unreadCount =
     state.bots.filter((bot) => !bot.hidden && bot.unread).length +
     state.groups.filter((group) => group.unread).length;
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   // Mobile-only drawer state. Above md, none of these properties are emitted
   // at all — Sidebar scopes every mobile class with max-md: rather than
   // cancelling them with md:, which would still emit a translate value and
@@ -98,7 +98,7 @@ function Shell() {
   }, [state.bots, state.selectedId, dispatch]);
 
   useEffect(() => {
-    window.ogb?.setUnreadCount?.(unreadCount);
+    window.dani?.setUnreadCount?.(unreadCount);
   }, [unreadCount]);
 
   // Re-assert every authoritative positive hold in the process that owns the
@@ -106,7 +106,7 @@ function Shell() {
   // computer surface, and renderer reloads. Deliberately never mirror false:
   // only a trusted two-phase release may open Electron's direct browser gate.
   useEffect(() => {
-    const setter = window.ogb?.browser?.setHumanControl;
+    const setter = window.dani?.browser?.setHumanControl;
     if (!setter) return;
     for (const botId of heldComputerControlBotIds(state.computerControl)) {
       void setter(botId, true).catch(() => {});
@@ -198,7 +198,7 @@ function Shell() {
   // The viewer outlives ComputerPanel and can target any bot, so release control
   // here (always mounted) when a bot's viewer closes. release() is idempotent.
   useEffect(() => {
-    return window.ogb?.desktopViewer?.onState((viewer) => {
+    return window.dani?.desktopViewer?.onState((viewer) => {
       if (viewer.open || !viewer.contextId) return;
       const botId = viewer.contextId;
       void fetch(`/api/bots/${botId}/computer/control`, {
@@ -311,7 +311,7 @@ function Shell() {
 }
 
 export default function App() {
-  const [gated, setGated] = useState(() => window.ogb?.remoteClient?.active !== true && !emailGateDone());
+  const [gated, setGated] = useState(() => window.dani?.remoteClient?.active !== true && !emailGateDone());
   useEffect(() => {
     initAnalytics();
   }, []);

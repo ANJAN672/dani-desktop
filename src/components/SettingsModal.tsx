@@ -85,8 +85,8 @@ function ProfileFields() {
 
 function UpdatesRow() {
   const s = useUpdaterState();
-  if (!window.ogb?.updater) return null;
-  const updater = window.ogb.updater;
+  if (!window.dani?.updater) return null;
+  const updater = window.dani.updater;
   const label =
     s?.status === "checking"
       ? "Checking…"
@@ -243,8 +243,8 @@ function ExperimentalFeaturesRow() {
   const { state, dispatch } = useStore();
   const skillRecorder = skillRecorderEnabled(state.config);
   const browser = builtInBrowserEnabled(state.config);
-  const desktopBrowser = Boolean(window.ogb?.browser);
-  const browserBlockedOnWindows = window.ogb?.platform === "win32" && !desktopBrowser;
+  const desktopBrowser = Boolean(window.dani?.browser);
+  const browserBlockedOnWindows = window.dani?.platform === "win32" && !desktopBrowser;
   const [saving, setSaving] = useState<"skillRecorder" | "browser" | null>(null);
   const [error, setError] = useState("");
 
@@ -323,7 +323,7 @@ function BrowserProfilesRow() {
   // must still be able to rename or permanently erase existing sessions.
   // The packaged server can perform that private lifecycle cleanup without
   // exposing the browser renderer bridge.
-  if (!window.ogb || (!builtInBrowserEnabled(state.config) && profiles.length === 0)) return null;
+  if (!window.dani || (!builtInBrowserEnabled(state.config) && profiles.length === 0)) return null;
 
   const save = async (next: typeof profiles) => {
     try {
@@ -373,7 +373,7 @@ function BrowserProfilesRow() {
       // from the server. Keep this idempotent fallback for split-process
       // desktop development, where the server has no parent message port.
       try {
-        await window.ogb?.browser?.forgetProfile?.(profile.partitionId ?? profile.id);
+        await window.dani?.browser?.forgetProfile?.(profile.partitionId ?? profile.id);
       } catch {
         setError("The profile was removed, but its local browser data could not be erased. Restart Dani Bot before reusing that profile name.");
       }
@@ -473,11 +473,11 @@ function DiagnosticsRow() {
   const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   const exportDiagnostics = async () => {
-    if (!window.ogb?.exportDiagnostics || exporting) return;
+    if (!window.dani?.exportDiagnostics || exporting) return;
     setExporting(true);
     setResult(null);
     try {
-      const path = await window.ogb.exportDiagnostics();
+      const path = await window.dani.exportDiagnostics();
       if (path) setResult({ kind: "success", message: `Saved to ${path}` });
     } catch (e) {
       setResult({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -515,7 +515,7 @@ function DiagnosticsRow() {
 
 export function SettingsModal() {
   const { state, dispatch } = useStore();
-  const remoteActive = window.ogb?.remoteClient?.active === true;
+  const remoteActive = window.dani?.remoteClient?.active === true;
   const section: AppSettingsSection =
     remoteActive || state.appSettingsSection === "remote" ? "companion" : state.appSettingsSection;
   const dialogRef = useRef<HTMLDivElement>(null);

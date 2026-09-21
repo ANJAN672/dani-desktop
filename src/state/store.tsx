@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import type { CloudBackend, EffortLevel } from "../../server/contracts.ts";
-import type { MausColor, MausMotion } from "@/lib/mascot";
+import type { MascotColor, MascotMotion } from "@/lib/mascot";
 import type { BotAvatarCrop } from "../../shared/bot-avatar";
 import { approvalModeFor, type ApprovalMode } from "../../shared/approval-mode";
 import type { MascotBodyId } from "../../shared/mascot-bodies";
@@ -54,7 +54,7 @@ function trimRoutineRuns(runs: readonly RoutineRun[]): RoutineRun[] {
   });
 }
 
-export type { MausColor } from "@/lib/mascot";
+export type { MascotColor } from "@/lib/mascot";
 export type { RoutineRunCardData } from "../../shared/routine-run";
 
 export interface OptionCardData {
@@ -140,11 +140,11 @@ export interface Message {
   /** Stable client identity for at-most-once chat POST retries. */
   sendId?: string;
   /** rooms: which member said this (sender attribution). */
-  from?: { botId: string; name: string; color: MausColor };
+  from?: { botId: string; name: string; color: MascotColor };
   /** emoji reactions; by = "user" or a member botId. */
   reactions?: Array<{ emoji: string; by: string }>;
   /** comm chips: "Messaged @X" linking to the bot⇄bot channel. */
-  comm?: { groupId: string; withBotId: string; withName: string; withColor: MausColor };
+  comm?: { groupId: string; withBotId: string; withName: string; withColor: MascotColor };
   /** sent while the bot was mid-turn; auto-sends when the turn settles.
    * Rendered only while the bot is busy, so a flag stranded by a server
    * restart never shows a promise nothing will keep. */
@@ -243,7 +243,7 @@ export interface Bot {
   title: string;
   description: string;
   notifications: boolean;
-  color: MausColor;
+  color: MascotColor;
   mascotExpression?: string | null;
   /** Which body the bot wears. Unknown/absent values fall back to the cursor. */
   mascotBody?: MascotBodyId | null;
@@ -493,7 +493,7 @@ export interface AppState {
   mascotMotion: {
     botId: string;
     nonce: number;
-    kind: Exclude<MausMotion, "none">;
+    kind: Exclude<MascotMotion, "none">;
   } | null;
   /** Queued follow-up lines waiting for drain; keyed by threadId.
    * Each entry is identified by the server queueId, not by text. */
@@ -735,7 +735,7 @@ function updateBot(state: AppState, botId: string, fn: (b: Bot) => Bot): AppStat
 function withMascotMotion(
   state: AppState,
   botId: string,
-  kind: Exclude<MausMotion, "none">,
+  kind: Exclude<MascotMotion, "none">,
 ): AppState {
   return {
     ...state,
@@ -1514,7 +1514,7 @@ export async function persistBotUpdate(
   signal: AbortSignal,
   request: (path: string, init?: RequestInit) => Promise<{ bot: BotAnnouncement }> = api,
   trustedApprovals: TrustedApprovalBridge | undefined =
-    typeof window === "undefined" ? undefined : window.ogb?.approvals,
+    typeof window === "undefined" ? undefined : window.dani?.approvals,
   currentBot?: BotAnnouncement,
 ): Promise<BotAnnouncement> {
   const {
@@ -1733,7 +1733,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () =>
       createBotPatchQueue({
         send: (botId, patch, signal, currentBot) =>
-          persistBotUpdate(botId, patch, signal, api, window.ogb?.approvals, currentBot),
+          persistBotUpdate(botId, patch, signal, api, window.dani?.approvals, currentBot),
         reconcile: async (botId, signal) => {
           const result: { bots: BotAnnouncement[] } = await api("/api/bots", { signal });
           return result.bots.find((candidate) => candidate.id === botId) ?? null;
@@ -2111,7 +2111,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               memberIds: action.memberIds,
               name: action.name,
               section: action.section,
-              ...(window.ogb?.remoteClient?.active
+              ...(window.dani?.remoteClient?.active
                 ? { setup: { bulletin: "", defaultResponder: { kind: "mentions" } } }
                 : {}),
             }),
@@ -2308,7 +2308,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return () => rawDispatch({ type: "routinesHydrated", routines, runs });
         },
       },
-      ...(window.ogb?.remoteClient?.active ? [] : [{
+      ...(window.dani?.remoteClient?.active ? [] : [{
         key: "webhooks",
         request: async () => {
           const { webhooks, attempts, ingress } = await api("/api/webhooks");

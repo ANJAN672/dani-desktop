@@ -23,7 +23,7 @@ describe("EngineUpdateNotice", () => {
   });
 
   it("offers the native Terminal action when the desktop bridge supports it", () => {
-    vi.stubGlobal("window", { ogb: { openInstallTerminal: vi.fn() } });
+    vi.stubGlobal("window", { dani: { openInstallTerminal: vi.fn() } });
 
     const markup = renderToStaticMarkup(createElement(EngineUpdateNotice, { update }));
 

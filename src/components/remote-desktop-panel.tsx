@@ -83,7 +83,7 @@ export function RemoteDesktopPanel({ bot }: { bot: Bot }) {
   }, [bot.id]);
 
   useEffect(() => {
-    const viewer = window.ogb?.desktopViewer;
+    const viewer = window.dani?.desktopViewer;
     if (!viewer) return;
     let alive = true;
     void viewer.currentState().then((state) => {
@@ -136,7 +136,7 @@ export function RemoteDesktopPanel({ bot }: { bot: Bot }) {
     setError(null);
     let tookControl = false;
     try {
-      if (!window.ogb?.desktopViewer) throw new Error("The desktop viewer is unavailable in this build");
+      if (!window.dani?.desktopViewer) throw new Error("The desktop viewer is unavailable in this build");
       await api(`/api/bots/${bot.id}/computer/control`, {
         method: "POST",
         body: JSON.stringify({ action: "take" }),
@@ -146,7 +146,7 @@ export function RemoteDesktopPanel({ bot }: { bot: Bot }) {
         method: "POST",
         body: "{}",
       });
-      const opened = await window.ogb.desktopViewer.open(
+      const opened = await window.dani.desktopViewer.open(
         viewerAddress(joined.joinUrl),
         `${bot.name}'s live desktop`,
         bot.id,

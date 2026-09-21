@@ -4,22 +4,22 @@ import { describe, expect, it } from "vitest";
 
 import {
   BotAvatar,
-  MausAvatar,
+  DaniAvatar,
   resolveBotAvatarOutcome,
   type BotAvatarProps,
-  type MausAvatarProps,
+  type DaniAvatarProps,
 } from "./Avatar";
 import { MASCOT_BODIES } from "../../shared/mascot-bodies";
 
-const render = (props: Partial<MausAvatarProps>) =>
-  renderToStaticMarkup(createElement(MausAvatar, { color: "green", animated: false, ...props }));
+const render = (props: Partial<DaniAvatarProps>) =>
+  renderToStaticMarkup(createElement(DaniAvatar, { color: "green", animated: false, ...props }));
 
 const renderBot = (bot: Partial<BotAvatarProps["bot"]>) =>
   renderToStaticMarkup(
     createElement(BotAvatar, { bot: { color: "green", ...bot }, animated: false }),
   );
 
-describe("MausAvatar body", () => {
+describe("DaniAvatar body", () => {
   it("wears the cursor when no body is given", () => {
     expect(render({})).toContain(MASCOT_BODIES.cursor.fit);
   });
@@ -34,7 +34,7 @@ describe("MausAvatar body", () => {
     // exercises the runtime schema fallback for a value that could arrive
     // from persisted/streamed data, which the type system would otherwise
     // rule out at this call site.
-    expect(render({ bodyId: "hexagram" as MausAvatarProps["bodyId"] })).toContain(
+    expect(render({ bodyId: "hexagram" as DaniAvatarProps["bodyId"] })).toContain(
       MASCOT_BODIES.cursor.fit,
     );
   });

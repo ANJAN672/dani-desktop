@@ -29,7 +29,7 @@ export function LinuxLocalControl() {
   const bundledDriver = local.driverSource === "bundled";
 
   const run = async (action: "enable" | "disable" | "retry") => {
-    if (!window.ogb?.localControl) return;
+    if (!window.dani?.localControl) return;
     setPending(action);
     setError(null);
     try {
@@ -37,7 +37,7 @@ export function LinuxLocalControl() {
         const response = await fetch("/api/local-computer/interrupt", { method: "POST" });
         if (!response.ok) throw new Error("Could not stop active local computer turns.");
       }
-      await window.ogb.localControl[action]();
+      await window.dani.localControl[action]();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

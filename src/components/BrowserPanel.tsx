@@ -241,7 +241,7 @@ export function BrowserPanel({
   onCollapse?: () => void;
 }) {
   const { state, dispatch } = useStore();
-  const bridge = window.ogb?.browser;
+  const bridge = window.dani?.browser;
   const pageVisible = usePageVisible();
   const layoutOwner = useId();
   const hostRef = useRef<HTMLDivElement>(null);
@@ -687,7 +687,7 @@ export function BrowserPanel({
         {currentUrl && (
           <button
             type="button"
-            onClick={() => void window.ogb?.openExternal?.(currentUrl)}
+            onClick={() => void window.dani?.openExternal?.(currentUrl)}
             className="rounded-md p-1.5 text-ink-secondary outline-none hover:bg-control hover:text-ink focus-visible:ring-2 focus-visible:ring-accent"
             title="Open in your default browser"
             aria-label="Open in your default browser"

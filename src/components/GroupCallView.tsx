@@ -15,7 +15,7 @@ import { useSpeech } from "@/lib/tts/useSpeech";
 import { usePushToTalk } from "@/lib/push-to-talk";
 import { useStore, type Bot, type Group, type Message } from "@/state/store";
 import { cn } from "@/lib/cn";
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { CallTargetButton } from "./CallView";
 import { isRoutineApproval, isSkillApproval, pendingApprovals, spokenApprovalPrompt } from "./PendingApproval";
 
@@ -110,7 +110,7 @@ function GroupCall({ group, members }: { group: Group; members: Bot[] }) {
   }, []);
 
   const hush = useCallback(() => {
-    void window.ogb?.speechStop();
+    void window.dani?.speechStop();
   }, []);
 
   const listen = useCallback(() => {
@@ -119,7 +119,7 @@ function GroupCall({ group, members }: { group: Group; members: Bot[] }) {
     setSpeakingMemberId(null);
     setHeard("");
     setNote(null);
-    void window.ogb?.speechStart({ endpointMs: CALL_ENDPOINT_MS }).catch(() => {
+    void window.dani?.speechStart({ endpointMs: CALL_ENDPOINT_MS }).catch(() => {
       if (alive.current && currentCall() === group.id) {
         setNote("The microphone couldn't start. Check Microphone and Speech Recognition access.");
       }
@@ -202,7 +202,7 @@ function GroupCall({ group, members }: { group: Group; members: Bot[] }) {
   }, [group.id]);
 
   useEffect(() => {
-    const bridge = window.ogb;
+    const bridge = window.dani;
     if (!bridge) return;
     const offTranscript = bridge.onSpeechTranscript((line) => {
       if (!alive.current || currentCall() !== group.id || phaseRef.current !== "listening") return;
@@ -320,7 +320,7 @@ function GroupCall({ group, members }: { group: Group; members: Bot[] }) {
     return () => {
       offTranscript();
       offEnd();
-      void window.ogb?.speechStop();
+      void window.dani?.speechStop();
     };
     // Live busy/card changes are handled below without restarting native capture.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -482,7 +482,7 @@ function GroupCall({ group, members }: { group: Group; members: Bot[] }) {
                   focused ? "scale-105 bg-raised/70 shadow-lg" : "opacity-75",
                 )}
               >
-                <MausAvatar
+                <DaniAvatar
                   color={member.color}
                   bodyId={member.mascotBody ?? undefined}
                   state={state}

@@ -166,7 +166,7 @@ export function remoteComputerBootstrapCommand(botName: string): string {
     `printf %s ${shellQuote(helper)} | base64 -d | sudo tee ${REMOTE_CDP_HELPER} >/dev/null`,
     `sudo chmod 0755 ${REMOTE_CDP_HELPER}`,
     'pkill -f "^/opt/danibot/venv/bin/python -m computer_server( |$)" >/dev/null 2>&1 || true',
-    `[ -f /opt/danibot/cua-${REMOTE_CUA_VERSION}-ready ] || [ -f /tmp/danibot-cua-installing ] || { touch /tmp/danibot-cua-installing; nohup bash -c ${shellQuote(installer)} > /tmp/ogb-cua-install.log 2>&1 & }`,
+    `[ -f /opt/danibot/cua-${REMOTE_CUA_VERSION}-ready ] || [ -f /tmp/danibot-cua-installing ] || { touch /tmp/danibot-cua-installing; nohup bash -c ${shellQuote(installer)} > /tmp/danibot-cua-install.log 2>&1 & }`,
     ensureRemoteCuaCommand(),
     `tmux has-session -t work 2>/dev/null || tmux new-session -d -s work ${shellQuote(tmuxSessionCommand)}`,
     "echo bootstrapped",

@@ -212,7 +212,7 @@ function RoomContextMenu({
   onMoveToSection: (groupId: string) => void;
 }) {
   const { state, dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const group = state.groups.find((g) => g.id === menu.groupId);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(group?.name ?? "");
@@ -545,7 +545,7 @@ function BotContextMenu({
   onMoveToSection: (botId: string) => void;
 }) {
   const { state, dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const bot = state.bots.find((b) => b.id === menu.botId);
 
   useEffect(() => {
@@ -712,7 +712,7 @@ export function BotListItem({
   archiveDisabled: boolean;
 }) {
   const { state, dispatch } = useStore();
-  const remoteClient = typeof window !== "undefined" && window.ogb?.remoteClient?.active === true;
+  const remoteClient = typeof window !== "undefined" && window.dani?.remoteClient?.active === true;
   const [renaming, setRenaming] = useState(false);
   const selected = state.activeView === "chat" && state.selectedId === bot.id;
   const deleting = state.deletingBots[bot.id] === true;
@@ -1002,7 +1002,7 @@ function ArchivedBotsPanel({
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { state, dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const { capabilities } = useDesktopCapabilities();
   const importReturnRef = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -1079,7 +1079,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
   useEffect(() => {
     if (remoteClient) return;
-    return window.ogb?.onPackageInstall?.((url) => {
+    return window.dani?.onPackageInstall?.((url) => {
       setTeamInstallUrl(url);
       setTeamLibraryOpen(true);
     });

@@ -32,7 +32,7 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
 
   if (!open) return null;
 
-  const platform = platformLabel(window.ogb?.platform);
+  const platform = platformLabel(window.dani?.platform);
 
   return (
     <div

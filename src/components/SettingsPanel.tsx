@@ -310,7 +310,7 @@ function WorkingFolder({ bot }: { bot: Bot }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const canPick = Boolean(window.ogb?.pickFolder);
+  const canPick = Boolean(window.dani?.pickFolder);
   const task = bot.tasks?.find((t) => t.threadId === bot.threadId);
   const pinned = task?.cwd; // undefined = not yet, null = legacy home, string = folder
   const pinnedElsewhere = pinned !== undefined && (pinned ?? undefined) !== bot.cwd;
@@ -328,7 +328,7 @@ function WorkingFolder({ bot }: { bot: Bot }) {
     }
   };
   const pick = async () => {
-    const chosen = await window.ogb?.pickFolder?.(bot.cwd);
+    const chosen = await window.dani?.pickFolder?.(bot.cwd);
     if (chosen) void save(chosen);
   };
 
@@ -611,8 +611,8 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
   const connectedAppsConfigured = state.config?.composio?.configured === true;
   const connectedAppsEnabled = bot.composio !== false;
   const canUseBrowser = engine?.capabilities?.browserMcp === true;
-  const desktopBrowser = Boolean(window.ogb?.browser);
-  const browserBlockedOnWindows = window.ogb?.platform === "win32" && !desktopBrowser;
+  const desktopBrowser = Boolean(window.dani?.browser);
+  const browserBlockedOnWindows = window.dani?.platform === "win32" && !desktopBrowser;
   const browserFeature = builtInBrowserEnabled(state.config);
   const browserAllowed = bot.browser !== false;
   const browserEnabled = browserFeature && browserAllowed;
@@ -1003,7 +1003,7 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
                 menuDirection="down"
                 wide
                 disabled={Boolean(bot.busy)}
-                trustedModesAvailable={Boolean(window.ogb?.approvals && capabilities.host.packaged)}
+                trustedModesAvailable={Boolean(window.dani?.approvals && capabilities.host.packaged)}
               />
             </div>
           </div>

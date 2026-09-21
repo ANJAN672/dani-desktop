@@ -91,8 +91,8 @@ const TEAM_GLYPHS = [
 ] as const;
 
 async function openExternal(url: string): Promise<void> {
-  if (window.ogb?.openExternal) {
-    await window.ogb.openExternal(url);
+  if (window.dani?.openExternal) {
+    await window.dani.openExternal(url);
     return;
   }
   const opened = window.open(url, "_blank", "noopener,noreferrer");
@@ -338,7 +338,7 @@ export function TeamLibraryPanel({
   };
 
   const pickScoutFolder = async () => {
-    const chosen = await window.ogb?.pickFolder?.(scoutTarget || undefined);
+    const chosen = await window.dani?.pickFolder?.(scoutTarget || undefined);
     if (!chosen) return;
     setScoutFolder(chosen);
     await runScout(chosen);
@@ -727,7 +727,7 @@ export function TeamLibraryPanel({
                       aria-label="Project folder to scout"
                       className="min-w-0 flex-1 rounded-xl bg-raised/80 px-3 py-2.5 text-[13px] text-ink placeholder:text-ink-secondary focus:outline-none"
                     />
-                    {Boolean(window.ogb?.pickFolder) && (
+                    {Boolean(window.dani?.pickFolder) && (
                       <button
                         onClick={() => void pickScoutFolder()}
                         disabled={scouting}

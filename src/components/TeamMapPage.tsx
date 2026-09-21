@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, BookOpen, Crown, Loader2, Network, RefreshCw, Save, X } from "lucide-react";
 
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { api, formatTime, useStore, type Bot } from "@/state/store";
 import { normalizeState } from "@/lib/mascot";
 import {
@@ -42,7 +42,7 @@ function BotNode({
         className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left"
         aria-label={`Open chat with ${bot.name}`}
       >
-        <MausAvatar
+        <DaniAvatar
           color={bot.color}
           bodyId={bot.mascotBody ?? undefined}
           state={normalizeState(bot.mascotExpression) ?? "idle"}
@@ -308,7 +308,7 @@ function SectionContextDialog({ section, label, onClose }: { section: string; la
 
 export function TeamMapPage() {
   const { state } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const [snapshot, setSnapshot] = useState<TeamMapSnapshot>(EMPTY_TEAM_MAP_SNAPSHOT);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);

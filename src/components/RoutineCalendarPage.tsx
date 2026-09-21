@@ -49,7 +49,7 @@ import {
   intakeFiles,
   type Attachment,
 } from "@/lib/composer-attachments";
-import { MAUS_COLORS, type MausState } from "@/lib/mascot";
+import { MASCOT_COLORS, type MascotState } from "@/lib/mascot";
 import {
   addDays,
   atLocalTime,
@@ -232,7 +232,7 @@ function projectCalls(calls: CalendarCall[], from: number, to: number): CallOccu
   return items.sort((left, right) => left.at - right.at);
 }
 
-function statusState(status: RoutineRunStatus): MausState {
+function statusState(status: RoutineRunStatus): MascotState {
   if (status === "running") return "working";
   if (status === "waiting") return "curious";
   if (status === "completed") return "proud";
@@ -962,7 +962,7 @@ function CalendarEventCard({
   const ownerBots = ownerIds.flatMap((id) => bots.find((bot) => bot.id === id) ?? []);
   const primary = ownerBots[0];
   const name = isCall ? item.call.name : run?.routineName ?? routine?.name ?? "Routine";
-  const color = isCall ? "#6d7cff" : primary ? MAUS_COLORS[primary.color] : "#666";
+  const color = isCall ? "#6d7cff" : primary ? MASCOT_COLORS[primary.color] : "#666";
   const [previewDuration, setPreviewDuration] = useState(item.durationMinutes);
   useEffect(() => setPreviewDuration(item.durationMinutes), [item.durationMinutes]);
   const status = run?.status;
@@ -1417,7 +1417,7 @@ export function RoutineEditor({
 export function RoutinesPage({ onBack, onOpenRoom }: { onBack: () => void; onOpenRoom: (id: string) => void }) {
   const { state, dispatch } = useStore();
   const { capabilities } = useDesktopCapabilities();
-  const routinesOnly = window.ogb?.remoteClient?.active === true;
+  const routinesOnly = window.dani?.remoteClient?.active === true;
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const newMenuRef = useRef<HTMLDetailsElement>(null);
   const [section, setSection] = useState<"calendar" | "webhooks">("calendar");

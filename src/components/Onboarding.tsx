@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Check, AlertTriangle, Loader2, Mic } from "lucide-react";
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { EngineSetup } from "./EngineSetup";
@@ -154,7 +154,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (step === 2 && capabilities.dictation.available) {
-      const poll = () => window.ogb?.permStatus?.().then(setPerms).catch(() => {});
+      const poll = () => window.dani?.permStatus?.().then(setPerms).catch(() => {});
       poll();
       // keep polling — the user may grant in System Settings and come back
       const t = setInterval(poll, 2000);
@@ -198,7 +198,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {brand().logo ? (
               <img src={brand().logo} alt="" width={72} height={72} className="h-[72px] w-[72px] object-contain" />
             ) : (
-              <MausAvatar color="green" state="happy" size={72} />
+              <DaniAvatar color="green" state="happy" size={72} />
             )}
             <h1 className="mt-4 text-[20px] font-semibold text-ink">Welcome to {brand().name}</h1>
             <p className="mt-1.5 text-center text-[14px] leading-relaxed text-ink-secondary">
@@ -306,7 +306,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   <Check size={16} className="shrink-0 text-success" />
                 ) : perms?.mic === "denied" || perms?.mic === "restricted" ? (
                   <button
-                    onClick={() => window.ogb?.permOpenSettings?.("mic")}
+                    onClick={() => window.dani?.permOpenSettings?.("mic")}
                     className="shrink-0 rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover"
                   >
                     Open Settings
@@ -314,7 +314,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 ) : (
                   <button
                     onClick={() =>
-                      window.ogb?.permRequestMic?.().then(() => window.ogb?.permStatus?.().then(setPerms))
+                      window.dani?.permRequestMic?.().then(() => window.dani?.permStatus?.().then(setPerms))
                     }
                     className="shrink-0 rounded-lg bg-raised px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover"
                   >

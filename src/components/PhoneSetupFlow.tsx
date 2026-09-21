@@ -53,7 +53,7 @@ import {
   type PhonePairingAttemptLock,
   type PhonePairingAttemptQueue,
 } from "../lib/phone-setup";
-import type { CompanionAccountState } from "../types/ogb";
+import type { CompanionAccountState } from "../types/dani";
 import { ConnectionDetail } from "./ConnectionDetail";
 import { brand } from "../lib/brand";
 
@@ -94,7 +94,7 @@ export type CompanionBridge = {
   revoke: (deviceId: string) => Promise<CompanionState>;
 };
 
-type AccountBridge = NonNullable<NonNullable<Window["ogb"]>["companionAccount"]>;
+type AccountBridge = NonNullable<NonNullable<Window["dani"]>["companionAccount"]>;
 type StateBridge<T> = { state: () => Promise<T> };
 const DIRECT_PAIRING_UNAVAILABLE =
   "Direct Wi-Fi pairing isn’t available on this computer right now. Connect this computer to Wi-Fi, then try again.";
@@ -114,11 +114,11 @@ interface PhonePairingRequest {
 
 export const companionBridge = (): CompanionBridge | null =>
   // SAFETY: the preload owns this narrow bridge; browser builds are guarded by the optional lookup.
-  (globalThis as { ogb?: { companion?: CompanionBridge } }).ogb?.companion ?? null;
+  (globalThis as { dani?: { companion?: CompanionBridge } }).dani?.companion ?? null;
 
 export const companionAccountBridge = (): AccountBridge | null =>
   // SAFETY: Electron exposes only these account operations and never sends credentials to the renderer.
-  (globalThis as { ogb?: { companionAccount?: AccountBridge } }).ogb?.companionAccount ?? null;
+  (globalThis as { dani?: { companionAccount?: AccountBridge } }).dani?.companionAccount ?? null;
 
 export const loadCompanionBridgeState = async (
   companion: StateBridge<CompanionState> | null,

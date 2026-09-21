@@ -67,7 +67,7 @@ function blobDataUrl(blob: Blob): Promise<string> {
 
 export function SkillRecorderPage() {
   const { dispatch } = useStore();
-  const bridge = window.ogb?.skillRecorder;
+  const bridge = window.dani?.skillRecorder;
   const [phase, setPhase] = useState<Phase>("idle");
   const phaseRef = useRef<Phase>("idle");
   const [events, setEvents] = useState<RecordedSkillEvent[]>([]);
@@ -146,7 +146,7 @@ export function SkillRecorderPage() {
       setTranscriptionConfigured(event.detail.configured);
     };
     window.addEventListener(TRANSCRIPTION_STATUS_EVENT, onStatus);
-    window.ogb?.transcription?.status()
+    window.dani?.transcription?.status()
       .then((status) => alive && setTranscriptionConfigured(status.configured))
       .catch(() => alive && setTranscriptionConfigured(false));
     return () => {
@@ -179,11 +179,11 @@ export function SkillRecorderPage() {
 
   const start = async () => {
     setError("");
-    if (!bridge || !window.ogb?.beginScreenPreviewIntent || !navigator.mediaDevices?.getDisplayMedia) {
+    if (!bridge || !window.dani?.beginScreenPreviewIntent || !navigator.mediaDevices?.getDisplayMedia) {
       setError("Skill recording requires the Dani Bot desktop app on macOS.");
       return;
     }
-    if (!transcriptionConfigured || !window.ogb.transcription) {
+    if (!transcriptionConfigured || !window.dani.transcription) {
       setError("Add your AssemblyAI key under Cloud transcription before recording.");
       return;
     }
@@ -195,7 +195,7 @@ export function SkillRecorderPage() {
     updatePhase("starting");
     try {
       const selected = await requestScreenPreview({
-        beginIntent: () => window.ogb!.beginScreenPreviewIntent(),
+        beginIntent: () => window.dani!.beginScreenPreviewIntent(),
         getDisplayMedia: (constraints) => navigator.mediaDevices.getDisplayMedia(constraints),
       });
       if (!selected.ok) throw new Error(selected.message);
@@ -228,7 +228,7 @@ export function SkillRecorderPage() {
       cloudTranscriptRef.current = { turns: new Map(), finalText: "", partialText: "" };
       transcriptionSessionRef.current = await startAssemblyAITranscription({
         stream: mic,
-        getToken: () => window.ogb!.transcription!.streamingToken(),
+        getToken: () => window.dani!.transcription!.streamingToken(),
         onTurn: (turn) => {
           const next = mergeAssemblyAITurn(cloudTranscriptRef.current, turn);
           cloudTranscriptRef.current = next;

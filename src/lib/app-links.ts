@@ -35,8 +35,8 @@ export function platformLabel(platform?: string): string | null {
 /** Hands a link to the default browser through the preload bridge, falling
  * back to a new tab when the app runs in a plain browser. */
 export async function openExternalLink(url: string): Promise<void> {
-  if (window.ogb?.openExternal) {
-    await window.ogb.openExternal(url);
+  if (window.dani?.openExternal) {
+    await window.dani.openExternal(url);
     return;
   }
   window.open(url, "_blank", "noopener,noreferrer");

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { schemaIssue, type JsonValue } from "./schema.ts";
-import type { MausColor } from "./store.ts";
+import type { MascotColor } from "./store.ts";
 import type { TeamManifestMember } from "./team-manifest.ts";
 
 export const BOT_PACKAGE_FORMAT = "dani.package" as const;
@@ -22,7 +22,7 @@ const COLORS = [
   "yellow",
   "teal",
   "coral",
-] as const satisfies readonly MausColor[];
+] as const satisfies readonly MascotColor[];
 
 const requiredText = (max: number) =>
   z.string({ error: "must be text" }).trim().min(1, { message: "is required" }).max(max, { message: "is too long" });

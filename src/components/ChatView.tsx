@@ -37,7 +37,7 @@ import {
   type Message,
 } from "@/state/store";
 import { EngineSetup } from "./EngineSetup";
-import { BotAvatar, MausAvatar } from "./Avatar";
+import { BotAvatar, DaniAvatar } from "./Avatar";
 import { TurnPresence, isFreeModel } from "./TurnPresence";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
 import { stateForBot } from "@/lib/mascot";
@@ -316,7 +316,7 @@ function Bubble({
   onReply: () => void;
 }) {
   const { dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const user = message.role === "user";
   const [expanded, setExpanded] = useState(false);
   const text = message.text ?? "";
@@ -576,7 +576,7 @@ function ActivityChip({ message }: { message: Message }) {
           title={`Open the conversation with ${comm.withName}`}
           className="flex items-center gap-2 rounded-full border border-hairline/40 bg-panel px-3 py-1.5 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink"
         >
-          <MausAvatar color={comm.withColor} bodyId={withBot?.mascotBody ?? undefined} state="happy" size={16} />
+          <DaniAvatar color={comm.withColor} bodyId={withBot?.mascotBody ?? undefined} state="happy" size={16} />
           <span className="max-w-[480px] truncate">{tool.name}</span>
           <ChevronRight size={13} />
         </button>
@@ -673,7 +673,7 @@ const MessagesList = memo(function MessagesList({
           <RenameTitle
             value={bot.name}
             onCommit={(name) => {
-              if (window.ogb?.remoteClient?.active) {
+              if (window.dani?.remoteClient?.active) {
                 void api(`/api/bots/${bot.id}/profile`, { method: "PATCH", body: JSON.stringify({ name }) })
                   .then(({ bot: updated }) => dispatch({ type: "botPatched", bot: updated }))
                   .catch((cause) => dispatch({ type: "error", message: cause instanceof Error ? cause.message : String(cause) }));
@@ -867,7 +867,7 @@ function PinnedBanner({
 
 export function ChatView({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerDock = useComposerDockPad(composerDockRef);
@@ -1138,7 +1138,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           <RenameTitle
             value={bot.name}
             onCommit={(name) => {
-              if (window.ogb?.remoteClient?.active) {
+              if (window.dani?.remoteClient?.active) {
                 void api(`/api/bots/${bot.id}/profile`, { method: "PATCH", body: JSON.stringify({ name }) })
                   .then(({ bot: updated }) => dispatch({ type: "botPatched", bot: updated }))
                   .catch((cause) => dispatch({ type: "error", message: cause instanceof Error ? cause.message : String(cause) }));
@@ -1328,7 +1328,7 @@ export function ChatView({ bot }: { bot: Bot }) {
           )}
           <TurnPresence
             avatar={
-              <MausAvatar
+              <DaniAvatar
                 color={bot.color}
                 state={toolInFlight ? "working" : "thinking"}
                 size={36}

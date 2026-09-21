@@ -20,7 +20,7 @@ import {
   type ComposerSendSnapshot,
   type FailedComposerSend,
 } from "@/lib/drafts";
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { ComposerAttachments, pathForFile } from "./ComposerAttachments";
 import { LocalComputerAutoWarning } from "./LocalComputerAutoWarning";
 import { ApprovalModeSelector } from "./ApprovalModeSelector";
@@ -113,7 +113,7 @@ export function Composer({
 }) {
   const { state, dispatch } = useStore();
   const { capabilities } = useDesktopCapabilities();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   // Unified target: a 1:1 bot thread or a room. In a room the @ picker
   // offers members plus @everyone; explicit mentions override the room's
   // configured default responder.
@@ -577,7 +577,7 @@ export function Composer({
   // helper runs; the final transcript stays in the box, ready to edit/send
   useEffect(() => {
     if (!recording) return;
-    const bridge = window.ogb;
+    const bridge = window.dani;
     if (!bridge) {
       setRecording(false);
       return;
@@ -608,7 +608,7 @@ export function Composer({
   }, [recording, editText]);
 
   const toggleMic = () => {
-    if (!capabilities.dictation.available || !window.ogb) {
+    if (!capabilities.dictation.available || !window.dani) {
       setSpeechError("Dictation isn't available in this build.");
       return;
     }
@@ -711,7 +711,7 @@ export function Composer({
                 )}
               >
                 {peer.bot ? (
-                  <MausAvatar
+                  <DaniAvatar
                     color={peer.bot.color}
                     bodyId={peer.bot.mascotBody ?? undefined}
                     state={normalizeState(peer.bot.mascotExpression) ?? "happy"}
@@ -842,7 +842,7 @@ export function Composer({
                   driverKind={approvalEngine.driverKind}
                   onSelect={setApprovalMode}
                   disabled={Boolean(modeBot.busy)}
-                  trustedModesAvailable={Boolean(window.ogb?.approvals && capabilities.host.packaged)}
+                  trustedModesAvailable={Boolean(window.dani?.approvals && capabilities.host.packaged)}
                 />
               )}
             </div>

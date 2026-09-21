@@ -199,7 +199,7 @@ function ServiceIcon({ card }: { card: ToolkitCard }) {
 
 export function PluginsPanel() {
   const { dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const mayDisconnect = connectedAppsMayDisconnect(remoteClient);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [surface, setSurface] = useState<"apps" | "mcp">("apps");
@@ -389,8 +389,8 @@ export function PluginsPanel() {
   }, [dispatch]);
 
   const openConnectUrl = async (url: string) => {
-    if (window.ogb?.openExternal) {
-      await window.ogb.openExternal(url);
+    if (window.dani?.openExternal) {
+      await window.dani.openExternal(url);
       return;
     }
     // Browser development fallback. If a popup blocker rejects the first

@@ -13,7 +13,7 @@ Derived from the actual source: `src/` (React renderer), `electron/` (main proce
 ## 2. Main shell
 
 - Telegram-style three-pane layout: sidebar (left), chat/room (center), slide-over panels (right).
-- `window.ogb` preload API bridges renderer ↔ main process; unread badge count syncs to the OS dock (`src/App.tsx`).
+- `window.dani` preload API bridges renderer ↔ main process; unread badge count syncs to the OS dock (`src/App.tsx`).
 - Update banner (`UpdateBanner`) for the auto-updater (`scripts/bundle-updater.mjs`).
 - About dialog (`AboutDialog.tsx`): version, platform, "Made by Dani", GitHub/Docs/Releases/License links.
 - 9 locales (`src/locales`: de, en, es, fr, hi, ja, pt-br, zh) with a locale-hash check script (`i18n:check`).

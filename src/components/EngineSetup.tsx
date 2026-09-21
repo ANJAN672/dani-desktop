@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 type Platform = "darwin" | "win32" | "linux";
 
 function hostPlatform(): Platform {
-  const platform = window.ogb?.platform;
+  const platform = window.dani?.platform;
   if (platform === "darwin" || platform === "win32" || platform === "linux") return platform;
   const userAgent = navigator.userAgent;
   if (userAgent.includes("Mac")) return "darwin";
@@ -44,7 +44,7 @@ export function CommandRow({
   compact?: boolean;
 }) {
   const [status, setStatus] = useState<"copied" | "opened" | null>(null);
-  const canOpen = typeof window !== "undefined" && Boolean(window.ogb?.openInstallTerminal);
+  const canOpen = typeof window !== "undefined" && Boolean(window.dani?.openInstallTerminal);
 
   const settle = (next: "copied" | "opened") => {
     setStatus(next);
@@ -61,7 +61,7 @@ export function CommandRow({
   };
 
   const openTerminal = async () => {
-    const opened = await window.ogb!.openInstallTerminal!(command);
+    const opened = await window.dani!.openInstallTerminal!(command);
     settle(opened ? "opened" : "copied");
   };
 
@@ -208,7 +208,7 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
     }
     if (!auth.flowId || !auth.authorizationUrl) throw new Error("Google sign-in did not return a link.");
     setFlow({ flowId: auth.flowId, authorizationUrl: auth.authorizationUrl });
-    if (window.ogb?.openExternal) await window.ogb.openExternal(auth.authorizationUrl);
+    if (window.dani?.openExternal) await window.dani.openExternal(auth.authorizationUrl);
     else window.open(auth.authorizationUrl, "_blank", "noopener,noreferrer");
   });
 

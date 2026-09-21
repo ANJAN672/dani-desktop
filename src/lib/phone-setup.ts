@@ -1,4 +1,4 @@
-import type { CompanionAccountState } from "../types/ogb";
+import type { CompanionAccountState } from "../types/dani";
 import type { CompanionEndpoint, CompanionPairingRouteMode } from "./companion-pairing";
 
 export type PhoneSetupPhase = "intro" | "sign-in" | "verifying" | "qr" | "success";

@@ -11,7 +11,7 @@ import { openEchoCancelledMicrophone } from "@/lib/duplex-voice";
 import { speaker } from "@/lib/tts";
 import { spokenApprovalDecision } from "@/lib/spoken-approval";
 import { pendingApprovals } from "./PendingApproval";
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 
 export function RealtimeCallView({ bot }: { bot: Bot }) {
   const { dispatch } = useStore();
@@ -137,7 +137,7 @@ export function RealtimeCallView({ bot }: { bot: Bot }) {
     <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-app/95 backdrop-blur-sm">
       <audio ref={audioRef} autoPlay />
       <button onClick={hangup} aria-label="Hang up" className="absolute right-5 top-5 rounded-md p-2 text-ink-secondary hover:bg-raised hover:text-ink"><X size={18} /></button>
-      <MausAvatar color={bot.color} bodyId={bot.mascotBody ?? undefined} state={state === "listening" ? "listening" : state === "speaking" ? "sending" : "working"} size={220} animated trackPointer />
+      <DaniAvatar color={bot.color} bodyId={bot.mascotBody ?? undefined} state={state === "listening" ? "listening" : state === "speaking" ? "sending" : "working"} size={220} animated trackPointer />
       <div className="flex flex-col items-center gap-1.5 text-center"><div className="text-[20px] font-medium text-ink">{bot.name}</div><div className="flex items-center gap-2 text-[13.5px] text-ink-secondary">{(["connecting", "thinking", "reconnecting"] as string[]).includes(state) && <Loader2 size={13} className="animate-spin" />}{status}</div></div>
       <div className="min-h-[3.5rem] max-w-[560px] px-6 text-center text-[15px] leading-relaxed text-ink">{heard || <span className="text-ink-secondary">Say something…</span>}</div>
       <div className="max-w-[560px] text-center text-[11.5px] text-ink-secondary/80">{note}</div>

@@ -1,5 +1,5 @@
 // Bot avatar — the Blob Studio "Cursor" mascot (CursorAvatar.tsx), wrapped
-// in the app's historical MausAvatar API so no call site changes: per-bot
+// in the app's historical DaniAvatar API so no call site changes: per-bot
 // color becomes a body gradient, the app's one-shot motion beats borrow the
 // face/state for a moment, and the eyes follow the pointer. The previous
 // hand-built Maus body + face engine (maus-engine/face/driver) is gone;
@@ -13,7 +13,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { MAUS_COLORS, type MausColor, type MausMotion, type MausState } from "@/lib/mascot";
+import { MASCOT_COLORS, type MascotColor, type MascotMotion, type MascotState } from "@/lib/mascot";
 import { CursorAvatar, type CursorAvatarHandle } from "./CursorAvatar";
 import { botAvatarProfile, type BotAvatarCrop } from "../../shared/bot-avatar";
 import { MASCOT_BODIES, botMascotBody, type MascotBodyId } from "../../shared/mascot-bodies";
@@ -33,7 +33,7 @@ const POINTER_GAZE = { forward: 1, authored: 0.25 };
  */
 interface MotionFaces
   extends Partial<
-    Record<Exclude<MausMotion, "none">, { state?: MausState; blink?: boolean; spin?: number }>
+    Record<Exclude<MascotMotion, "none">, { state?: MascotState; blink?: boolean; spin?: number }>
   > {}
 
 const MOTION_FACE: MotionFaces = {
@@ -73,22 +73,22 @@ function mix(hex: string, toward: string, t: number): string {
  * shadow), with the same light/dark spread as the pack's default green
  * ["#9FE6B5", "#3FAE6E", "#1C7A4C"].
  */
-const gradientFor = (color: MausColor): [string, string, string] => {
-  const fill = MAUS_COLORS[color] ?? MAUS_COLORS.green;
+const gradientFor = (color: MascotColor): [string, string, string] => {
+  const fill = MASCOT_COLORS[color] ?? MASCOT_COLORS.green;
   return [mix(fill, "#ffffff", 0.55), fill, mix(fill, "#000000", 0.42)];
 };
 
-export type MausAvatarHandle = CursorAvatarHandle;
+export type DaniAvatarHandle = CursorAvatarHandle;
 
-export type MausAvatarProps = {
-  color: MausColor;
+export type DaniAvatarProps = {
+  color: MascotColor;
   /** Named behaviour — drives the expression pool, its cadence and blinking. */
-  state?: MausState;
+  state?: MascotState;
   /** Pin one of the 25 faces and stop the state's own drift. */
   expression?: number;
   size?: number;
   label?: string;
-  motion?: MausMotion;
+  motion?: MascotMotion;
   motionKey?: number;
   /** Head turn in degrees. */
   turn?: number;
@@ -112,7 +112,7 @@ export type MausAvatarProps = {
   bodyId?: MascotBodyId;
 };
 
-function MausAvatarComponent(
+function DaniAvatarComponent(
   {
     color,
     state = "idle",
@@ -132,8 +132,8 @@ function MausAvatarComponent(
     trackPointer = true,
     animated = true,
     bodyId,
-  }: MausAvatarProps,
-  ref: React.Ref<MausAvatarHandle>,
+  }: DaniAvatarProps,
+  ref: React.Ref<DaniAvatarHandle>,
 ) {
   const silhouette = MASCOT_BODIES[botMascotBody(bodyId)];
   const inner = useRef<CursorAvatarHandle>(null);
@@ -144,7 +144,7 @@ function MausAvatarComponent(
   }));
 
   // A one-shot motion borrows the state for a moment, then hands it back.
-  const [motionState, setMotionState] = useState<MausState | null>(null);
+  const [motionState, setMotionState] = useState<MascotState | null>(null);
   useEffect(() => {
     if (motion === "none" || !animated) return;
     const beat = MOTION_FACE[motion];
@@ -197,12 +197,12 @@ function MausAvatarComponent(
   );
 }
 
-export const MausAvatar = memo(forwardRef(MausAvatarComponent));
+export const DaniAvatar = memo(forwardRef(DaniAvatarComponent));
 
-export type BotAvatarProps = Omit<MausAvatarProps, "color"> & {
+export type BotAvatarProps = Omit<DaniAvatarProps, "color"> & {
   bot: {
     name?: string;
-    color: MausColor;
+    color: MascotColor;
     avatarUrl?: string | null;
     avatarCrop?: BotAvatarCrop;
     mascotBody?: MascotBodyId | null;
@@ -254,7 +254,7 @@ export function BotAvatar({ bot, size = 44, label, ...mascotProps }: BotAvatarPr
 
   if (outcome !== "flatImage") {
     return (
-      <MausAvatar
+      <DaniAvatar
         bodyId={bot.mascotBody ?? undefined}
         {...mascotProps}
         color={bot.color}

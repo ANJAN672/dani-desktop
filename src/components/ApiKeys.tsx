@@ -156,8 +156,8 @@ export function ApiKeyRow({
     if (saving || (!value.trim() && !configured)) return;
     setSaving(true);
     setError(null);
-    const request = window.ogb?.setCredential
-      ? window.ogb.setCredential(ELECTRON_CREDENTIAL[section], value.trim())
+    const request = window.dani?.setCredential
+      ? window.dani.setCredential(ELECTRON_CREDENTIAL[section], value.trim())
       : api("/api/config", {
           method: "PUT",
           body: JSON.stringify(SECTIONS[section].body(value.trim())),

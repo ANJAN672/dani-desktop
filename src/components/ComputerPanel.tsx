@@ -286,7 +286,7 @@ export function ComputerPanel({
   const androidStatus = useAndroidUsbDevices();
   const androidConnected = androidStatus.devices.length > 0;
   // the built-in browser: a per-bot switch in Settings, and only the desktop app has one
-  const browserEnabled = builtInBrowserEnabled(state.config) && bot.browser !== false && Boolean(window.ogb?.browser);
+  const browserEnabled = builtInBrowserEnabled(state.config) && bot.browser !== false && Boolean(window.dani?.browser);
   // bumped when a Box API key is saved inline, to re-run the spin-up flow
   const [retry, setRetry] = useState(0);
   const vmReadinessAttempts = useRef(0);
@@ -298,10 +298,10 @@ export function ComputerPanel({
   // Computer engine runs inside the box, so it has no browser-only mode.
   const browserSelectable =
     builtInBrowserEnabled(state.config) &&
-    Boolean(window.ogb?.browser) &&
+    Boolean(window.dani?.browser) &&
     selectedInstance?.capabilities?.browserMcp === true &&
     selectedInstance.driverKind !== "boxAgent";
-  const browserDisabledReason = !window.ogb?.browser
+  const browserDisabledReason = !window.dani?.browser
     ? "The built-in browser needs the Dani Bot desktop app"
     : !builtInBrowserEnabled(state.config)
       ? "The built-in browser is switched off under App Settings → Experimental"
@@ -320,7 +320,7 @@ export function ComputerPanel({
   // live viewer so a remount/switch mid-session doesn't wrongly resume it.
   useEffect(() => {
     let alive = true;
-    const dv = window.ogb?.desktopViewer;
+    const dv = window.dani?.desktopViewer;
     if (dv?.currentState) {
       void dv
         .currentState()
@@ -723,12 +723,12 @@ export function ComputerPanel({
   // the user denied — surface the Settings repair path instead of spinning.
   const [localMisses, setLocalMisses] = useState(0);
   useEffect(() => {
-    if (panelView !== "computer" || phase !== "local" || !window.ogb || isLinux || !pageVisible) return;
+    if (panelView !== "computer" || phase !== "local" || !window.dani || isLinux || !pageVisible) return;
     let alive = true;
     setLocalMisses(0);
     const shoot = async () => {
       try {
-        const url = await window.ogb!.screenFrame();
+        const url = await window.dani!.screenFrame();
         if (alive && url) setLocalFrame(url);
         else if (alive) setLocalMisses((n) => n + 1);
       } catch {
@@ -795,7 +795,7 @@ export function ComputerPanel({
   }, [bot.id, dispatch]);
 
   const setNativeBrowserControl = useCallback(async (held: boolean): Promise<boolean> => {
-    const setter = window.ogb?.browser?.setHumanControl;
+    const setter = window.dani?.browser?.setHumanControl;
     if (!setter) return true;
     const profile = bot.browserProfile === "guest" ? "guest" : bot.browserProfile ?? "";
     return (await setter(bot.id, held, profile)) === true;
@@ -840,7 +840,7 @@ export function ComputerPanel({
     // A plain-web development session still needs a synchronous blank tab;
     // the packaged app uses the reliable Electron viewer window below.
     let fallbackTab: Window | null = null;
-    if (!window.ogb?.desktopViewer && !window.ogb?.openExternal) {
+    if (!window.dani?.desktopViewer && !window.dani?.openExternal) {
       fallbackTab = window.open("", "_blank");
       if (fallbackTab) fallbackTab.opener = null;
     }
@@ -857,13 +857,13 @@ export function ComputerPanel({
       }
       if (!viewerUrl) throw new Error("The computer did not return a live desktop link");
 
-      if (window.ogb?.desktopViewer) {
-        const opened = await window.ogb.desktopViewer.open(viewerUrl, `${bot.name}'s live desktop`, bot.id);
+      if (window.dani?.desktopViewer) {
+        const opened = await window.dani.desktopViewer.open(viewerUrl, `${bot.name}'s live desktop`, bot.id);
         if (!opened) throw new Error("Dani Bot could not open the live desktop");
       } else if (fallbackTab) {
         fallbackTab.location.replace(viewerUrl);
-      } else if (window.ogb?.openExternal) {
-        const opened = await window.ogb.openExternal(viewerUrl);
+      } else if (window.dani?.openExternal) {
+        const opened = await window.dani.openExternal(viewerUrl);
         if (!opened) throw new Error("Dani Bot could not open the live desktop link");
       } else if (!window.open(viewerUrl, "_blank", "noopener")) {
         throw new Error("Your browser blocked the live desktop tab");
@@ -1183,7 +1183,7 @@ export function ComputerPanel({
               </span>
               {phase === "local" && !isLinux && localMisses >= 3 && (
                 <button
-                  onClick={() => window.ogb?.permOpenSettings?.("screen")}
+                  onClick={() => window.dani?.permOpenSettings?.("screen")}
                   className="mt-1 rounded-lg bg-control px-3 py-1.5 text-[12px] text-ink hover:bg-raised-hover"
                 >
                   Open Settings
@@ -1297,7 +1297,7 @@ export function ComputerPanel({
 
         {phase === "vm" &&
           vmStatus?.mode === "per-bot" &&
-          window.ogb?.desktopWorkspace &&
+          window.dani?.desktopWorkspace &&
           onOpenVmWorkspace && (
             <button
               type="button"
@@ -1348,7 +1348,7 @@ export function ComputerPanel({
             <button
               onClick={() => {
                 controlAction("release");
-                void window.ogb?.desktopViewer?.close(bot.id);
+                void window.dani?.desktopViewer?.close(bot.id);
               }}
               disabled={controlPending}
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"

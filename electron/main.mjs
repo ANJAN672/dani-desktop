@@ -1885,7 +1885,7 @@ function createWindow() {
       try {
         const result = await win.webContents.executeJavaScript(`
           (async () => {
-            if (!window.ogb?.getCapabilities) throw new Error("desktop preload bridge is unavailable");
+            if (!window.dani?.getCapabilities) throw new Error("desktop preload bridge is unavailable");
             let crashPromise = null;
             if (${JSON.stringify(process.env.DANI_SMOKE_CUA === "1")}) {
               crashPromise = new Promise((resolve, reject) => {
@@ -1893,7 +1893,7 @@ function createWindow() {
                   unsubscribe?.();
                   reject(new Error("timed out waiting for CUA crash invalidation"));
                 }, 10000);
-                const unsubscribe = window.ogb.onCapabilitiesChanged((next) => {
+                const unsubscribe = window.dani.onCapabilitiesChanged((next) => {
                   if (next.localComputer.reasonCode !== "daemon-exited") return;
                   clearTimeout(timeout);
                   unsubscribe();
@@ -1902,7 +1902,7 @@ function createWindow() {
               });
             }
             const [initialCapabilities, healthResponse, ownerMutationResponse, kernelSmokeResponse] = await Promise.all([
-              window.ogb.getCapabilities(),
+              window.dani.getCapabilities(),
               fetch("/api/health"),
               fetch("/api/auth/stream-ticket", { method: "POST" }),
               ${JSON.stringify(process.env.DANI_KERNEL_PROFILE_SMOKE === "1")}
@@ -1931,8 +1931,8 @@ function createWindow() {
                 throw new Error("CUA was not ready before the simulated crash");
               }
               cuaCrashReason = await crashPromise;
-              cuaRetryStatus = await window.ogb.localControl.retry();
-              capabilities = await window.ogb.getCapabilities();
+              cuaRetryStatus = await window.dani.localControl.retry();
+              capabilities = await window.dani.getCapabilities();
             }
             return {
               initialCapabilities,

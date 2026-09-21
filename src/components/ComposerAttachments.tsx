@@ -17,7 +17,7 @@ import { AttachmentPreviewDialog, previewImage, type PreviewImage } from "./Atta
 
 /** Electron 32 removed File.path — only the preload can name a file. */
 export function pathForFile(file: File): string {
-  return window.ogb?.getPathForFile?.(file) ?? "";
+  return window.dani?.getPathForFile?.(file) ?? "";
 }
 
 /** Renders pending attachments and their composer actions. */

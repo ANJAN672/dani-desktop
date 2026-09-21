@@ -15,7 +15,7 @@ import {
   type GroupDefaultResponder,
   type Message,
 } from "@/state/store";
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { TurnPresence, isFreeModel } from "./TurnPresence";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
 import { normalizeState } from "@/lib/mascot";
@@ -87,7 +87,7 @@ function RoomToolChip({ message }: { message: Message }) {
 function ClusterLabel({ bot, name, color }: { bot?: Bot; name: string; color: string }) {
   return (
     <div className="mt-1 flex items-center gap-1.5 pl-0.5">
-      <MausAvatar
+      <DaniAvatar
         color={(bot?.color ?? color) as Bot["color"]}
         bodyId={bot?.mascotBody ?? undefined}
         state={normalizeState(bot?.mascotExpression) ?? "happy"}
@@ -104,7 +104,7 @@ function ClusterLabel({ bot, name, color }: { bot?: Bot; name: string; color: st
 /** Pin toggle for one room message — one pin per room, patchGroup path. */
 function PinToggle({ group, message }: { group: Group; message: Message }) {
   const { dispatch } = useStore();
-  if (window.ogb?.remoteClient?.active) return null;
+  if (window.dani?.remoteClient?.active) return null;
   const pinned = group.pinnedMessageId === message.id;
   return (
     <button
@@ -392,7 +392,7 @@ function RoomWorkingFolder({ group }: { group: Group }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const canPick = Boolean(window.ogb?.pickFolder);
+  const canPick = Boolean(window.dani?.pickFolder);
   const pinned = group.pinnedCwd; // undefined = not yet, null = each bot's own, string = folder
   const locked = pinned !== undefined;
   const shownCwd = locked ? (pinned ?? undefined) : group.cwd;
@@ -410,7 +410,7 @@ function RoomWorkingFolder({ group }: { group: Group }) {
     }
   };
   const pick = async () => {
-    const chosen = await window.ogb?.pickFolder?.(group.cwd);
+    const chosen = await window.dani?.pickFolder?.(group.cwd);
     if (chosen) void save(chosen);
   };
 
@@ -604,7 +604,7 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
   };
 
   const pickFolder = async () => {
-    const chosen = await window.ogb?.pickFolder?.(folder || group.cwd);
+    const chosen = await window.dani?.pickFolder?.(folder || group.cwd);
     if (chosen) setFolder(chosen);
   };
 
@@ -642,7 +642,7 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
               placeholder="Each bot's own folder"
               className="min-w-0 flex-1 rounded-xl border border-hairline/50 bg-inset px-3 py-2.5 font-mono text-[12.5px] text-ink placeholder:text-ink-secondary focus:border-accent focus:outline-none"
             />
-            {window.ogb?.pickFolder && (
+            {window.dani?.pickFolder && (
               <button
                 type="button"
                 onClick={() => void pickFolder()}
@@ -728,7 +728,7 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
                             selected ? "bg-accent/10" : "hover:bg-raised",
                           )}
                         >
-                          <MausAvatar
+                          <DaniAvatar
                             color={member.color}
                             bodyId={member.mascotBody ?? undefined}
                             state={normalizeState(member.mascotExpression) ?? "happy"}
@@ -847,7 +847,7 @@ function RoomSetup({ group, members }: { group: Group; members: Bot[] }) {
 }
 export function GroupView({ group }: { group: Group }) {
   const { state, dispatch } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const stream = useStreaming();
   const streaming = stream.streaming[group.threadId];
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1048,7 +1048,7 @@ export function GroupView({ group }: { group: Group }) {
         group.busyBotId === b.id && "ring-2 ring-accent/50 ring-offset-1 ring-offset-app",
       )}
     >
-      <MausAvatar color={b.color} bodyId={b.mascotBody ?? undefined} state={normalizeState(b.mascotExpression) ?? "happy"} size={24} animated={false} />
+      <DaniAvatar color={b.color} bodyId={b.mascotBody ?? undefined} state={normalizeState(b.mascotExpression) ?? "happy"} size={24} animated={false} />
       {group.busyBotId === b.id && (
         <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full border border-app bg-accent" />
       )}
@@ -1234,7 +1234,7 @@ export function GroupView({ group }: { group: Group }) {
             <div className="flex flex-1 flex-col items-center justify-center gap-3 py-24 text-center">
               <div className="flex -space-x-2">
                 {members.slice(0, 3).map((b) => (
-                  <MausAvatar
+                  <DaniAvatar
                     key={b.id}
                     color={b.color}
                     bodyId={b.mascotBody ?? undefined}
@@ -1283,7 +1283,7 @@ export function GroupView({ group }: { group: Group }) {
           {(speaker || presenceVisible) && (
             <TurnPresence
               avatar={
-                <MausAvatar
+                <DaniAvatar
                   color={presenceSpeaker?.color ?? "green"}
                   state={toolInFlight && !awaited ? "working" : "thinking"}
                   size={36}

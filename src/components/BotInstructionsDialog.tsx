@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, X } from "lucide-react";
 
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { normalizeState } from "@/lib/mascot";
 import type { Bot } from "@/state/store";
 
@@ -65,7 +65,7 @@ export function BotInstructionsDialog({ bot, onClose }: { bot: Bot; onClose: () 
       >
         <header className="flex items-start justify-between gap-4 border-b border-hairline/40 px-6 pb-4 pt-6 sm:px-8 sm:pt-7">
           <div className="flex min-w-0 items-center gap-3">
-            <MausAvatar
+            <DaniAvatar
               color={bot.color}
               bodyId={bot.mascotBody ?? undefined}
               state={normalizeState(bot.mascotExpression) ?? "idle"}

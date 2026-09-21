@@ -26,7 +26,7 @@ import { speaker } from "@/lib/tts";
 import { localSystemVoiceActive } from "@/lib/local-voice";
 import { useSpeech } from "@/lib/tts/useSpeech";
 import { usePushToTalk } from "@/lib/push-to-talk";
-import { MausAvatar } from "./Avatar";
+import { DaniAvatar } from "./Avatar";
 import { isRoutineApproval, isSkillApproval, pendingApprovals, spokenApprovalPrompt } from "./PendingApproval";
 import { cn } from "@/lib/cn";
 import { track } from "@/lib/analytics";
@@ -71,7 +71,7 @@ export function CallTargetButton({
   const { capabilities, ready: capabilitiesReady } = useDesktopCapabilities();
   const active = useOnCall() === targetId;
   const realtime = state.config?.liveCall?.provider === "openai-realtime";
-  const supported = realtime ? Boolean(navigator.mediaDevices?.getUserMedia) : capabilities.dictation.available && Boolean(window.ogb?.speechStart);
+  const supported = realtime ? Boolean(navigator.mediaDevices?.getUserMedia) : capabilities.dictation.available && Boolean(window.dani?.speechStart);
   const localVoice = localSystemVoiceActive();
   const configured = localVoice || Boolean(state.config?.tts?.configured);
   const everyTargetHasVoice = voices.length > 0 && voices.every((voice) => Boolean(voice));
@@ -106,7 +106,7 @@ export function CallTargetButton({
         ? "This app build cannot open a WebRTC microphone."
         : !capabilities.dictation.available
       ? "Calls require Dani Bot for macOS because speech recognition runs on-device."
-      : !window.ogb?.speechStart
+      : !window.dani?.speechStart
         ? "The speech service is unavailable in this app build. Restart or update Dani Bot."
         : !configured
           ? "Add an ElevenLabs API key — or switch to the built-in Mac voices — so the bot can speak during calls."
@@ -254,7 +254,7 @@ function Call({ bot }: { bot: Bot }) {
   }, []);
 
   const hush = useCallback(() => {
-    void window.ogb?.speechStop();
+    void window.dani?.speechStop();
   }, []);
 
   const listen = useCallback(() => {
@@ -262,7 +262,7 @@ function Call({ bot }: { bot: Bot }) {
     move("listening");
     setHeard("");
     setNote(null);
-    void window.ogb?.speechStart({ endpointMs: CALL_ENDPOINT_MS }).catch(() => {
+    void window.dani?.speechStart({ endpointMs: CALL_ENDPOINT_MS }).catch(() => {
       if (alive.current && currentCall() === bot.id) {
         setNote("The microphone couldn't start. Check Microphone and Speech Recognition access.");
       }
@@ -310,7 +310,7 @@ function Call({ bot }: { bot: Bot }) {
 
   // ── the microphone ───────────────────────────────────────────────────
   useEffect(() => {
-    const bridge = window.ogb;
+    const bridge = window.dani;
     if (!bridge) return;
     const offTranscript = bridge.onSpeechTranscript((line) => {
       if (!alive.current || currentCall() !== bot.id || phaseRef.current !== "listening") return;
@@ -411,7 +411,7 @@ function Call({ bot }: { bot: Bot }) {
     return () => {
       offTranscript();
       offEnd();
-      void window.ogb?.speechStop();
+      void window.dani?.speechStop();
     };
     // busy/approval are intentionally initial snapshots. Their live changes
     // are handled below without tearing down native event listeners.
@@ -548,7 +548,7 @@ function Call({ bot }: { bot: Bot }) {
         <X size={18} />
       </button>
 
-      <MausAvatar color={bot.color} bodyId={bot.mascotBody ?? undefined} state={mascotState} size={220} animated trackPointer />
+      <DaniAvatar color={bot.color} bodyId={bot.mascotBody ?? undefined} state={mascotState} size={220} animated trackPointer />
 
       <div className="flex flex-col items-center gap-1.5 text-center">
         <div className="text-[20px] font-medium text-ink">{bot.name}</div>

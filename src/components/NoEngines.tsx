@@ -16,7 +16,7 @@ import { brand } from "../lib/brand";
 
 export function NoEngines() {
   const { state, refreshInstances } = useStore();
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const [rechecking, setRechecking] = useState(false);
   const recheck = async () => {
     setRechecking(true);

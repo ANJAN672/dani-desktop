@@ -13,7 +13,7 @@ function errorText(error: unknown): string {
 }
 
 export function RemoteComputerSection() {
-  const bridge = window.ogb?.remoteClient;
+  const bridge = window.dani?.remoteClient;
   const [state, setState] = useState<DesktopRemoteClientState>({ active: bridge?.active === true });
   const [endpoint, setEndpoint] = useState("");
   const [code, setCode] = useState("");

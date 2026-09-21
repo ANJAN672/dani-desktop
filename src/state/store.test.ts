@@ -21,7 +21,7 @@ describe("trusted approval-mode persistence", () => {
   const announcement = (approvalMode: Bot["approvalMode"] = "ask") => ({
     id: "bot-1",
     threadId: "thread-1",
-    name: "Maus",
+    name: "Dani",
     title: "Helper",
     description: "",
     notifications: true,

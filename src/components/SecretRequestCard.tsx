@@ -16,7 +16,7 @@ export function SecretRequestCard({
 }) {
   const { dispatch } = useStore();
   const secret = message.secret!;
-  const remoteClient = window.ogb?.remoteClient?.active === true;
+  const remoteClient = window.dani?.remoteClient?.active === true;
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedLocally, setSavedLocally] = useState(false);
@@ -76,8 +76,8 @@ export function SecretRequestCard({
     try {
       if (!savedLocally) {
         const next = value.trim();
-        const status: ConfigStatus = window.ogb?.setCredential
-          ? await window.ogb.setCredential(secret.target, next)
+        const status: ConfigStatus = window.dani?.setCredential
+          ? await window.dani.setCredential(secret.target, next)
           : await api("/api/config", {
               method: "PUT",
               body: JSON.stringify(credentialConfigPatch(secret.target, next)),

@@ -86,13 +86,13 @@ function bestEffortRelease(botId: string, controlLeaseId: string) {
     // The server lease is the source of truth; only clear Electron after the
     // workspace-owned release was actually accepted.
     if (snapshot?.held === false) {
-      await window.ogb?.browser?.setHumanControl?.(botId, false).catch(() => {});
+      await window.dani?.browser?.setHumanControl?.(botId, false).catch(() => {});
     }
   }).catch(() => {});
 }
 
 async function setNativeBrowserControl(botId: string, held: boolean): Promise<boolean> {
-  const setter = window.ogb?.browser?.setHumanControl;
+  const setter = window.dani?.browser?.setHumanControl;
   if (!setter) return true;
   return (await setter(botId, held)) === true;
 }
@@ -279,14 +279,14 @@ function LocalVmPane({
   }, [obscured]);
 
   useEffect(() => {
-    const bridge = window.ogb?.desktopWorkspace;
+    const bridge = window.dani?.desktopWorkspace;
     return bridge?.onState((next) => {
       if (next.contextId === contextId) setNativeState(next);
     });
   }, [contextId]);
 
   useEffect(() => {
-    const bridge = window.ogb?.desktopWorkspace;
+    const bridge = window.dani?.desktopWorkspace;
     let alive = true;
     const controller = new AbortController();
     setStatus(null);
@@ -366,7 +366,7 @@ function LocalVmPane({
   }, [botId, botName, contextId, retry]);
 
   const updateLayout = useCallback(() => {
-    const bridge = window.ogb?.desktopWorkspace;
+    const bridge = window.dani?.desktopWorkspace;
     const bounds = elementBounds(viewportRef);
     if (!bridge || !bounds || !nativeState.open) return;
     void bridge
@@ -570,7 +570,7 @@ export function LocalVmWorkspace({
         return snapshot;
       },
       async setInteractive(contextId) {
-        const bridge = window.ogb?.desktopWorkspace;
+        const bridge = window.dani?.desktopWorkspace;
         if (!bridge) throw new Error("The desktop workspace bridge is unavailable");
         return bridge.setInteractive(contextId);
       },
@@ -623,7 +623,7 @@ export function LocalVmWorkspace({
     return () => {
       mountedRef.current = false;
       const controlled = controlledBotIdRef.current;
-      const bridge = window.ogb?.desktopWorkspace;
+      const bridge = window.dani?.desktopWorkspace;
       if (!bridge) {
         if (controlled) bestEffortRelease(controlled, controlLeaseId);
         return;
@@ -670,7 +670,7 @@ export function LocalVmWorkspace({
   const takeControl = useCallback(
     async (botId: string) => {
       if (controlBusyRef.current || controlledBotIdRef.current === botId) return;
-      const bridge = window.ogb?.desktopWorkspace;
+      const bridge = window.dani?.desktopWorkspace;
       const contextId = contextForBot(botId);
       if (!bridge || !contextId) return;
       controlBusyRef.current = true;
