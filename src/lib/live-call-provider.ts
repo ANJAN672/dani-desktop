@@ -40,12 +40,13 @@ export interface LiveCallSession {
 
 export type LiveCallEvent =
   | { type: "state"; state: "connecting" | "connected" | "ended" }
-  | { type: "transcript"; speakerId?: string; text: string; final: boolean }
-  | { type: "error"; message: string; retryable: boolean };
+  | { type: "transcript"; utteranceId?: string; speakerId?: string; text: string; final: boolean }
+  | { type: "error"; message: string; retryable: boolean; code?: string };
 
 export interface LiveCallTransport {
   connect(session: LiveCallSession, microphone: MediaStream): Promise<MediaStream>;
   sendText(text: string): void;
+  interrupt(): void;
   close(): void;
   subscribe(listener: (event: LiveCallEvent) => void): () => void;
 }
