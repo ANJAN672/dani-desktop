@@ -41,6 +41,33 @@ const WEBHOOK_PORT = 39000 + Math.floor(Math.random() * 10_000);
 const WEBHOOK_BASE = `http://127.0.0.1:${WEBHOOK_PORT}`;
 const TEST_CAPABILITY_KEY = "index-fixture-internal-capability";
 
+/** The smoke suite owns the server it spawned: it holds the per-launch
+ * owner capability exactly the way an operator would (OMB_OWNER_TOKEN here,
+ * the boot log in production) and presents it on loopback calls the way the
+ * desktop app does. Every fetch in this file targets 127.0.0.1, so one
+ * wrapper covers the central api() helper, the isolated-server helpers, and
+ * the SSE streams. A fixture, not a secret: the servers under test mint
+ * their own capabilities everywhere else. */
+const OWNER_TOKEN_FIXTURE = `smoke-owner-capability-${"0".repeat(20)}`;
+if (!/^[A-Za-z0-9_-]{43}$/.test(OWNER_TOKEN_FIXTURE)) throw new Error("bad owner fixture");
+{
+  const nativeFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    let loopback = false;
+    try {
+      const hostname = new URL(url, "http://127.0.0.1").hostname;
+      loopback = hostname === "127.0.0.1" || hostname === "::1" || hostname === "localhost";
+    } catch {
+      /* leave non-URL inputs alone */
+    }
+    if (!loopback) return nativeFetch(input, init);
+    const headers = new Headers(init?.headers);
+    if (!headers.has("x-danibot-desktop-owner")) headers.set("x-danibot-desktop-owner", OWNER_TOKEN_FIXTURE);
+    return nativeFetch(input, { ...init, headers });
+  }) as typeof fetch;
+}
+
 async function mintTestCapability(
   baseUrl: string,
   botId: string,
@@ -214,6 +241,7 @@ const delayedJsonBody = async (
     headers: {
       "content-type": "application/json",
       "content-length": Buffer.byteLength(raw),
+      "x-danibot-desktop-owner": OWNER_TOKEN_FIXTURE,
       expect: "100-continue",
       ...headers,
     },
@@ -805,6 +833,7 @@ beforeAll(async () => {
       FAKE_CLAUDE_MODE: "hang",
       FAKE_CLAUDE_DUMP: fakeClaudeDump,
       OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
+      OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
       OMB_TEST_DEFAULT_INSTANCE_ID: "claude",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -892,6 +921,7 @@ describe("harness HTTP API", () => {
         OMB_DATA_DIR: join(home, ".danibot"),
         OMB_PORT: String(contenderPort),
         OMB_STATIC_DIR: staticDir,
+        OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
       },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -3054,6 +3084,7 @@ describe("harness HTTP API", () => {
         OMB_STATIC_DIR: isolatedStatic,
         FAKE_CLAUDE_MODE: "hang",
         FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
+        OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -3844,6 +3875,7 @@ describe("harness HTTP API", () => {
           FAKE_CLAUDE_MODE: "hang",
           FAKE_CLAUDE_DUMP: isolatedDump,
           OMB_TEST_INTERNAL_CAPABILITY_KEY: TEST_CAPABILITY_KEY,
+      OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -5687,6 +5719,7 @@ describe("harness HTTP API", () => {
       OMB_BROWSER_CONNECTION: descriptorFile,
       FAKE_CLAUDE_MODE: "hang",
       FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
+      OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
     };
     if (process.env.PATH) isolatedEnv.PATH = process.env.PATH;
     if (process.env.SystemRoot) isolatedEnv.SystemRoot = process.env.SystemRoot;
@@ -5817,6 +5850,7 @@ describe("harness HTTP API", () => {
           OMB_STATIC_DIR: isolatedStatic,
           FAKE_CLAUDE_MODE: "hang",
           FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
+          OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -5896,6 +5930,7 @@ describe("harness HTTP API", () => {
         OMB_BROWSER_CONNECTION: descriptorFile,
         FAKE_CLAUDE_MODE: "hang",
         FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
+        OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -6018,6 +6053,7 @@ describe("harness HTTP API", () => {
         OMB_BROWSER_CONNECTION: descriptorFile,
         FAKE_CLAUDE_MODE: "hang",
         FAKE_CLAUDE_DUMP: join(isolatedHome, "fake-claude-dump.json"),
+        OMB_OWNER_TOKEN: OWNER_TOKEN_FIXTURE,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

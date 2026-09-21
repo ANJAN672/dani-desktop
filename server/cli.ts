@@ -17,6 +17,7 @@
 // This module only exports; dani-agent.ts is the entry that runs main(), so
 // bundling this file into other entries (pair-cli.ts) never runs it twice.
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +25,24 @@ import { fileURLToPath } from "node:url";
 import qrcode from "qrcode-terminal";
 
 import { explainTailscaleFailure, tailscaleServe, tailscaleServeOff, tailscaleStatus, type TailscaleStatus } from "./tailscale.ts";
+
+/** Shape of the per-launch owner capability. Must match
+ * OWNER_CAPABILITY_PATTERN in server/config.ts (kept local so the bundled
+ * CLI does not drag the whole server config module in). */
+const OWNER_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** Operator-supplied owner capability: rebranded DANI_OWNER_TOKEN first,
+ * OMB_OWNER_TOKEN as the legacy alias (mirrors ownerTokenFromEnv in
+ * server/config.ts; kept local so the bundled CLI stays self-contained). */
+function ownerTokenFromEnv(): string | undefined {
+  return process.env.DANI_OWNER_TOKEN?.trim() || process.env.OMB_OWNER_TOKEN?.trim() || undefined;
+}
+
+/** When `serve` spawns the server, this CLI is the launch owner: it mints
+ * the per-launch capability, hands it to the child via env, and uses it
+ * for its own pairing call. Other commands get it from the operator's
+ * DANI_OWNER_TOKEN export. */
+let serveOwnerToken: string | undefined;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -98,11 +117,20 @@ status  what the server says about itself
 --tailscale  serve over your tailnet: Tailscale terminates HTTPS and the
              link uses this machine's MagicDNS name (needs Tailscale signed in
              and HTTPS certificates enabled for the tailnet)
-`;
 
-// ── talking to a running server (loopback = owner) ────────────────────
+owner capability: every server launch mints a per-launch token and prints
+             it as DANI_OWNER_TOKEN; loopback mutations (pair, sessions
+             revoke) need it. Export the printed value first:
+               export DANI_OWNER_TOKEN=<token from the server's boot log>
+`;
+// ── talking to a running server (loopback + owner capability) ────────────
+/** The CLI is a separate local process, so it presents the per-launch owner
+ * capability the server printed on boot (export DANI_OWNER_TOKEN first). */
 async function api(port: number, path: string, init: { method?: string; body?: string } = {}): Promise<{ status: number; body: any }> {
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method, body: init.body, headers: { "content-type": "application/json" } });
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const ownerToken = serveOwnerToken ?? ownerTokenFromEnv();
+  if (ownerToken) headers["x-danibot-desktop-owner"] = ownerToken;
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method: init.method, body: init.body, headers });
   const body: unknown = await res.json().catch(() => ({}));
   return { status: res.status, body };
 }
@@ -143,7 +171,10 @@ async function mintPairing(port: number, options: { label?: string; client?: boo
   if (options.label) request.label = options.label;
   if (options.client) request.scopes = ["client"];
   const { status, body } = await api(port, "/api/auth/pairing", { method: "POST", body: JSON.stringify(request) });
-  if (status !== 200) throw new Error(`server refused to mint a pairing code: ${typeof body?.error === "string" ? body.error : status}`);
+  if (status !== 200) {
+    const hint = ownerTokenFromEnv() ? "" : " (export DANI_OWNER_TOKEN with the token the server printed on boot)";
+    throw new Error(`server refused to mint a pairing code: ${typeof body?.error === "string" ? body.error : status}${hint}`);
+  }
   const url = options.publicUrl ? `${options.publicUrl}/pair#code=${body.code}` : typeof body.url === "string" ? body.url : null;
   return pairingBlock({ code: body.code, url, expiresAt: body.expiresAt, hint: typeof body.hint === "string" ? body.hint : null });
 }
@@ -244,9 +275,25 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
   }
   const entry = serverEntry();
   if (!entry.staticDir) log("note: no built UI found next to the server; the API runs but browsers get no page (build with `pnpm exec vite build`)");
+  // This CLI is the launch owner for the server it is about to spawn: mint
+  // the per-launch owner capability (or adopt the operator's export) and hand
+  // it to the child via env — the sanctioned parent→child channel. The
+  // server honors it verbatim and prints it on boot; the CLI keeps its own
+  // copy in serveOwnerToken for the pairing call below. It is NOT written to
+  // process.env, so the tailscale helper above and anything else this
+  // process spawns never inherit it; the server scrubs it before spawning
+  // agent CLIs and probe wrappers.
+  const ownerToken = (() => {
+    const supplied = ownerTokenFromEnv();
+    if (supplied && OWNER_TOKEN_PATTERN.test(supplied)) return supplied;
+    return randomBytes(32).toString("base64url");
+  })();
+  serveOwnerToken = ownerToken;
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     DANI_DATA_DIR: options.dataDir,
+    DANI_OWNER_TOKEN: ownerToken,
+    OMB_OWNER_TOKEN: ownerToken,
     OMB_DATA_DIR: options.dataDir,
     DANI_PORT: String(options.port),
     OMB_PORT: String(options.port),
@@ -293,6 +340,7 @@ export async function runServe(options: CliOptions, log: (line: string) => void 
   log("");
   log(`Dani Bot is running on http://127.0.0.1:${options.port}${publicUrl ? `, reachable at ${publicUrl}` : ""}`);
   log(`data: ${options.dataDir}`);
+  log(`owner capability: the server printed this launch's DANI_OWNER_TOKEN above; export it to run \`danibot pair\` etc. from another shell`);
   if (options.pair) {
     log("");
     log(await mintPairing(options.port, { label: options.label ? `${options.label} owner` : undefined, publicUrl: publicUrl ?? undefined }));

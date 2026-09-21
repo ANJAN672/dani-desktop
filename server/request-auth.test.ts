@@ -195,6 +195,30 @@ describe("resolveRequestAuth", () => {
     ).auth?.kind).toBe("loopback");
   });
 
+  it("denies loopback mutations when no owner capability is configured, instead of skipping the check", () => {
+    // The dev/CLI gap: an undefined token used to mean "no check at all".
+    // The server now mints one at boot in every mode; if it is ever absent,
+    // mutations fail closed while reads stay open.
+    const options = (path: string) => ({
+      sessions,
+      cookieName,
+      streamPath: "/api/events",
+      url: new URL(path, "http://x"),
+      loopbackMutationToken: undefined,
+    });
+    const denied = resolveRequestAuth(
+      request({ host: "127.0.0.1:8799" }, "POST"),
+      options("/api/cli-test"),
+    );
+    expect(denied.auth).toBeNull();
+    expect(denied.status).toBe(403);
+    expect(denied.error).toMatch(/desktop app or a paired device/);
+    expect(resolveRequestAuth(
+      request({ host: "127.0.0.1:8799" }, "GET"),
+      options("/api/health"),
+    ).auth?.kind).toBe("loopback");
+  });
+
   it("never grants loopback trust to a request that came through a proxy, whatever Host it carries", () => {
     expect(isProxied(request({ host: "localhost", "x-forwarded-for": "203.0.113.9" }))).toBe(true);
     expect(isProxied(request({ host: "localhost", "x-forwarded-proto": "https" }))).toBe(true);

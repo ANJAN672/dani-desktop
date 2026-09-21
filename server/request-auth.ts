@@ -1,13 +1,23 @@
 // Who is asking, and are they allowed to?
 //
 // Two ways in. A **loopback** request (Host and Origin both loopback) may read
-// local state; packaged mutations additionally carry a per-launch capability
-// injected by Electron below renderer JavaScript. A **session** request carries
+// local state; every state-changing route additionally requires the
+// per-launch owner capability (x-danibot-desktop-owner), which the desktop
+// app injects below renderer JavaScript, the dev/CLI server prints on boot,
+// and a paired device never needs. A **session** request carries
 // a credential minted by pairing
 // (server/sessions.ts): a bearer token, the session cookie the served web UI
 // uses, or, for the event stream only, a short-lived ticket. With a session
 // the loopback rule is replaced by a same-origin rule, so a browser on
 // another site still cannot ride the cookie (CSRF), and by a scope check.
+//
+// Rationale for keeping reads open: the threat the owner capability stops is
+// a separate local process *doing* things — spawning binaries (/api/cli-test),
+// changing config, starting work, answering approvals, triggering effects.
+// Read-only routes (/api/health, /api/edition, config reads) carry no secrets
+// and cause no effects, while launchers, supervisors and the CLI's own
+// `serve` readiness probe need them before the capability is provisioned.
+// Anything that mutates, spawns, or answers for the user is gated.
 import type { IncomingMessage } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
@@ -268,9 +278,11 @@ export interface ResolveOptions {
   /** Path that may authenticate with a stream ticket in its query string. */
   streamPath: string;
   url: URL;
-  /** Packaged desktop capability, delivered over Electron's private child
-   * port. When present, originless loopback callers may still read but every
-   * public mutation must prove it came through the desktop's web session. */
+  /** Per-launch owner capability. Loopback callers may read without it, but
+   * every public mutation must present it in the x-danibot-desktop-owner
+   * header. The server mints one at boot in every mode (server/index.ts), so
+   * production callers always supply it; an undefined value denies mutations
+   * rather than skipping the check. */
   loopbackMutationToken?: string;
 }
 
@@ -338,10 +350,11 @@ export function resolveRequestAuth(req: IncomingMessage, options: ResolveOptions
   const proxied = isProxied(req);
   const loopback = !proxied && isLoopbackHost(headerValue(req.headers.host)) && isAllowedOrigin(headerValue(req.headers.origin));
   if (loopback) {
+    // Deny by default: a missing or unknown token (including an
+    // unconfigured server) rejects the mutation. Reads stay open.
     if (
-      options.loopbackMutationToken !== undefined &&
       mutatingPublicRoute(method, path) &&
-      !secureTokenMatch(headerValue(req.headers[DESKTOP_OWNER_HEADER]) ?? headerValue(req.headers[LEGACY_DESKTOP_OWNER_HEADER]), options.loopbackMutationToken)
+      !secureTokenMatch(headerValue(req.headers[DESKTOP_OWNER_HEADER]) ?? headerValue(req.headers[LEGACY_DESKTOP_OWNER_HEADER]), options.loopbackMutationToken ?? "")
     ) {
       return deny(403, "forbidden: this change must come from the desktop app or a paired device");
     }

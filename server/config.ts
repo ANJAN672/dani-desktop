@@ -514,6 +514,19 @@ export function builtInBrowserEnabled(cfg: AppConfig): boolean {
 
 // DANI_DATA_DIR (legacy OMB_DATA_DIR) isolates test/soak rigs from the user's real fleet.
 export const DATA_DIR = process.env.DANI_DATA_DIR ?? process.env.OMB_DATA_DIR ?? join(homedir(), ".danibot");
+
+/** Shape of the per-launch owner capability the server requires on every
+ * state-changing loopback route (server/request-auth.ts): 256 bits,
+ * base64url. Minted by the desktop parent, the CLI wrapper, or the server
+ * itself at boot depending on the mode. */
+export const OWNER_CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** The per-launch owner capability an operator supplied, if any. Rebranded
+ * DANI_OWNER_TOKEN wins; OMB_OWNER_TOKEN is the legacy alias (same dual-name
+ * rule as DANI_DATA_DIR / DANI_PUBLIC_URL). */
+export function ownerTokenFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.DANI_OWNER_TOKEN?.trim() || env.OMB_OWNER_TOKEN?.trim() || undefined;
+}
 const LEGACY_DATA_DIRS = [join(homedir(), ".openmausbot"), join(homedir(), ".opengrokbot")];
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
@@ -634,6 +647,11 @@ export const WORKSPACE_CREDENTIAL_ENV = [
   "OMB_BROWSER_CONNECTION",
   "DANI_USER_DATA",
   "OMB_USER_DATA",
+  // The per-launch owner capability is not a third-party credential, but a
+  // spawned engine is exactly the "separate local process" the owner gate
+  // distrusts: it must never inherit the capability via the environment.
+  "DANI_OWNER_TOKEN",
+  "OMB_OWNER_TOKEN",
 ] as const;
 
 /** Drop every workspace credential from a child-process env (in place). */
