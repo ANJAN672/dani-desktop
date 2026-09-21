@@ -11380,7 +11380,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { proposals: executionKernel.repository.listProactiveProposals(bot.id, url.searchParams.get("threadId") ?? undefined) });
     }
 
-    m = path.match(/^\/api\/proactive\/proposals\/([A-Za-z0-9-]+)\/(accept|dismiss|snooze)$/);
+    m = path.match(/^\/api\/proactive\/proposals\/([A-Za-z0-9-]+)\/(accept|dismiss|snooze|cancel)$/);
     if (m && method === "POST") {
       if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
       const proposalId = m[1], action = m[2];
@@ -11398,6 +11398,21 @@ const server = createServer(async (req, res) => {
             return json(res, 409, { error: "this proposal's execution engine is no longer available" });
           }
           accepted = executionKernel.repository.acceptProactiveProposal(proposalId, proposal.owner_id);
+        } else if (action === "cancel") {
+          const live = executionKernel.repository.proactiveProposal(proposalId, proposal.owner_id);
+          if (live.status !== "accepted" || !live.acceptedJobId) return json(res, 409, { error: "proposal has no active job" });
+          const job = executionKernel.repository.job(live.acceptedJobId);
+          if (["completed", "failed", "cancelled", "uncertain"].includes(String(job.status))) {
+            return json(res, 409, { error: `job already ended ${String(job.status)}` });
+          }
+          const directClaim = directTurnDispatchClaims.get(bot.id);
+          if (directClaim?.threadId === proposal.thread_id) cancelDirectTurnDispatch(bot.id, proposal.thread_id);
+          revokeInternalCapabilitiesForThread(proposal.thread_id);
+          await releaseBrowserCapabilityForThread(proposal.thread_id);
+          await executionKernel.cancel(live.acceptedJobId, "user cancelled proactive job");
+          kernelThreadJobs.delete(proposal.thread_id);
+          await registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(proposal.thread_id).catch(() => {});
+          closeOpenApprovals(proposal.thread_id);
         } else if (action === "dismiss") {
           executionKernel.repository.dismissProactiveProposal(proposalId, proposal.owner_id);
         } else {

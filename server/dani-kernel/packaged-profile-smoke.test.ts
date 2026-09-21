@@ -12,9 +12,11 @@ describe("packaged kernel profile smoke", () => {
     const root = mkdtempSync(join(tmpdir(), "dani-packaged-kernel-")); roots.push(root);
     await expect(runPackagedKernelProfileSmoke(root, "clean-01")).resolves.toMatchObject({
       phase: "executed", externalWrites: 1, evidenceCount: 1, duplicatePrevented: false,
+      proactivePhase: "proposed", proactiveProposalCount: 1, proactiveCancelGeneration: 2,
     });
     await expect(runPackagedKernelProfileSmoke(root, "clean-01")).resolves.toMatchObject({
       phase: "recovered", externalWrites: 1, evidenceCount: 1, duplicatePrevented: true,
+      proactivePhase: "recovered", proactiveProposalCount: 1, proactiveCancelGeneration: 2,
     });
   });
 });

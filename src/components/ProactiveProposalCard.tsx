@@ -8,7 +8,7 @@ export function ProactiveProposalCard({ message }: { message: Message }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!proposal) return null;
-  const decide = async (action: "accept" | "dismiss" | "snooze") => {
+  const decide = async (action: "accept" | "dismiss" | "snooze" | "cancel") => {
     const init: RequestInit = { method: "POST" };
     if (action === "snooze") {
       init.headers = { "content-type": "application/json" };
@@ -31,6 +31,9 @@ export function ProactiveProposalCard({ message }: { message: Message }) {
       <button disabled={pending} className="rounded-lg bg-accent px-3 py-2 text-[12px] font-medium text-white disabled:opacity-50" onClick={() => void decide("accept")}>Accept</button>
       <button disabled={pending} className="rounded-lg bg-raised px-3 py-2 text-[12px] text-ink disabled:opacity-50" onClick={() => void decide("snooze")}>Snooze 1 hour</button>
       <button disabled={pending} className="rounded-lg px-3 py-2 text-[12px] text-ink-secondary disabled:opacity-50" onClick={() => void decide("dismiss")}>Dismiss</button>
+    </div>}
+    {proposal.status === "accepted" && !terminal && <div className="mt-3">
+      <button disabled={pending} className="rounded-lg px-3 py-2 text-[12px] text-danger disabled:opacity-50" onClick={() => void decide("cancel")}>Stop</button>
     </div>}
     {error && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
     {proposal.report && <div className="mt-2 rounded-lg bg-inset px-3 py-2 text-[12.5px] text-ink-secondary">{proposal.report}</div>}

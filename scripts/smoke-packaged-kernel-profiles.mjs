@@ -78,7 +78,10 @@ try {
     if (
       first?.phase !== "executed" ||
       first.externalWrites !== 1 ||
-      first.evidenceCount !== 1
+      first.evidenceCount !== 1 ||
+      first.proactivePhase !== "proposed" ||
+      first.proactiveProposalCount !== 1 ||
+      first.proactiveCancelGeneration !== 2
     ) {
       throw new Error(
         `profile ${profileId} first launch invariant failed: ${JSON.stringify(first)}`,
@@ -88,7 +91,10 @@ try {
       restart?.phase !== "recovered" ||
       !restart.duplicatePrevented ||
       restart.externalWrites !== 1 ||
-      restart.evidenceCount !== 1
+      restart.evidenceCount !== 1 ||
+      restart.proactivePhase !== "recovered" ||
+      restart.proactiveProposalCount !== 1 ||
+      restart.proactiveCancelGeneration !== 2
     ) {
       throw new Error(
         `profile ${profileId} restart invariant failed: ${JSON.stringify(restart)}`,

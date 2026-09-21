@@ -21,6 +21,9 @@ export interface PackagedKernelSmokeReport {
   evidenceCount: number;
   duplicatePrevented: boolean;
   databasePath: string;
+  proactivePhase: "proposed" | "recovered";
+  proactiveProposalCount: number;
+  proactiveCancelGeneration: number;
 }
 
 /**
@@ -118,6 +121,33 @@ export async function runPackagedKernelProfileSmoke(
   );
   try {
     kernel.recover();
+    const proactiveKey = `packaged-proactive:${profileId}`;
+    const proactive = kernel.proactive.fireInAppEvent({
+      ownerId: "packaged-smoke-user",
+      botId: "packaged-smoke-bot",
+      threadId: `proactive-thread:${profileId}`,
+      triggerKey: proactiveKey,
+      triggerKind: "packaged-smoke",
+      reason: "A packaged smoke trigger fired",
+      objective: "Verify packaged proactive recovery",
+      occurredAt: new Date().toISOString(),
+      expiresAt: "2999-01-01T00:00:00Z",
+    });
+    if (proactive.state !== "proposed") throw new Error(`packaged proactive trigger ended ${proactive.state}`);
+    const proactiveProposal = repository.proactiveProposal(proactive.proposalId, "packaged-smoke-user");
+    let proactiveCancelGeneration = 0;
+    if (!proactive.duplicate) {
+      const accepted = repository.acceptProactiveProposal(proactiveProposal.id, "packaged-smoke-user");
+      proactiveCancelGeneration = Number((await kernel.cancel(String(accepted.job.id), "packaged cancellation smoke")).generation);
+      if (proactiveCancelGeneration !== 2) throw new Error("packaged proactive cancellation did not fence the generation");
+    } else {
+      proactiveCancelGeneration = Number(repository.job(String(proactiveProposal.acceptedJobId)).generation);
+    }
+    const proactiveProposalCount = repository.listProactiveProposals("packaged-smoke-user").filter(item => item.triggerKey === proactiveKey).length;
+    if (proactiveProposalCount !== 1 || proactiveCancelGeneration !== 2) {
+      throw new Error(`packaged proactive invariant failed: ${JSON.stringify({ proactiveProposalCount, proactiveCancelGeneration })}`);
+    }
+
     const requestId = `packaged-profile:${profileId}`;
     const job = kernel.admit({
       ownerId: "packaged-smoke-user",
@@ -185,6 +215,9 @@ export async function runPackagedKernelProfileSmoke(
       evidenceCount: effect.evidence.length,
       duplicatePrevented: duplicate,
       databasePath,
+      proactivePhase: proactive.duplicate ? "recovered" : "proposed",
+      proactiveProposalCount,
+      proactiveCancelGeneration,
     };
   } finally {
     await kernel.close();
