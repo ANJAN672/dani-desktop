@@ -186,6 +186,10 @@ const CHANNEL_POLICY = {
   },
   "desktop:pick-folder": { capability: "device-files", origin: "local-only", window: null, args: [optional(string({ max: 4096 }))] },
   "desktop:export-diagnostics": { capability: "device-files", origin: "local-only", window: null, args: [] },
+  // App logs (spec 080 R5 "where logs are"): reveal the log directory or the
+  // live server.log in the OS file manager. Local-only desktop repair.
+  "logs:path": { capability: "device-files", origin: "local-only", window: null, args: [] },
+  "logs:open": { capability: "device-files", origin: "local-only", window: null, args: [] },
   "desktop:save-file": { capability: "device-files", origin: "local-only", window: null, args: [string({ min: 1, max: 4096 })] },
   "desktop:skin": { capability: "ui-chrome", origin: "public", window: null, args: [string({ min: 1, max: 64 })] },
   "desktop:open-external": { capability: "external-navigation", origin: "public", window: null, args: [WEB_URL] },

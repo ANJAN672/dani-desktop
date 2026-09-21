@@ -2208,8 +2208,8 @@ ipcMain.handle("perm:request-mic", guard("perm:request-mic", async () => {
 // App logs: R5's "where logs are" needs a UI path. The About dialog reads
 // the directory and reveals the live server log; local-only like the other
 // desktop-repair affordances.
-ipcMain.handle("logs:path", localOnly("logs:path", () => LOG_DIR));
-ipcMain.handle("logs:open", localOnly("logs:open", () => {
+ipcMain.handle("logs:path", guard("logs:path", () => LOG_DIR));
+ipcMain.handle("logs:open", guard("logs:open", () => {
   const serverLog = path.join(LOG_DIR, "server.log");
   shell.showItemInFolder(fs.existsSync(serverLog) ? serverLog : LOG_DIR);
   return true;
