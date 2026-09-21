@@ -7,12 +7,18 @@ import { DaniVerifier } from "./dani-verifier.ts";
 import type { DaniEvidenceInput } from "../shared/dani-runtime.ts";
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })));
+const closables: { close(): void }[] = [];
+// Close every SQLite handle before directory removal; Windows refuses to delete open files.
+afterEach(() => {
+  for (const c of closables.splice(0)) { try { c.close(); } catch { /* already closed */ } }
+  roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }));
+});
 const setup = () => {
   const root = mkdtempSync(join(tmpdir(), "verify-"));
   roots.push(root);
   const plane = new DaniControlPlane(join(root, "control.db"));
   const verifier = new DaniVerifier(plane);
+  closables.push(plane);
   return { plane, verifier };
 };
 const makeJob = (plane: DaniControlPlane, criteria = ["sent"]) => {

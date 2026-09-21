@@ -57,7 +57,7 @@ export class MemorySidecar {
     if (!source || !source.type || !source.id || !source.observedAt || Number.isNaN(Date.parse(source.observedAt))) throw new Error("memory writes require a source with type, id and a valid observedAt");
   }
   private winner(ownerId: string, workspaceId: string, kind: string, key: string) {
-    return this.db.prepare("SELECT * FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='active' ORDER BY confidence DESC,updated_at DESC LIMIT 1").get(ownerId, workspaceId, kind, key) as Record<string, unknown> | undefined;
+    return this.db.prepare("SELECT * FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='active' ORDER BY confidence DESC,updated_at DESC,rowid DESC LIMIT 1").get(ownerId, workspaceId, kind, key) as Record<string, unknown> | undefined;
   }
 
   write(input: MemoryWrite) {
@@ -77,10 +77,15 @@ export class MemorySidecar {
   }
 
   private reconcile(ownerId: string, workspaceId: string, kind: string, key: string) {
-    const rows = this.db.prepare("SELECT id,confidence FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='active' ORDER BY confidence DESC,updated_at DESC").all(ownerId, workspaceId, kind, key) as { id: string; confidence: number }[];
+    // Workflow memory is versioned: the highest version always wins. User memory is
+    // confidence-ordered; ties resolve to the most recent write (rowid is monotonic),
+    // so equal-millisecond writes stay deterministic on every platform.
+    const category = (this.db.prepare("SELECT category FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='active' LIMIT 1").get(ownerId, workspaceId, kind, key) as { category: string } | undefined)?.category;
+    const order = category === "workflow" ? "ORDER BY version DESC,updated_at DESC,rowid DESC" : "ORDER BY confidence DESC,updated_at DESC,rowid DESC";
+    const rows = this.db.prepare(`SELECT id,confidence FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='active' ${order}`).all(ownerId, workspaceId, kind, key) as { id: string; confidence: number }[];
     if (rows.length < 2) return;
     const winnerRow = rows[0]!;
-    for (const row of rows.slice(1)) if (row.confidence <= winnerRow.confidence) this.db.prepare("UPDATE memory_items SET status='superseded',updated_at=? WHERE id=?").run(now(), row.id);
+    for (const row of rows.slice(1)) if (category === "workflow" || row.confidence <= winnerRow.confidence) this.db.prepare("UPDATE memory_items SET status='superseded',updated_at=? WHERE id=?").run(now(), row.id);
   }
 
   /** Explicit correction: supersedes every active value for the key regardless of confidence, keeps history. */
@@ -114,7 +119,7 @@ export class MemorySidecar {
       const [workspaceId, kind, key] = JSON.parse(compound) as [string, string, string];
       const active = this.winner(ownerId, workspaceId, kind, key);
       if (active) continue;
-      const restore = this.db.prepare("SELECT id FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='superseded' ORDER BY confidence DESC,updated_at DESC LIMIT 1").get(ownerId, workspaceId, kind, key) as { id: string } | undefined;
+      const restore = this.db.prepare("SELECT id FROM memory_items WHERE owner_id=? AND workspace_id=? AND kind=? AND key=? AND status='superseded' ORDER BY confidence DESC,updated_at DESC,rowid DESC LIMIT 1").get(ownerId, workspaceId, kind, key) as { id: string } | undefined;
       if (restore) {
         this.db.prepare("UPDATE memory_items SET status='active',updated_at=? WHERE id=?").run(now(), restore.id);
         this.history(restore.id, ownerId, workspaceId, "restore", { afterRetractionOf: source, kind, key });
@@ -166,7 +171,7 @@ export class MemorySidecar {
     const workspaceId = options.workspaceId ?? DEFAULT_WORKSPACE, at = options.now ?? new Date(), limit = Math.min(options.limit ?? 8, 20);
     const tokens = query.trim().split(/\s+/).filter(Boolean).map(x => `"${x.replaceAll('"', '')}"`).join(" OR ");
     if (!tokens) return [];
-    const rows = this.db.prepare(`SELECT m.id,m.kind,m.key,m.value,m.confidence,m.updated_at,m.expires_at,m.fresh_for_ms,m.source_observed_at,bm25(memory_fts) rank FROM memory_fts JOIN memory_items m ON m.rowid=memory_fts.rowid WHERE memory_fts MATCH ? AND m.owner_id=? AND m.workspace_id=? AND m.status='active' ORDER BY rank,m.confidence DESC LIMIT ?`).all(tokens, ownerId, workspaceId, limit * 2) as Record<string, unknown>[];
+    const rows = this.db.prepare(`SELECT m.id,m.kind,m.key,m.value,m.confidence,m.updated_at,m.expires_at,m.fresh_for_ms,m.source_observed_at,bm25(memory_fts) rank FROM memory_fts JOIN memory_items m ON m.rowid=memory_fts.rowid WHERE memory_fts MATCH ? AND m.owner_id=? AND m.workspace_id=? AND m.status='active' ORDER BY rank,m.confidence DESC,m.updated_at DESC,m.rowid DESC LIMIT ?`).all(tokens, ownerId, workspaceId, limit * 2) as Record<string, unknown>[];
     const out: MemoryHit[] = [];
     for (const r of rows) {
       const stale = this.isStale(r, at);
@@ -180,7 +185,7 @@ export class MemorySidecar {
   /** Current-state reads: stale memory may orient, but only fresh memory satisfies; otherwise callers must re-fetch. */
   current(ownerId: string, key: string, opts: { workspaceId?: string; kind?: MemoryKind; now?: Date } = {}) {
     const workspaceId = opts.workspaceId ?? DEFAULT_WORKSPACE, at = opts.now ?? new Date();
-    const rows = this.db.prepare(`SELECT * FROM memory_items WHERE owner_id=? AND workspace_id=? AND key=? AND status='active'${opts.kind ? " AND kind=?" : ""} ORDER BY confidence DESC,updated_at DESC`).all(...(opts.kind ? [ownerId, workspaceId, key, opts.kind] : [ownerId, workspaceId, key])) as Record<string, unknown>[];
+    const rows = this.db.prepare(`SELECT * FROM memory_items WHERE owner_id=? AND workspace_id=? AND key=? AND status='active'${opts.kind ? " AND kind=?" : ""} ORDER BY confidence DESC,updated_at DESC,rowid DESC`).all(...(opts.kind ? [ownerId, workspaceId, key, opts.kind] : [ownerId, workspaceId, key])) as Record<string, unknown>[];
     for (const row of rows) if (!this.isStale(row, at)) return { status: "fresh" as const, item: { id: String(row.id), value: JSON.parse(String(row.value)), confidence: Number(row.confidence), sourceObservedAt: row.source_observed_at ? String(row.source_observed_at) : null } };
     const stalest = rows[0];
     if (stalest) return { status: "stale" as const, requiresRefresh: true as const, staleItem: { id: String(stalest.id), value: JSON.parse(String(stalest.value)), sourceObservedAt: stalest.source_observed_at ? String(stalest.source_observed_at) : null } };

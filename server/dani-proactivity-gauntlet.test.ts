@@ -14,7 +14,12 @@ import { MemorySidecar } from "./memory-sidecar.ts";
 import type { DaniEventInput } from "../shared/dani-runtime.ts";
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })));
+const closables: { close(): void }[] = [];
+// Close every SQLite handle before directory removal; Windows refuses to delete open files.
+afterEach(() => {
+  for (const c of closables.splice(0)) { try { c.close(); } catch { /* already closed */ } }
+  roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }));
+});
 const setup = () => {
   const root = mkdtempSync(join(tmpdir(), "gauntlet-"));
   roots.push(root);
@@ -22,6 +27,7 @@ const setup = () => {
   const engine = new DaniProactivity(join(root, "proactivity.db"), plane);
   const memory = new MemorySidecar(join(root, "memory.db"));
   const verifier = new DaniVerifier(plane);
+  closables.push(plane, engine, memory);
   return { root, plane, engine, memory, verifier };
 };
 const rule = (patch: Partial<ProactiveTriggerRule> = {}): ProactiveTriggerRule => ({
@@ -107,11 +113,11 @@ describe("proactivity gauntlet", () => {
     class Crashy extends DaniProactivity {
       protected override dispatchAct(): string { throw new Error("power loss"); }
     }
-    const crashy = new Crashy(join(root, "proactivity.db"), plane);
+    const crashy = new Crashy(join(root, "proactivity.db"), plane); closables.push(crashy);
     crashy.upsertRule(rule({ risk: "write", objective: "recover me" }));
     expect(() => crashy.handleEvent(event({ payload: { urgency: 0.9, confidence: 0.9, relevant: true } }))).toThrow("power loss");
     crashy.close();
-    const recovered = new DaniProactivity(join(root, "proactivity.db"), plane);
+    const recovered = new DaniProactivity(join(root, "proactivity.db"), plane); closables.push(recovered);
     expect(recovered.recover().dispatchedJobs).toHaveLength(1);
     expect(recovered.recover().dispatchedJobs).toHaveLength(0);
     expect(plane.db.prepare("SELECT COUNT(*) c FROM dani_jobs").get()).toEqual({ c: 1 });

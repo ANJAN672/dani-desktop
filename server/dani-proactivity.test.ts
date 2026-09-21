@@ -7,12 +7,18 @@ import { DaniProactivity, type ProactiveTriggerRule } from "./dani-proactivity.t
 import type { DaniEventInput } from "../shared/dani-runtime.ts";
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })));
+const closables: { close(): void }[] = [];
+// Close every SQLite handle before directory removal; Windows refuses to delete open files.
+afterEach(() => {
+  for (const c of closables.splice(0)) { try { c.close(); } catch { /* already closed */ } }
+  roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }));
+});
 const setup = (relevanceProbe?: () => boolean) => {
   const root = mkdtempSync(join(tmpdir(), "proact-"));
   roots.push(root);
   const plane = new DaniControlPlane(join(root, "control.db"));
   const engine = new DaniProactivity(join(root, "proactivity.db"), plane, relevanceProbe ? () => relevanceProbe() : undefined);
+  closables.push(plane, engine);
   return { root, plane, engine };
 };
 const rule = (patch: Partial<ProactiveTriggerRule> = {}): ProactiveTriggerRule => ({
@@ -71,10 +77,10 @@ describe("event normalization and dispatch", () => {
 
   it("keeps persisted rules across restart", () => {
     const { root, plane } = setup();
-    const first = new DaniProactivity(join(root, "proactivity.db"), plane);
+    const first = new DaniProactivity(join(root, "proactivity.db"), plane); closables.push(first);
     first.upsertRule(rule({ topic: "persisted" }));
     first.close();
-    const second = new DaniProactivity(join(root, "proactivity.db"), plane);
+    const second = new DaniProactivity(join(root, "proactivity.db"), plane); closables.push(second);
     expect(second.getRule("r1")?.topic).toBe("persisted");
     const res = second.handleEvent(event());
     expect(res.fires[0]?.status).toBe("fired");
@@ -85,11 +91,11 @@ describe("event normalization and dispatch", () => {
     class CrashyEngine extends DaniProactivity {
       protected override dispatchAct(): string { throw new Error("crash after fire"); }
     }
-    const crashy = new CrashyEngine(join(root, "proactivity.db"), plane);
+    const crashy = new CrashyEngine(join(root, "proactivity.db"), plane); closables.push(crashy);
     crashy.upsertRule(rule({ risk: "write", objective: "follow up", successCriteria: ["done"] }));
     expect(() => crashy.handleEvent(event({ payload: { urgency: 0.9, confidence: 0.9, relevant: true } }))).toThrow("crash after fire");
     crashy.close();
-    const recovered = new DaniProactivity(join(root, "proactivity.db"), plane);
+    const recovered = new DaniProactivity(join(root, "proactivity.db"), plane); closables.push(recovered);
     const sweep = recovered.recover();
     expect(sweep.dispatchedJobs).toHaveLength(1);
     expect(plane.job(sweep.dispatchedJobs[0]!).objective).toBe("follow up");

@@ -6,8 +6,13 @@ import { DatabaseSync } from "node:sqlite";
 import { MemorySidecar } from "./memory-sidecar.ts";
 
 const roots: string[] = [];
-afterEach(() => roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true })));
-const open = (name = "m.db") => { const root = mkdtempSync(join(tmpdir(), "mem-lc-")); roots.push(root); return { sidecar: new MemorySidecar(join(root, name)), path: join(root, name) }; };
+const closables: { close(): void }[] = [];
+// Close every SQLite handle before directory removal; Windows refuses to delete open files.
+afterEach(() => {
+  for (const c of closables.splice(0)) { try { c.close(); } catch { /* already closed */ } }
+  roots.splice(0).forEach(r => rmSync(r, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }));
+});
+const open = (name = "m.db") => { const root = mkdtempSync(join(tmpdir(), "mem-lc-")); roots.push(root); const sidecar = new MemorySidecar(join(root, name)); closables.push(sidecar); return { sidecar, path: join(root, name) }; };
 const src = (id: string, observedAt = "2026-09-01T00:00:00Z") => ({ type: "message", id, observedAt });
 
 describe("memory lifecycle", () => {
@@ -62,7 +67,7 @@ describe("memory lifecycle", () => {
     expect(m.forget({ ownerId: "a", kind: "person", key: "sam" })).toBe(1);
     expect(m.search("a", "sam")).toHaveLength(0);
     expect(m.search("a", "maya")).toHaveLength(1);
-    const db = new DatabaseSync(path);
+    const db = new DatabaseSync(path); closables.push(db);
     expect(db.prepare("SELECT COUNT(*) c FROM memory_provenance").get() as { c: number }).toEqual({ c: 1 });
     db.close();
     m.close();
@@ -83,7 +88,7 @@ describe("memory lifecycle", () => {
     const { sidecar: m, path } = open();
     m.write({ ownerId: "a", kind: "recap", key: "week", value: "summary", source: src("1"), confidence: 0.5, expiresAt: "2026-10-01T00:00:00Z" });
     m.close();
-    const reopened = new MemorySidecar(path);
+    const reopened = new MemorySidecar(path); closables.push(reopened);
     expect(reopened.sweepExpired("2026-09-30T00:00:00Z")).toBe(0);
     expect(reopened.search("a", "summary")).toHaveLength(1);
     expect(reopened.sweepExpired("2026-10-02T00:00:00Z")).toBe(1);
@@ -122,7 +127,7 @@ describe("memory lifecycle", () => {
     const { sidecar: m, path } = open();
     m.write({ ownerId: "a", kind: "profile", key: "name", value: "Somdipto", source: src("1"), confidence: 1 });
     m.close();
-    const reopened = new MemorySidecar(path);
+    const reopened = new MemorySidecar(path); closables.push(reopened);
     expect(reopened.search("a", "name")[0]?.value).toBe("Somdipto");
     reopened.close();
   });
