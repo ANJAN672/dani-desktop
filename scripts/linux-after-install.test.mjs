@@ -23,14 +23,28 @@ function fixture() {
   const chromiumSandbox = path.join(appRoot, "chrome-sandbox");
   fs.writeFileSync(chromiumSandbox, "fixture", { mode: 0o664 });
   fs.chmodSync(chromiumSandbox, 0o664);
-  return { appRoot, resources, cuaRoot, chromiumSandbox };
+  const apparmorProfile = path.join(resources, "apparmor-profile");
+  fs.writeFileSync(
+    apparmorProfile,
+    'abi <abi/4.0>,\nprofile "danibot" "/opt/Dani Bot/danibot" flags=(unconfined) {\n  userns,\n}\n',
+  );
+  return { appRoot, resources, cuaRoot, chromiumSandbox, apparmorProfile };
 }
 
-function runHook(appRoot) {
+function runHook(appRoot, extraEnv = {}) {
   return spawnSync("/bin/sh", [hook], {
     encoding: "utf8",
-    env: { ...process.env, OPENMAUSBOT_POSTINSTALL_TEST_ROOT: appRoot },
+    env: { ...process.env, OPENMAUSBOT_POSTINSTALL_TEST_ROOT: appRoot, ...extraEnv },
   });
+}
+
+function stubBin(commands) {
+  const bin = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "omb-deb-stub-bin-"));
+  temporaryDirectories.push(bin);
+  for (const [name, script] of Object.entries(commands)) {
+    fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+  }
+  return bin;
 }
 
 afterEach(() => {
@@ -102,5 +116,42 @@ describe.skipIf(process.platform !== "linux")("Linux DEB upgrade hook", () => {
     const result = runHook(escaped);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("must stay under /tmp");
+  });
+
+  it("installs the bundled AppArmor profile when AppArmor is enabled", () => {
+    const { appRoot, apparmorProfile } = fixture();
+    const parserLog = path.join(appRoot, "parser.log");
+    const bin = stubBin({
+      apparmor_status: "exit 0",
+      apparmor_parser: `echo "$@" >> ${JSON.stringify(parserLog)}`,
+    });
+
+    const result = runHook(appRoot, { PATH: `${bin}:${process.env.PATH}` });
+    expect(result.status, result.stderr).toBe(0);
+    const installed = path.join(appRoot, "etc", "apparmor.d", "danibot");
+    expect(fs.readFileSync(installed, "utf8")).toBe(fs.readFileSync(apparmorProfile, "utf8"));
+    expect(fs.readFileSync(parserLog, "utf8")).toContain("--skip-kernel-load --debug");
+  });
+
+  it("still installs when AppArmor is unavailable, leaving no profile behind", () => {
+    const { appRoot } = fixture();
+    const bin = stubBin({
+      apparmor_status: "exit 1",
+      apparmor_parser: "echo parser-should-not-run >&2; exit 1",
+    });
+
+    const result = runHook(appRoot, { PATH: `${bin}:${process.env.PATH}` });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain("parser-should-not-run");
+    expect(fs.existsSync(path.join(appRoot, "etc", "apparmor.d", "danibot"))).toBe(false);
+  });
+
+  it("links the CLI into the package bin directory", () => {
+    const { appRoot } = fixture();
+    const result = runHook(appRoot);
+    expect(result.status, result.stderr).toBe(0);
+    const link = path.join(appRoot, "usr", "bin", "danibot");
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(link)).toBe(path.join(appRoot, "danibot"));
   });
 });
