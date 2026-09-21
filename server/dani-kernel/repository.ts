@@ -222,6 +222,17 @@ export class DaniKernelRepository {
     return this.decodeProposal(row);
   }
 
+  proactiveProposalCard(id: string, ownerId: string) {
+    const proposal = this.proactiveProposal(id, ownerId);
+    return {
+      proposalId: proposal.id, botId: proposal.botId,
+      triggerSource: proposal.triggerSource as "routine" | "schedule" | "in-app-event",
+      triggerKind: proposal.triggerKind, reason: proposal.reason, objective: proposal.objective,
+      evidenceReferences: proposal.evidenceReferences as string[], expiresAt: proposal.expiresAt,
+      status: proposal.status as "pending" | "snoozed" | "dismissed" | "accepted" | "expired", ...(proposal.acceptedJobId ? { acceptedJobId: proposal.acceptedJobId } : {}),
+    };
+  }
+
   listProactiveProposals(ownerId: string, threadId?: string) {
     const rows = (threadId
       ? this.db.prepare("SELECT * FROM kernel_proposals WHERE owner_id=? AND thread_id=? ORDER BY created_at,id").all(ownerId, threadId)
@@ -245,8 +256,11 @@ export class DaniKernelRepository {
   }
 
   releaseSnoozedProposals(at = new Date()) {
-    return Number(this.db.prepare("UPDATE kernel_proposals SET status='pending',snoozed_until=NULL,updated_at=? WHERE status='snoozed' AND snoozed_until<=?")
-      .run(at.toISOString(), at.toISOString()).changes);
+    const due = this.db.prepare("SELECT id,owner_id FROM kernel_proposals WHERE status='snoozed' AND snoozed_until<=? ORDER BY snoozed_until,id")
+      .all(at.toISOString()) as Array<{ id: string; owner_id: string }>;
+    this.db.prepare("UPDATE kernel_proposals SET status='pending',snoozed_until=NULL,updated_at=? WHERE status='snoozed' AND snoozed_until<=?")
+      .run(at.toISOString(), at.toISOString());
+    return due.map(row => this.proactiveProposal(row.id, row.owner_id));
   }
 
   acceptProactiveProposal(id: string, ownerId: string) {

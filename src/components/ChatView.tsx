@@ -46,6 +46,7 @@ import { liveActivityLabel } from "@/lib/live-activity";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { OptionCard, shouldHideOnboardingCard } from "./OptionCard";
 import { ApprovalCard } from "./ApprovalCard";
+import { ProactiveProposalCard } from "./ProactiveProposalCard";
 import { Composer } from "./Composer";
 import { ChatFindBar } from "./ChatFindBar";
 import { ReplyQuote } from "./ReplyQuote";
@@ -753,6 +754,8 @@ const MessagesList = memo(function MessagesList({
               }
               if (shouldHideOnboardingCard(m, transcript)) return null;
               return <OptionCard botId={bot.id} message={m} />;
+            case "proactive.proposal":
+              return <ProactiveProposalCard message={m} />;
             case "routine.run": {
               const executionThreadId = m.routineRun?.executionThreadId;
               const canOpen = hasRoutineExecutionTask(bot.tasks, executionThreadId);

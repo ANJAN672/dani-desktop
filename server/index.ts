@@ -1152,9 +1152,39 @@ function checkedMemberIds(value: unknown): { ok: true; memberIds: string[] } | {
 }
 let bootSelection = { instanceId: "", model: "" };
 const store = new Store(() => bootSelection);
+function projectProactiveProposal(proposalId: string, ownerId: string, botId: string, threadId: string) {
+  if (!executionKernel || ownerId !== botId || !store.bot(botId) || !store.taskByThread(botId, threadId)) return;
+  const existing = store.messagesFor(threadId).find(message => message.proactiveProposal?.proposalId === proposalId);
+  if (existing) {
+    store.patchMessage(threadId, existing.id, { proactiveProposal: executionKernel.repository.proactiveProposalCard(proposalId, ownerId) });
+    return;
+  }
+  store.appendMessage(threadId, {
+    role: "bot",
+    kind: "proactive.proposal",
+    proactiveProposal: executionKernel.repository.proactiveProposalCard(proposalId, ownerId),
+  });
+}
+function attachProactiveProposalListener() {
+  executionKernel?.proactive.setProposalListener((proposalId, input) => {
+    try { projectProactiveProposal(proposalId, input.ownerId, input.botId, input.threadId); }
+    catch (error) { console.error("proactive: transcript projection failed", error); }
+  });
+}
+function reconcileProactiveProposalCards() {
+  if (!executionKernel) return;
+  for (const bot of store.bots) {
+    for (const proposal of executionKernel.repository.listProactiveProposals(bot.id)) {
+      try { projectProactiveProposal(proposal.id, proposal.ownerId, proposal.botId, proposal.threadId); }
+      catch (error) { console.error("proactive: transcript reconciliation failed", error); }
+    }
+  }
+}
 const sendSequencer = new SendSequencer();
 bootSelection = await defaultSelection();
 store.seedIfEmpty();
+attachProactiveProposalListener();
+reconcileProactiveProposalCards();
 // A committed profile cleanup means both its config deletion and bot-reference
 // cleanup were intended to be durable. Reconcile stale secondary references
 // before Electron can ACK and remove the journal: a crash between those writes
@@ -3767,6 +3797,9 @@ async function startTurn(
     /** Stable identity supplied by the composer so a network retry cannot
      * dispatch the same user action twice. */
     sendId?: string;
+    /** A proactive acceptance already owns an admitted kernel job. Reuse it
+     * instead of admitting a shadow job for the provider turn. */
+    kernelJob?: { jobId: string; generation: number };
     onDispatchError?: (message: string) => void;
   },
 ) {
@@ -4322,16 +4355,20 @@ async function startTurn(
       let kernelJob: { jobId: string; generation: number } | null = null;
       const dispatchPromise = instance.driverKind === "hermesAgent" && executionKernel
         ? (() => {
-            const admitted = executionKernel!.admit({
-              ownerId: bot.id,
-              objective: resolvedImages.text,
-              originatingRequestId: opts?.sendId ?? userMessage.id,
-              turnId: userMessage.id,
-              provider: "hermesAgent",
-              threadId,
-              providerCursor: resumeCursor == null ? null : String(resumeCursor),
-            });
-            kernelJob = { jobId: String(admitted.id), generation: Number(admitted.generation) };
+            if (opts?.kernelJob) {
+              kernelJob = opts.kernelJob;
+            } else {
+              const admitted = executionKernel!.admit({
+                ownerId: bot.id,
+                objective: resolvedImages.text,
+                originatingRequestId: opts?.sendId ?? userMessage.id,
+                turnId: userMessage.id,
+                provider: "hermesAgent",
+                threadId,
+                providerCursor: resumeCursor == null ? null : String(resumeCursor),
+              });
+              kernelJob = { jobId: String(admitted.id), generation: Number(admitted.generation) };
+            }
             kernelThreadJobs.set(threadId, kernelJob);
             const { threadId: _threadId, resumeCursor: _resumeCursor, ...kernelTurn } = turnInput;
             return executionKernel!.dispatchPlan(kernelJob.jobId, kernelJob.generation, {
@@ -4538,6 +4575,26 @@ function syncRoutineRunToSource(run: RoutineRun): string | null {
   if (statusChanged && ["waiting", "completed", "failed", "missed"].includes(run.status)) {
     if (source.group) store.patchGroup(source.group.id, { unread: true });
     else store.patchBot(source.bot.id, { unread: true });
+  }
+  // A completed scheduled run is a real in-app event. It may suggest a
+  // follow-up without changing the routine's established execution semantics.
+  // Only Hermes bots are eligible because acceptance must reuse the admitted
+  // kernel job all the way through the provider path.
+  const instance = registry.get(source.bot.modelSelection.instanceId);
+  if (statusChanged && run.status === "completed" && run.triggerSource === "schedule" && instance?.driverKind === "hermesAgent") {
+    const occurredAt = new Date(run.finishedAt ?? Date.now());
+    executionKernel?.proactive.fireInAppEvent({
+      ownerId: source.bot.id,
+      botId: source.bot.id,
+      threadId: sourceThreadId,
+      triggerKey: `routine-completed:${run.id}`,
+      triggerKind: "routine-completion-follow-up",
+      reason: `The scheduled routine “${redactSecretsInText(run.routineName)}” completed and may need follow-up.`,
+      objective: `Review the completed routine “${redactSecretsInText(run.routineName)}” and handle any useful follow-up.`,
+      evidenceReferences: [`routine-run:${run.id}`],
+      occurredAt: occurredAt.toISOString(),
+      expiresAt: new Date(occurredAt.getTime() + 24 * 60 * 60_000).toISOString(),
+    }, occurredAt);
   }
   return sourceThreadId;
 }
@@ -7164,6 +7221,8 @@ async function reloadProviders() {
   await registry.load(instanceConfigs(cfg));
   bus.attach(registry.instances());
   executionKernel = createExecutionKernel();
+  attachProactiveProposalListener();
+  reconcileProactiveProposalCards();
   // A killed turn's terminal events can die with the old fleet (dispose is
   // async under the hood), stranding the bot busy — and its screen poller —
   // forever. Settle anything still marked busy.
@@ -11265,6 +11324,63 @@ const server = createServer(async (req, res) => {
       if (!packagedKernelSmoke) return json(res, 404, { error: "packaged kernel smoke disabled" });
       try { return json(res, 200, await packagedKernelSmoke); }
       catch (error) { return json(res, 500, { error: error instanceof Error ? error.message : String(error) }); }
+    }
+
+    m = path.match(/^\/api\/proactive\/bots\/([A-Za-z0-9-]+)\/proposals$/);
+    if (m && method === "GET") {
+      if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
+      const bot = store.bot(m[1]);
+      if (!bot) return json(res, 404, { error: "no such bot" });
+      return json(res, 200, { proposals: executionKernel.repository.listProactiveProposals(bot.id, url.searchParams.get("threadId") ?? undefined) });
+    }
+
+    m = path.match(/^\/api\/proactive\/proposals\/([A-Za-z0-9-]+)\/(accept|dismiss|snooze)$/);
+    if (m && method === "POST") {
+      if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
+      const proposalId = m[1], action = m[2];
+      const proposal = executionKernel.repository.db.prepare(
+        "SELECT owner_id,bot_id,thread_id FROM kernel_proposals WHERE id=?",
+      ).get(proposalId) as { owner_id: string; bot_id: string; thread_id: string } | undefined;
+      const bot = proposal && proposal.owner_id === proposal.bot_id ? store.bot(proposal.bot_id) : undefined;
+      if (!proposal || !bot || !store.taskByThread(bot.id, proposal.thread_id)) {
+        return json(res, 404, { error: "proactive proposal not found" });
+      }
+      try {
+        let accepted: ReturnType<typeof executionKernel.repository.acceptProactiveProposal> | undefined;
+        if (action === "accept") {
+          if (registry.get(bot.modelSelection.instanceId)?.driverKind !== "hermesAgent") {
+            return json(res, 409, { error: "this proposal's execution engine is no longer available" });
+          }
+          accepted = executionKernel.repository.acceptProactiveProposal(proposalId, proposal.owner_id);
+        } else if (action === "dismiss") {
+          executionKernel.repository.dismissProactiveProposal(proposalId, proposal.owner_id);
+        } else {
+          const body = await readBody(req, 4_096);
+          const until = typeof body?.until === "string" ? body.until : "";
+          const snoozeAt = Date.parse(until);
+          if (!Number.isFinite(snoozeAt) || snoozeAt <= Date.now() || snoozeAt > Date.now() + 30 * 24 * 60 * 60_000) {
+            return json(res, 400, { error: "until must be a valid future time within 30 days" });
+          }
+          executionKernel.repository.snoozeProactiveProposal(proposalId, proposal.owner_id, new Date(snoozeAt).toISOString());
+        }
+        const card = executionKernel.repository.proactiveProposalCard(proposalId, proposal.owner_id);
+        const current = store.messagesFor(proposal.thread_id).find(message => message.proactiveProposal?.proposalId === proposalId);
+        if (current) store.patchMessage(proposal.thread_id, current.id, { proactiveProposal: card });
+        // An accepted-but-not-started job is restart/retry work, not a
+        // duplicate effect. startTurn claims the bot synchronously, so two
+        // concurrent HTTP retries cannot both dispatch this admitted job.
+        if (accepted && String(accepted.job.status) === "admitted" && !store.bot(bot.id)?.busy) {
+          void startTurn(bot.id, accepted.proposal.objective, {
+            threadId: proposal.thread_id,
+            cardContinuation: true,
+            kernelJob: { jobId: String(accepted.job.id), generation: Number(accepted.job.generation) },
+            onDispatchError: (message) => void executionKernel?.cancel(String(accepted!.job.id), message).catch(() => {}),
+          }).catch((error) => {
+            void executionKernel?.cancel(String(accepted!.job.id), error instanceof Error ? error.message : String(error)).catch(() => {});
+          });
+        }
+        return json(res, 200, { proposal: card });
+      } catch (error) { return json(res, 409, { error: error instanceof Error ? error.message : String(error) }); }
     }
 
     m = path.match(/^\/api\/kernel\/threads\/([A-Za-z0-9-]+)\/diagnostic$/);

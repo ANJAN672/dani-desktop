@@ -13,7 +13,9 @@ export type TriggerEvaluation =
  * proposal ledger and durably parks quiet-hour work in that same database. */
 export class ProactiveTriggerEvaluator {
   private readonly repository: DaniKernelRepository;
+  private onProposal: ((proposalId: string, input: ProactiveTriggerInput) => void) | null = null;
   constructor(repository: DaniKernelRepository) { this.repository = repository; }
+  setProposalListener(listener: ((proposalId: string, input: ProactiveTriggerInput) => void) | null) { this.onProposal = listener; }
 
   fireSchedule(input: Omit<ProactiveTriggerInput, "triggerSource">, at = new Date()) {
     return this.evaluate({ ...input, triggerSource: "schedule" }, at);
@@ -50,7 +52,20 @@ export class ProactiveTriggerEvaluator {
   }
 
   releaseDue(at = new Date()): TriggerEvaluation[] {
-    this.repository.releaseSnoozedProposals(at);
+    const snoozed = this.repository.releaseSnoozedProposals(at);
+    for (const proposal of snoozed) this.emitProposal(proposal.id, {
+      ownerId: proposal.ownerId,
+      botId: proposal.botId,
+      threadId: proposal.threadId,
+      triggerSource: proposal.triggerSource as ProactiveTriggerInput["triggerSource"],
+      triggerKey: proposal.triggerKey,
+      triggerKind: proposal.triggerKind,
+      reason: proposal.reason,
+      objective: proposal.objective,
+      evidenceReferences: proposal.evidenceReferences,
+      occurredAt: proposal.createdAt,
+      expiresAt: proposal.expiresAt,
+    });
     const rows = this.repository.db.prepare("SELECT * FROM kernel_proactive_queue WHERE state='queued' AND not_before<=? ORDER BY created_at,id")
       .all(at.toISOString()) as QueueRow[];
     return rows.map(row => {
@@ -80,7 +95,13 @@ export class ProactiveTriggerEvaluator {
   private propose(input: ProactiveTriggerInput, at: Date): TriggerEvaluation {
     const created = this.repository.createProactiveProposal({ ...input, createdAt: at.toISOString() });
     if (!created.proposal) return this.rememberSuppression(input, created.suppressed ?? "suppressed", at);
+    if (!created.duplicate) this.emitProposal(created.proposal.id, input);
     return { state: "proposed", proposalId: created.proposal.id, duplicate: created.duplicate };
+  }
+
+  private emitProposal(proposalId: string, input: ProactiveTriggerInput) {
+    try { this.onProposal?.(proposalId, input); }
+    catch (error) { console.error("proactive: proposal listener failed", error); }
   }
 
   private queue(input: ProactiveTriggerInput, notBefore: Date, at: Date): TriggerEvaluation {

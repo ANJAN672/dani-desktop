@@ -21,6 +21,7 @@ import type { RoutineRequestCardData } from "../shared/routine-request.ts";
 import type { RoutineRunCardData } from "../shared/routine-run.ts";
 import type { SkillRequestCardData } from "../shared/skill-request.ts";
 import type { GroupGoalRunCardData } from "../shared/group-goal-run.ts";
+import type { ProactiveProposalCardData } from "../shared/proactive-proposal.ts";
 
 export type MascotColor =
   | "green"
@@ -99,7 +100,7 @@ export interface SecretRequestCardData {
 export interface Message {
   id: string;
   role: "bot" | "user";
-  kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "routine.run" | "goal.run";
+  kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "routine.run" | "goal.run" | "proactive.proposal";
   text?: string;
   /** Durable provider output stored by the harness. Paths always point into
    * Dani Bot's private attachment directory; renderers receive only the
@@ -113,6 +114,8 @@ export interface Message {
   routineRun?: RoutineRunCardData;
   /** Terminal receipt for a bounded multi-bot channel goal. */
   goalRun?: GroupGoalRunCardData;
+  /** Durable proactive suggestion. All decisions are executed server-side. */
+  proactiveProposal?: ProactiveProposalCardData;
   /** activity messages: tool name + outcome. `spoken` is the same chip as
    * a phrase a voice can read ("reading a file") — computed once here so
    * call mode never has to re-derive it from the raw tool name, and absent
