@@ -118,12 +118,17 @@ import {
   DATA_DIR,
   EVENTS_DIR,
   NATIVE_DIR,
-  customMcpServers, proactiveEnabled, withMeteredAcknowledgement } from "./config.ts";
+  customMcpServers, proactiveEnabled, layaEnabled, layaRoutingEnabled, layaShadowEnabled, withMeteredAcknowledgement } from "./config.ts";
 import { meteredConsentRefusal, turnBilling } from "./metered-consent.ts";
 import { ComputerControl } from "./computer-control.ts";
 import { DaniExecutionKernel } from "./dani-kernel/kernel.ts";
 import { DaniKernelRepository } from "./dani-kernel/repository.ts";
 import { runPackagedKernelProfileSmoke } from "./dani-kernel/packaged-profile-smoke.ts";
+import { LayaShadow } from "./laya-shadow.ts";
+import { LayaDecisionService } from "./laya/service.ts";
+import { LayaDecisionShadowScorer, routeShadowCandidates } from "./laya/shadow-scorer.ts";
+import { DaniTaskRouter } from "./laya/router.ts";
+import { LAYA_TYPED_DECISIONS, layaCheckpointBySubfolder } from "./laya/manifest.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
@@ -472,6 +477,35 @@ function createExecutionKernel(): DaniExecutionKernel | null {
   return kernel;
 }
 executionKernel = createExecutionKernel();
+// spec 100: the Laya stack exists only while its gate is open, and is torn
+// down with the kernel on every config reload. All three gates (service,
+// shadow, routing) default off; Hermes stays authoritative without them.
+let layaService: LayaDecisionService | null = null;
+let layaShadow: LayaShadow | null = null;
+let layaRouter: DaniTaskRouter | null = null;
+function createLayaStack(): void {
+  if (!layaEnabled(cfg)) return;
+  const checkpoint = layaCheckpointBySubfolder(cfg.laya?.checkpoint ?? "typed-decisions") ?? LAYA_TYPED_DECISIONS;
+  layaService = new LayaDecisionService({
+    checkpoint,
+    cacheDir: join(DATA_DIR, "laya"),
+    device: cfg.laya?.device,
+    minConfidence: cfg.laya?.minConfidence,
+    minActProbability: cfg.laya?.minActProbability,
+    logger: (line) => console.warn(`[laya] ${line}`),
+  });
+  if (layaShadowEnabled(cfg))
+    layaShadow = new LayaShadow(join(DATA_DIR, "laya-shadow.sqlite"), new LayaDecisionShadowScorer(layaService));
+  layaRouter = new DaniTaskRouter(layaService, { routingEnabled: () => layaRoutingEnabled(cfg) });
+}
+async function closeLayaStack(): Promise<void> {
+  layaRouter = null;
+  layaShadow?.close();
+  layaShadow = null;
+  await layaService?.close().catch(() => undefined);
+  layaService = null;
+}
+createLayaStack();
 const proactiveReleaseTimer = setInterval(() => {
   if (proactiveEnabled(cfg)) executionKernel?.proactive.releaseDue(new Date());
 }, 60_000);
@@ -4409,6 +4443,35 @@ async function startTurn(
               kernelJob = { jobId: String(admitted.id), generation: Number(admitted.generation) };
             }
             kernelThreadJobs.set(threadId, kernelJob);
+            // spec 100 R6: shadow-score the route Hermes is about to take
+            // with the real checkpoint, logged to the SQLite shadow ledger.
+            // Fire-and-forget: never blocks, delays, or alters the turn.
+            if (layaShadow && kernelJob && layaService?.status().installed) {
+              void layaShadow
+                .observe(resolvedImages.text, routeShadowCandidates(computerKind != null), "hermes_general")
+                .catch(() => undefined);
+            }
+            // spec 100 R7: the routing seam. The bounded CUA controller is
+            // not wired yet, so a bounded_cua decision only logs today and
+            // Hermes keeps the turn. The seam, gate, and fallback are live.
+            if (layaRouter && kernelJob && layaRoutingEnabled(cfg)) {
+              const routedJob = kernelJob;
+              void layaRouter
+                .route({
+                  taskId: routedJob.jobId,
+                  traceId: opts?.sendId ?? userMessage.id,
+                  objective: resolvedImages.text,
+                  stateSummary: `bot computer surface: ${computerKind ?? "none"}`,
+                  cuaAvailable: computerKind != null,
+                })
+                .then((route) => {
+                  if (route.route === "bounded_cua")
+                    console.warn(
+                      `[laya-router] bounded_cua chosen (${route.reason}) but the bounded CUA controller is not wired yet; Hermes keeps the turn`,
+                    );
+                })
+                .catch(() => undefined);
+            }
             const { threadId: _threadId, resumeCursor: _resumeCursor, ...kernelTurn } = turnInput;
             return executionKernel!.dispatchPlan(kernelJob.jobId, kernelJob.generation, {
               text: kernelTurn.text,
@@ -7261,10 +7324,12 @@ async function reloadProviders() {
   await executionKernel?.close();
   executionKernel = null;
   kernelThreadJobs = new Map();
+  await closeLayaStack();
   await registry.disposeAll();
   await registry.load(instanceConfigs(cfg));
   bus.attach(registry.instances());
   executionKernel = createExecutionKernel();
+  createLayaStack();
   attachProactiveProposalListener();
   reconcileProactiveProposalCards();
   // A killed turn's terminal events can die with the old fleet (dispose is

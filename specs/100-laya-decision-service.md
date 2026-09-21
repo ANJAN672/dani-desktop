@@ -161,3 +161,23 @@ R8. **Honest validation.** No fake tests, no mocked-model green suites.
   `pip install laya==0.3.5`, then the sidecar `load` + `predict` requests
   against the verified snapshot dir. Target laptops (8-32 GB) clear this
   easily; CPU-only is supported by the SDK with graceful device fallback.
+
+## Slice 3 + 4 landed (2026-09-22)
+
+- R6 shadow wiring: `server/laya/shadow-scorer.ts` adapts the real
+  DecisionProvider to the existing SQLite shadow ledger
+  (`server/laya-shadow.ts`); `server/index.ts` fire-and-forget shadow-scores
+  every admitted Hermes chat turn's route when `features.laya` +
+  `features.layaShadow` are on and the checkpoint is installed. It never
+  blocks, delays, or alters the turn. Pre-existing fix folded in:
+  `laya-shadow.ts` used a TS parameter property that crashes the strip-types
+  server; now runtime-safe (this was latent because the module was imported
+  nowhere).
+- R7 routing seam: `server/laya/router.ts` (DaniTaskRouter) decides
+  bounded_cua vs hermes_general at admission with margin and abstain policy
+  (7 policy tests). Wired in `server/index.ts` behind `features.layaRouting`.
+  The bounded CUA controller is NOT yet wired: a bounded_cua decision logs
+  and Hermes keeps the turn. Remaining before the seam can execute: the
+  bounded controller itself (state -> enumerated candidates -> Laya score ->
+  guarded computer adapter -> verify), hardware-verified CUA loop, and
+  shadow-data-derived thresholds.
