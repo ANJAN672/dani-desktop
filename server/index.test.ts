@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createServer, request, type Server } from "node:http";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8014,7 +8014,11 @@ describe("instance CLI override API", () => {
   });
 
   it("reports a missing binary as a failed probe with install info", async () => {
-    const res = await api("POST", "/api/cli-test", { cli: "/no/such/binary-anywhere", driver: "claudeAgent" });
+    const res = await api("POST", "/api/cli-test", {
+      cli: "/no/such/binary-anywhere",
+      driver: "claudeAgent",
+      explicitCustomPath: true,
+    });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(false);
     expect(res.body.message).toContain("isn't installed");
@@ -8028,7 +8032,7 @@ describe("instance CLI override API", () => {
       `if (process.argv.slice(2).join(" ") !== "fixed --version") process.exit(9);\nif (process.env.COMPOSIO_API_KEY) process.exit(8);\nconsole.log("wrapper-ok");\n`,
     );
     const cli = `${JSON.stringify(process.execPath)} ${JSON.stringify(script)} fixed`;
-    const res = await api("POST", "/api/cli-test", { cli });
+    const res = await api("POST", "/api/cli-test", { cli, explicitCustomPath: true });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, version: "wrapper-ok" });
   });
@@ -8037,11 +8041,66 @@ describe("instance CLI override API", () => {
     const script = join(home, "cli-noisy-probe.mjs");
     writeFileSync(script, `process.stdout.write("x".repeat(70 * 1024));\n`);
     const cli = `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`;
-    const res = await api("POST", "/api/cli-test", { cli, driver: "claudeAgent" });
+    const res = await api("POST", "/api/cli-test", { cli, driver: "claudeAgent", explicitCustomPath: true });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(false);
     expect(res.body.message).toContain("more than 64 KiB");
     expect(res.body.install).toBeUndefined();
+  });
+
+  it("rejects a custom path without explicit user selection", async () => {
+    // no owner-token-less local caller may probe an arbitrary executable:
+    // without explicitCustomPath the request never reaches the spawner
+    const res = await api("POST", "/api/cli-test", { cli: "/no/such/binary-anywhere", driver: "claudeAgent" });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("explicit user selection");
+  });
+
+  it("probes a custom path once the user explicitly selected it", async () => {
+    const script = join(home, "cli-custom-probe.mjs");
+    writeFileSync(script, `console.log("custom-ok");\n`);
+    const res = await api("POST", "/api/cli-test", {
+      cli: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`,
+      explicitCustomPath: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, version: "custom-ok" });
+  });
+
+  it("probes a known adapter name without the custom-path flag", async () => {
+    // "claude" is a built-in driver's default CLI: the allowlist lane needs
+    // no explicit selection. Whether or not it is installed here, the
+    // request must reach the probe (200) rather than be rejected (403).
+    const res = await api("POST", "/api/cli-test", { cli: "claude", driver: "claudeAgent" });
+    expect(res.status).toBe(200);
+    expect(typeof res.body.ok).toBe("boolean");
+  });
+
+  it("rejects traversal in the probed executable", async () => {
+    const res = await api("POST", "/api/cli-test", {
+      cli: "/usr/bin/../bin/definitely-not-a-cli",
+      explicitCustomPath: true,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("..");
+  });
+
+  it("resolves symlinks before the allowlist/custom decision", async () => {
+    const target = join(home, "cli-symlink-target.mjs");
+    writeFileSync(target, `console.log("link-ok");\n`);
+    const link = join(home, "cli-symlink-probe.mjs");
+    try { unlinkSync(link); } catch { /* fresh home dir */ }
+    symlinkSync(target, link);
+    // the symlink path is not an allowlisted adapter, so it still needs the
+    // explicit flag — but canonicalization must not break the probe itself
+    const denied = await api("POST", "/api/cli-test", { cli: link });
+    expect(denied.status).toBe(403);
+    const allowed = await api("POST", "/api/cli-test", {
+      cli: `${JSON.stringify(process.execPath)} ${JSON.stringify(link)}`,
+      explicitCustomPath: true,
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toMatchObject({ ok: true, version: "link-ok" });
   });
 
   it("updates only the configured Claude instance and verifies its version", async () => {
