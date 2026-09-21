@@ -9,4 +9,6 @@ export interface ProactiveProposalCardData {
   expiresAt: string;
   status: "pending" | "snoozed" | "dismissed" | "accepted" | "expired";
   acceptedJobId?: string;
+  jobStatus?: "admitted" | "running" | "waiting" | "completed" | "failed" | "cancelled" | "uncertain";
+  report?: string;
 }

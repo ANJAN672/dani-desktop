@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Coins, FlaskConical, Globe, KeyRound, Monitor, Search, TabletSmartphone, Terminal, Trash2, User, X } from "lucide-react";
 import { api, useStore, type AppSettingsSection, type ConfigStatus } from "@/state/store";
 import { analyticsEnabled, setAnalyticsEnabled } from "@/lib/analytics";
-import { builtInBrowserEnabled, showToolCallsEnabled, skillRecorderEnabled } from "@/lib/feature-flags";
+import { builtInBrowserEnabled, proactiveEnabled, showToolCallsEnabled, skillRecorderEnabled } from "@/lib/feature-flags";
 import { localeChoices } from "@/locales";
 import { ApiKeyRow, VpsConnection } from "./ApiKeys";
 import { useUpdaterState } from "@/lib/updater";
@@ -243,12 +243,13 @@ function ExperimentalFeaturesRow() {
   const { state, dispatch } = useStore();
   const skillRecorder = skillRecorderEnabled(state.config);
   const browser = builtInBrowserEnabled(state.config);
+  const proactive = proactiveEnabled(state.config);
   const desktopBrowser = Boolean(window.dani?.browser);
   const browserBlockedOnWindows = window.dani?.platform === "win32" && !desktopBrowser;
-  const [saving, setSaving] = useState<"skillRecorder" | "browser" | null>(null);
+  const [saving, setSaving] = useState<"skillRecorder" | "browser" | "proactive" | null>(null);
   const [error, setError] = useState("");
 
-  const toggle = async (feature: "skillRecorder" | "browser", next: boolean) => {
+  const toggle = async (feature: "skillRecorder" | "browser" | "proactive", next: boolean) => {
     if (saving) return;
     setSaving(feature);
     setError("");
@@ -303,6 +304,21 @@ function ExperimentalFeaturesRow() {
           aria-label="Enable the built-in browser"
           disabled={saving !== null || (!browser && !desktopBrowser)}
           onClick={() => void toggle("browser", !browser)}
+          className="disabled:cursor-wait disabled:opacity-50"
+        />
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-hairline/30 pt-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-medium text-ink">Proactive suggestions</div>
+          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+            Let supported bots suggest follow-up after real scheduled work. Nothing runs until you accept.
+          </div>
+        </div>
+        <Switch
+          checked={proactive}
+          aria-label="Enable proactive suggestions"
+          disabled={saving !== null}
+          onClick={() => void toggle("proactive", !proactive)}
           className="disabled:cursor-wait disabled:opacity-50"
         />
       </div>

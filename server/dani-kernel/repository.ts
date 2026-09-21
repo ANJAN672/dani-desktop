@@ -229,7 +229,11 @@ export class DaniKernelRepository {
       triggerSource: proposal.triggerSource as "routine" | "schedule" | "in-app-event",
       triggerKind: proposal.triggerKind, reason: proposal.reason, objective: proposal.objective,
       evidenceReferences: proposal.evidenceReferences as string[], expiresAt: proposal.expiresAt,
-      status: proposal.status as "pending" | "snoozed" | "dismissed" | "accepted" | "expired", ...(proposal.acceptedJobId ? { acceptedJobId: proposal.acceptedJobId } : {}),
+      status: proposal.status as "pending" | "snoozed" | "dismissed" | "accepted" | "expired",
+      ...(proposal.acceptedJobId ? {
+        acceptedJobId: proposal.acceptedJobId,
+        jobStatus: String(this.job(proposal.acceptedJobId).status) as "admitted" | "running" | "waiting" | "completed" | "failed" | "cancelled" | "uncertain",
+      } : {}),
     };
   }
 
@@ -486,6 +490,19 @@ export class DaniKernelRepository {
     const result = this.db.prepare(`UPDATE kernel_jobs SET status=?,provider_cursor=COALESCE(?,provider_cursor),updated_at=?
       WHERE id=? AND generation=? AND status='running'`).run(nextStatus, providerCursor ?? null, at, jobId, generation);
     if (result.changes === 1) this.event(jobId, null, `provider.${outcome}`, { generation });
+    return this.job(jobId);
+  }
+
+  completeJobWithoutEffects(jobId: string, generation: number) {
+    const job = this.job(jobId);
+    if (Number(job.generation) !== generation) throw new Error("stale cancellation generation");
+    const openEffects = Number((this.db.prepare("SELECT COUNT(*) c FROM kernel_effects WHERE job_id=? AND state!='completed'")
+      .get(jobId) as { c: number }).c);
+    if (openEffects) throw new Error("job still has unfinished effects");
+    const at = now();
+    const result = this.db.prepare("UPDATE kernel_jobs SET status='completed',updated_at=? WHERE id=? AND generation=? AND status='running'")
+      .run(at, jobId, generation);
+    if (result.changes === 1) this.event(jobId, null, "job.completed", { generation, effectCount: 0 });
     return this.job(jobId);
   }
 

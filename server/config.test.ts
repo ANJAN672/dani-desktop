@@ -13,6 +13,7 @@ import { customMcpServers,
   localVmMode,
   parseConfigPatch,
   parseStoredConfig,
+  proactiveEnabled,
   roomTurnTimeoutMinutes,
   showToolCallsEnabled,
   saveConfig,
@@ -317,6 +318,10 @@ describe("configuration boundaries", () => {
     expect(parseConfigPatch({ features: { browser: false } })).toEqual({ features: { browser: false } });
     expect(builtInBrowserEnabled({ features: { browser: false } })).toBe(false);
     expect(builtInBrowserEnabled({ features: { browser: true } })).toBe(true);
+    // proactive initiation is a separate rollout gate and remains default-off
+    expect(proactiveEnabled({})).toBe(false);
+    expect(parseConfigPatch({ features: { proactive: true } })).toEqual({ features: { proactive: true } });
+    expect(proactiveEnabled({ features: { proactive: true } })).toBe(true);
     // named browser profiles: the list is the unit, ids are partition-safe
     expect(parseConfigPatch({ browserProfiles: [{ id: "work", name: " Work " }] })).toEqual({
       browserProfiles: [{ id: "work", name: "Work" }],

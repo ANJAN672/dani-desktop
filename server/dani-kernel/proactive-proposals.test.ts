@@ -57,6 +57,29 @@ describe("kernel proactive proposal ledger", () => {
     repo.close();
   });
 
+  it("completes an accepted no-effect job with a truthful card status", () => {
+    const { repo } = open();
+    const created = proposal(repo).proposal!;
+    const accepted = repo.acceptProactiveProposal(created.id, "owner-1");
+    repo.beginTurn(String(accepted.job.id), 1);
+    repo.finishProviderTurn(String(accepted.job.id), 1, "completed");
+    expect(repo.proactiveProposalCard(created.id, "owner-1")).toMatchObject({ status: "accepted", jobStatus: "running" });
+    repo.completeJobWithoutEffects(String(accepted.job.id), 1);
+    expect(repo.proactiveProposalCard(created.id, "owner-1")).toMatchObject({ status: "accepted", jobStatus: "completed" });
+    repo.close();
+  });
+
+  it("refuses to complete a job while an effect is unfinished", () => {
+    const { repo } = open();
+    const created = proposal(repo).proposal!;
+    const accepted = repo.acceptProactiveProposal(created.id, "owner-1");
+    repo.beginTurn(String(accepted.job.id), 1);
+    repo.finishProviderTurn(String(accepted.job.id), 1, "completed");
+    repo.proposeEffect({ jobId: String(accepted.job.id), generation: 1, idempotencyKey: "write", adapter: "browser", normalizedInput: { action: "submit" }, risk: "representation", resource: "form", audience: "vendor" });
+    expect(() => repo.completeJobWithoutEffects(String(accepted.job.id), 1)).toThrow("unfinished effects");
+    repo.close();
+  });
+
   it("backs up and migrates a v1 kernel without losing jobs", () => {
     const { root, repo } = open(); repo.admitJob({ ownerId: "owner-1", objective: "old", originatingRequestId: "old", turnId: "old", provider: "hermes", threadId: "old" });
     repo.db.exec("DROP TABLE kernel_proactive_queue; DROP TABLE kernel_proposals; DROP TABLE kernel_proactive_preferences; PRAGMA user_version=1"); repo.close();

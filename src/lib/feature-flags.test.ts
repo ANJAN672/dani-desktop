@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { builtInBrowserEnabled, showToolCallsEnabled, skillRecorderEnabled } from "./feature-flags";
+import { builtInBrowserEnabled, proactiveEnabled, showToolCallsEnabled, skillRecorderEnabled } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps Teach a skill hidden by default", () => {
@@ -18,6 +18,12 @@ describe("experimental feature flags", () => {
     expect(builtInBrowserEnabled({})).toBe(false);
     expect(builtInBrowserEnabled({ features: { browser: false } })).toBe(false);
     expect(builtInBrowserEnabled({ features: { browser: true } })).toBe(true);
+  });
+
+  it("keeps proactive serving default-off until explicit rollout opt-in", () => {
+    expect(proactiveEnabled(undefined)).toBe(false);
+    expect(proactiveEnabled({ features: { proactive: false } })).toBe(false);
+    expect(proactiveEnabled({ features: { proactive: true } })).toBe(true);
   });
 
   it("hides tool-call chips by default", () => {

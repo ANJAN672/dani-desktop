@@ -118,7 +118,7 @@ import {
   DATA_DIR,
   EVENTS_DIR,
   NATIVE_DIR,
-  customMcpServers, withMeteredAcknowledgement } from "./config.ts";
+  customMcpServers, proactiveEnabled, withMeteredAcknowledgement } from "./config.ts";
 import { meteredConsentRefusal, turnBilling } from "./metered-consent.ts";
 import { ComputerControl } from "./computer-control.ts";
 import { DaniExecutionKernel } from "./dani-kernel/kernel.ts";
@@ -472,7 +472,7 @@ function createExecutionKernel(): DaniExecutionKernel | null {
 }
 executionKernel = createExecutionKernel();
 const proactiveReleaseTimer = setInterval(() => {
-  executionKernel?.proactive.releaseDue(new Date());
+  if (proactiveEnabled(cfg)) executionKernel?.proactive.releaseDue(new Date());
 }, 60_000);
 proactiveReleaseTimer.unref?.();
 const packagedKernelSmoke = process.env.DANI_KERNEL_PROFILE_SMOKE === "1"
@@ -1166,19 +1166,40 @@ function projectProactiveProposal(proposalId: string, ownerId: string, botId: st
   });
 }
 function attachProactiveProposalListener() {
+  if (!proactiveEnabled(cfg)) {
+    executionKernel?.proactive.setProposalListener(null);
+    return;
+  }
   executionKernel?.proactive.setProposalListener((proposalId, input) => {
     try { projectProactiveProposal(proposalId, input.ownerId, input.botId, input.threadId); }
     catch (error) { console.error("proactive: transcript projection failed", error); }
   });
 }
 function reconcileProactiveProposalCards() {
-  if (!executionKernel) return;
+  if (!executionKernel || !proactiveEnabled(cfg)) return;
   for (const bot of store.bots) {
     for (const proposal of executionKernel.repository.listProactiveProposals(bot.id)) {
       try { projectProactiveProposal(proposal.id, proposal.ownerId, proposal.botId, proposal.threadId); }
       catch (error) { console.error("proactive: transcript reconciliation failed", error); }
     }
   }
+}
+function reportProactiveJob(threadId: string, jobId: string, status: "completed" | "failed" | "cancelled" | "uncertain", report?: string) {
+  if (!executionKernel) return;
+  kernelThreadJobs.delete(threadId);
+  const proposal = executionKernel.repository.db.prepare(
+    "SELECT id,owner_id FROM kernel_proposals WHERE accepted_job_id=?",
+  ).get(jobId) as { id: string; owner_id: string } | undefined;
+  if (!proposal) return;
+  const current = store.messagesFor(threadId).find(message => message.proactiveProposal?.proposalId === proposal.id);
+  if (!current) return;
+  store.patchMessage(threadId, current.id, {
+    proactiveProposal: {
+      ...executionKernel.repository.proactiveProposalCard(proposal.id, proposal.owner_id),
+      jobStatus: status,
+      ...(report?.trim() ? { report: redactSecretsInText(report).trim().slice(0, 2_000) } : {}),
+    },
+  });
 }
 const sendSequencer = new SendSequencer();
 bootSelection = await defaultSelection();
@@ -3154,6 +3175,20 @@ bus.subscribe((event: RuntimeEvent) => {
       }
       if (completedTurnId) store.markTerminalAssistantMessage(event.threadId, completedTurnId);
       const reply = lastReply.get(event.threadId) ?? "";
+      const proactiveJob = kernelThreadJobs.get(event.threadId);
+      if (proactiveJob) {
+        const stored = executionKernel?.repository.job(proactiveJob.jobId);
+        const status = String(stored?.status ?? (event.ok ? "completed" : "failed"));
+        if (status === "completed" || status === "failed" || status === "cancelled" || status === "uncertain") {
+          reportProactiveJob(event.threadId, proactiveJob.jobId, status, reply || event.stopReason || undefined);
+        } else if (event.ok) {
+          executionKernel?.repository.finishProviderTurn(proactiveJob.jobId, proactiveJob.generation, "completed");
+          executionKernel?.repository.completeJobWithoutEffects(proactiveJob.jobId, proactiveJob.generation);
+          reportProactiveJob(event.threadId, proactiveJob.jobId, "completed", reply);
+        } else {
+          reportProactiveJob(event.threadId, proactiveJob.jobId, "failed", event.stopReason || undefined);
+        }
+      }
       lastReply.delete(event.threadId);
       const lastReported = turnUsage.get(event.threadId);
       turnUsage.delete(event.threadId);
@@ -4581,7 +4616,7 @@ function syncRoutineRunToSource(run: RoutineRun): string | null {
   // Only Hermes bots are eligible because acceptance must reuse the admitted
   // kernel job all the way through the provider path.
   const instance = registry.get(source.bot.modelSelection.instanceId);
-  if (statusChanged && run.status === "completed" && run.triggerSource === "schedule" && instance?.driverKind === "hermesAgent") {
+  if (proactiveEnabled(cfg) && statusChanged && run.status === "completed" && run.triggerSource === "schedule" && instance?.driverKind === "hermesAgent") {
     const occurredAt = new Date(run.finishedAt ?? Date.now());
     executionKernel?.proactive.fireInAppEvent({
       ownerId: source.bot.id,
@@ -11326,6 +11361,10 @@ const server = createServer(async (req, res) => {
       catch (error) { return json(res, 500, { error: error instanceof Error ? error.message : String(error) }); }
     }
 
+    if (path.startsWith("/api/proactive/") && !proactiveEnabled(cfg)) {
+      return json(res, 404, { error: "proactive suggestions are disabled" });
+    }
+
     m = path.match(/^\/api\/proactive\/bots\/([A-Za-z0-9-]+)\/proposals$/);
     if (m && method === "GET") {
       if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
@@ -11988,6 +12027,10 @@ const server = createServer(async (req, res) => {
           for (const request of browserCleanupRequests) browserCleanup.abort(request);
         }
         throw error;
+      }
+      if (patch.features?.proactive !== undefined) {
+        attachProactiveProposalListener();
+        if (proactiveEnabled(cfg)) reconcileProactiveProposalCards();
       }
       let browserReferenceCleanupError: unknown = null;
       if (patch.browserProfiles !== undefined) {

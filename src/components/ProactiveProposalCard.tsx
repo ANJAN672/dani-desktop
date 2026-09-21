@@ -21,6 +21,7 @@ export function ProactiveProposalCard({ message }: { message: Message }) {
     finally { setPending(false); }
   };
   const settled = proposal.status !== "pending";
+  const terminal = proposal.jobStatus === "completed" || proposal.jobStatus === "failed" || proposal.jobStatus === "cancelled" || proposal.jobStatus === "uncertain";
   return <div className="w-full max-w-[840px] rounded-2xl border border-accent/40 bg-card p-4" aria-label={`Proactive suggestion: ${proposal.objective}`}>
     <div className="flex items-center gap-2 text-[15px] font-semibold text-ink"><BellRing size={16} className="text-accent" />Dani noticed something</div>
     <div className="mt-2 text-[13px] text-ink">{proposal.objective}</div>
@@ -32,8 +33,9 @@ export function ProactiveProposalCard({ message }: { message: Message }) {
       <button disabled={pending} className="rounded-lg px-3 py-2 text-[12px] text-ink-secondary disabled:opacity-50" onClick={() => void decide("dismiss")}>Dismiss</button>
     </div>}
     {error && <div role="alert" className="mt-2 text-[12px] text-danger">{error}</div>}
+    {proposal.report && <div className="mt-2 rounded-lg bg-inset px-3 py-2 text-[12.5px] text-ink-secondary">{proposal.report}</div>}
     <div className="mt-3 flex items-center gap-1.5 text-[13px] text-ink-secondary">
-      {proposal.status === "accepted" ? <><Check size={14} className="text-success" />Accepted</> : proposal.status === "snoozed" ? <><Clock3 size={14} />Snoozed</> : proposal.status === "dismissed" || proposal.status === "expired" ? <><X size={14} />{proposal.status === "expired" ? "Expired" : "Dismissed"}</> : <>Nothing runs until you accept. Consequential actions still require approval.</>}
+      {terminal ? <>{proposal.jobStatus === "completed" ? <Check size={14} className="text-success" /> : <X size={14} />}{proposal.jobStatus === "completed" ? "Completed" : proposal.jobStatus === "failed" ? "Failed" : proposal.jobStatus === "cancelled" ? "Cancelled" : "Outcome uncertain"}</> : proposal.status === "accepted" ? <><Clock3 size={14} />Working</> : proposal.status === "snoozed" ? <><Clock3 size={14} />Snoozed</> : proposal.status === "dismissed" || proposal.status === "expired" ? <><X size={14} />{proposal.status === "expired" ? "Expired" : "Dismissed"}</> : <>Nothing runs until you accept. Consequential actions still require approval.</>}
     </div>
   </div>;
 }

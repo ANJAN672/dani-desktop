@@ -1,5 +1,5 @@
 export interface FeatureFlagConfig {
-  features?: { skillRecorder?: boolean; showToolCalls?: boolean; browser?: boolean };
+  features?: { skillRecorder?: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean };
 }
 
 /** Experimental features are available only after an explicit opt-in. */
@@ -17,4 +17,9 @@ export function builtInBrowserEnabled(config: FeatureFlagConfig | null | undefin
  * shows that work is happening. */
 export function showToolCallsEnabled(config: FeatureFlagConfig | null | undefined): boolean {
   return config?.features?.showToolCalls === true;
+}
+
+/** Proactive initiation is rollout-gated and defaults off. */
+export function proactiveEnabled(config: FeatureFlagConfig | null | undefined): boolean {
+  return config?.features?.proactive === true;
 }
