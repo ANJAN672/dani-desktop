@@ -353,6 +353,8 @@ export interface ConfigStatus {
   features?: { skillRecorder: boolean; showToolCalls?: boolean; browser?: boolean };
   /** Named browser sessions any bot can be pointed at. */
   browserProfiles?: BrowserProfile[];
+  /** Explicit metered-use confirmations (spec 010 R8); never secret. */
+  meteredAcknowledgements?: Array<{ instanceId: string; model: string; acknowledgedAt: string }>;
 }
 
 export interface BrowserProfile {
@@ -365,7 +367,7 @@ export interface BrowserProfile {
 
 export type ConfigStatusFrame = Pick<
   ConfigStatus,
-  "xai" | "composio" | "box" | "vps" | "rooms" | "localVm" | "opencodeGo" | "tts" | "liveCall" | "imageGen" | "profile" | "language" | "features" | "browserProfiles"
+  "xai" | "composio" | "box" | "vps" | "rooms" | "localVm" | "opencodeGo" | "tts" | "liveCall" | "imageGen" | "profile" | "language" | "features" | "browserProfiles" | "meteredAcknowledgements"
 >;
 
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
@@ -383,6 +385,7 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     language: frame.language,
     features: frame.features,
     browserProfiles: frame.browserProfiles,
+    meteredAcknowledgements: frame.meteredAcknowledgements,
   };
 }
 
@@ -425,7 +428,19 @@ export interface InstanceInfo {
     /** a reported cost on a subscription is notional; the UI says so */
     billing?: "metered" | "subscription";
   };
-  models: { default: string; options: Array<{ id: string; label: string; custom?: boolean; loaded?: boolean; provider?: string }> };
+  models: {
+    default: string;
+    options: Array<{
+      id: string;
+      label: string;
+      custom?: boolean;
+      loaded?: boolean;
+      provider?: string;
+      /** Server policy cost class (spec 010 R8): metered models show the
+       * class and gate first use on explicit acknowledgement. */
+      billing?: "metered" | "subscription" | "local" | "unknown";
+    }>;
+  };
   capabilities?: {
     computerMcp?: boolean;
     agentsMcp?: boolean;
@@ -1499,7 +1514,14 @@ export async function api(path: string, init?: RequestInit): Promise<any> {
     ...init,
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    // status/code travel with the error so callers can branch on the
+    // machine-readable refusal (e.g. metered_consent_required), not text
+    const error = new Error(body.error ?? `${res.status} ${res.statusText}`) as Error & { status?: number; code?: string };
+    error.status = res.status;
+    if (typeof body.code === "string") error.code = body.code;
+    throw error;
+  }
   return body;
 }
 
@@ -1687,6 +1709,7 @@ const StoreContext = createContext<{
   flushBotPatches: (botId: string) => Promise<BotAnnouncement | null>;
   /** Re-fetch engine availability — after an install, without a restart. */
   refreshInstances: () => Promise<void>;
+  refreshConfig: () => Promise<void>;
   /** Explicit provider/network model discovery. */
   refreshModels: (instanceId: string) => Promise<void>;
 } | null>(null);
@@ -2637,6 +2660,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshConfig = useCallback(async () => {
+    try {
+      const config = await api("/api/config");
+      rawDispatch({ type: "configStatus", config });
+    } catch {
+      /* offline — the last known config stays */
+    }
+  }, []);
+
   const refreshModels = useCallback(async (instanceId: string) => {
     const { instances } = await api(`/api/instances/${encodeURIComponent(instanceId)}/refresh-models`, {
       method: "POST",
@@ -2665,8 +2697,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [botPatchQueue],
   );
   const value = useMemo(
-    () => ({ state, dispatch, flushBotPatches, refreshInstances, refreshModels }),
-    [state, dispatch, flushBotPatches, refreshInstances, refreshModels],
+    () => ({ state, dispatch, flushBotPatches, refreshInstances, refreshModels, refreshConfig }),
+    [state, dispatch, flushBotPatches, refreshInstances, refreshModels, refreshConfig],
   );
   return (
     <StoreContext.Provider value={value}>

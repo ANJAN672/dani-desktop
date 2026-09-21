@@ -119,7 +119,7 @@ import {
   EVENTS_DIR,
   NATIVE_DIR,
   customMcpServers, withMeteredAcknowledgement } from "./config.ts";
-import { meteredConsentRefusal } from "./metered-consent.ts";
+import { meteredConsentRefusal, turnBilling } from "./metered-consent.ts";
 import { ComputerControl } from "./computer-control.ts";
 import { DaniExecutionKernel } from "./dani-kernel/kernel.ts";
 import { DaniKernelRepository } from "./dani-kernel/repository.ts";
@@ -11302,10 +11302,13 @@ const server = createServer(async (req, res) => {
         if (action === "acknowledge-metered") {
           const target = registry.instances().find((candidate) => candidate.instanceId === instanceId);
           if (!target) return json(res, 404, { error: "unknown instance" });
-          if (target.billingClass !== "metered") return json(res, 400, { error: "this engine is not metered" });
           const body = await readBody(req);
           const model = typeof body?.model === "string" ? body.model.trim() : "";
           if (!model) return json(res, 400, { error: "model is required" });
+          // hermes bills per model via its provider policy, so the class is
+          // resolved for the exact model, not only the instance (same rule as
+          // the turn gate).
+          if (turnBilling(target, model) !== "metered") return json(res, 400, { error: "this engine/model is not metered" });
           saveConfig({ meteredAcknowledgements: withMeteredAcknowledgement(cfg, instanceId, model) });
           Object.assign(cfg, loadConfig());
           return json(res, 200, { ok: true, meteredAcknowledgements: cfg.meteredAcknowledgements ?? [] });

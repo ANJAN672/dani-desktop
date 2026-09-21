@@ -5,6 +5,7 @@
 // compatible — do not remove it); dispose tears an instance down without
 // touching its siblings.
 import { findCliCandidates } from "../env-path.ts";
+import { hermesProviderCapability } from "../hermes-provider-policy.ts";
 import type {
   AnyProviderDriver,
   InstanceConfigMap,
@@ -214,12 +215,25 @@ export class ProviderRegistry {
         } catch (e) {
           snapshot = { state: "unavailable", reason: e instanceof Error ? e.message : String(e) };
         }
+        // Hermes model ids are <provider>:<model>; the picker needs the
+        // policy cost class per option to label metered models and gate
+        // first use (spec 010 R8). One enrichment seam covers every catalog
+        // path the driver builds.
+        const models = inst.driverKind === "hermesAgent"
+          ? {
+              ...inst.models,
+              options: inst.models.options.map((option) => ({
+                ...option,
+                billing: option.billing ?? hermesProviderCapability(option.id).billing,
+              })),
+            }
+          : inst.models;
         return {
           instanceId: inst.instanceId,
           driverKind: inst.driverKind,
           displayName: inst.displayName ?? inst.driverKind,
           snapshot,
-          models: inst.models,
+          models,
           capabilities: {
             computerMcp: inst.adapter.capabilities.computerMcp === true,
             agentsMcp: inst.adapter.capabilities.agentsMcp === true,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { meteredConsentRefusal } from "./metered-consent.ts";
+import { meteredConsentRefusal, turnBilling } from "./metered-consent.ts";
 import { hasMeteredAcknowledgement, withMeteredAcknowledgement, type AppConfig } from "./config.ts";
 
 const cfg = (ack: AppConfig["meteredAcknowledgements"]): AppConfig => ({ meteredAcknowledgements: ack } as AppConfig);
@@ -28,6 +28,32 @@ describe("meteredConsentRefusal (spec 010 R8)", () => {
     expect(meteredConsentRefusal({ ...metered, billingClass: "subscription" }, cfg([]), "m")).toBeNull();
     expect(meteredConsentRefusal({ ...metered, billingClass: "local" }, cfg([]), "m")).toBeNull();
     expect(meteredConsentRefusal({ instanceId: "claude", displayName: "Claude" }, cfg([]), "m")).toBeNull();
+  });
+});
+
+describe("hermes per-model billing (spec 010 R8)", () => {
+  const hermes = { instanceId: "hermes", displayName: "Dani Agent", driverKind: "hermesAgent" as const };
+
+  it("an openrouter model is metered; the refusal names the provider it bills through", () => {
+    expect(turnBilling(hermes, "openrouter:anthropic/claude-sonnet-4")).toBe("metered");
+    const refusal = meteredConsentRefusal(hermes, cfg([]), "openrouter:anthropic/claude-sonnet-4");
+    expect(refusal).toContain("via openrouter");
+    expect(refusal).toContain("openrouter:anthropic/claude-sonnet-4");
+  });
+
+  it("subscription and local hermes providers are never gated", () => {
+    expect(meteredConsentRefusal(hermes, cfg([]), "nous:hermes-3")).toBeNull();
+    expect(meteredConsentRefusal(hermes, cfg([]), "ollama:qwen3")).toBeNull();
+  });
+
+  it("an unknown provider never reads as free", () => {
+    expect(turnBilling(hermes, "somefuture:model")).toBe("unknown");
+  });
+
+  it("the acknowledgement is per model, not per hermes instance", () => {
+    const list = withMeteredAcknowledgement(cfg([]), "hermes", "openrouter:anthropic/claude-sonnet-4");
+    expect(meteredConsentRefusal(hermes, cfg(list), "openrouter:anthropic/claude-sonnet-4")).toBeNull();
+    expect(meteredConsentRefusal(hermes, cfg(list), "openrouter:openai/gpt-5")).not.toBeNull();
   });
 });
 

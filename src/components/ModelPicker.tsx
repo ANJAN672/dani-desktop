@@ -3,7 +3,7 @@
 // engines that need setup show one focused action instead of a disabled wall.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search } from "lucide-react";
-import { useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
+import { api, useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import { filterCustomModels, partitionCustomModels, suggestedModels } from "@/lib/custom-models";
 import { isCustomOnly } from "@/lib/engine-rail";
 import { EngineSetup, EngineUpdateNotice, needsCli, needsSignIn } from "./EngineSetup";
@@ -55,6 +55,14 @@ function ModelRow({
             title={`Provider: ${option.provider}`}
           >
             {option.provider}
+          </span>
+        )}
+        {option.billing === "metered" && (
+          <span
+            className="shrink-0 rounded bg-warning/10 px-1.5 py-px text-[10px] text-warning"
+            title="Metered - runs on this model bill your provider account"
+          >
+            Metered
           </span>
         )}
         {option.id === defaultId && (
@@ -114,12 +122,15 @@ export function ModelPicker({
   contained?: boolean;
   label?: ReactNode;
 }) {
-  const { state, dispatch, refreshInstances, refreshModels: refreshInstanceModels } = useStore();
+  const { state, dispatch, refreshInstances, refreshModels: refreshInstanceModels, refreshConfig } = useStore();
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState<"main" | "custom">("main");
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingMetered, setPendingMetered] = useState<{ instance: InstanceInfo; option: ModelOption } | null>(null);
+  const [ackBusy, setAckBusy] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const refreshingRef = useRef(false);
 
@@ -190,6 +201,8 @@ export function ModelPicker({
   const resetList = () => {
     setQuery("");
     setShowAll(false);
+    setPendingMetered(null);
+    setAckError(null);
   };
 
   const openFor = (instance: InstanceInfo | undefined) => {
@@ -203,8 +216,7 @@ export function ModelPicker({
 
 
 
-  const pick = (instance: InstanceInfo, model: string) => {
-    if (bot.busy) return;
+  const applyPick = (instance: InstanceInfo, model: string) => {
     const sameInstance = instance.instanceId === selection.instanceId;
     const nextSelection: ModelSelection = {
       instanceId: instance.instanceId,
@@ -216,7 +228,43 @@ export function ModelPicker({
       botId: bot.id,
       selection: nextSelection,
     });
+    setPendingMetered(null);
     setOpen(false);
+  };
+
+  const pick = (instance: InstanceInfo, model: string) => {
+    if (bot.busy) return;
+    // spec 010 R8: first use of a metered model requires an explicit
+    // provider/model/cost acknowledgement; the server gates the turn on the
+    // same record this confirm writes.
+    const option = instance.models.options.find((candidate) => candidate.id === model);
+    const acknowledged = state.config?.meteredAcknowledgements?.some(
+      (entry) => entry.instanceId === instance.instanceId && entry.model === model,
+    );
+    if (option?.billing === "metered" && !acknowledged) {
+      setAckError(null);
+      setPendingMetered({ instance, option });
+      return;
+    }
+    applyPick(instance, model);
+  };
+
+  const confirmMetered = async () => {
+    if (!pendingMetered || ackBusy) return;
+    setAckBusy(true);
+    setAckError(null);
+    try {
+      await api(`/api/instances/${encodeURIComponent(pendingMetered.instance.instanceId)}/acknowledge-metered`, {
+        method: "POST",
+        body: JSON.stringify({ model: pendingMetered.option.id }),
+      });
+      await refreshConfig();
+      applyPick(pendingMetered.instance, pendingMetered.option.id);
+    } catch (error) {
+      setAckError(error instanceof Error ? error.message : "Could not save the acknowledgement");
+    } finally {
+      setAckBusy(false);
+    }
   };
 
   const official = railInstance?.models.options.filter((option) => !option.custom) ?? [];
@@ -373,7 +421,43 @@ export function ModelPicker({
                   </button>
                 )}
 
-                {blocked ? (
+                {pendingMetered ? (
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-1">
+                    <div className="rounded-xl border border-warning/40 bg-warning/5 px-3.5 py-3">
+                      <div className="text-[13px] font-semibold text-ink">Metered model</div>
+                      <div className="mt-1.5 text-[12px] leading-relaxed text-ink-secondary">
+                        {pendingMetered.option.label}
+                        {pendingMetered.option.provider ? ` via ${pendingMetered.option.provider}` : ""} is
+                        metered - every run on this model bills your provider account. Nothing is charged until
+                        you send a message.
+                      </div>
+                      {ackError && (
+                        <div role="alert" className="mt-2 text-[11.5px] text-danger">
+                          {ackError}
+                        </div>
+                      )}
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={ackBusy}
+                          onClick={() => setPendingMetered(null)}
+                          className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-ink-secondary hover:bg-control hover:text-ink disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={ackBusy}
+                          onClick={() => void confirmMetered()}
+                          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-white hover:brightness-110 disabled:opacity-40"
+                        >
+                          {ackBusy && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+                          {ackBusy ? "Saving..." : "Use metered model"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : blocked ? (
                   <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
                     <EngineSetup instance={railInstance} intent={pane === "custom" ? "inject" : "cloud"} />
                     <p className="mt-2 text-center text-[11.5px] text-ink-secondary/70">
