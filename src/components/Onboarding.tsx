@@ -69,6 +69,17 @@ function engineReady(instance: InstanceRow): boolean {
   );
 }
 
+/** The one-liner under a ready engine. Cost class comes from the live
+ * snapshot so a metered engine never reads as free (spec 010 R8, spec 080
+ * R2): "metered" bills the account per run, "subscription" is included. */
+export function readyNoteFor(instance: InstanceRow): string {
+  if (instance.access === "custom") return "Installed — ready for a local model.";
+  const billing = instance.snapshot.billing;
+  if (billing === "metered") return "Ready — metered: bot runs bill this account.";
+  if (billing === "subscription") return "Ready — included with this subscription.";
+  return "Installed — ready to power bots.";
+}
+
 function engineTitle({ instance, label }: EngineEntry): string {
   const version = instance?.snapshot.version ? ` · ${instance.snapshot.version.split(" ")[0]}` : "";
   return `${label}${version}`;
@@ -105,6 +116,20 @@ function SetupRow(entry: EngineEntry) {
         intent={entry.instance.access === "custom" ? "inject" : "cloud"}
       />
     </StatusRow>
+  );
+}
+
+/** Shown when the engine check finished and nothing is usable. Never a
+ * silent green path: the user hears bots cannot run yet and what to do
+ * (spec 080 R3/R5). */
+export function ZeroReadyNotice({ hasSetupRows }: { hasSetupRows: boolean }) {
+  return (
+    <div className="rounded-xl border border-warning/25 bg-warning/5 p-3 text-[12.5px] leading-relaxed text-ink">
+      <span className="font-semibold">No engine is ready yet.</span>{" "}
+      {hasSetupRows
+        ? "Bots can’t run until one is installed and set up — pick one below, or finish later from Settings."
+        : "Bots can’t run until an engine is installed. You can finish setup later from Settings."}
+    </div>
   );
 }
 
@@ -176,10 +201,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     .map((instance) => ({
       instance,
       label: instance.displayName,
-      readyNote:
-        instance.access === "custom"
-          ? "Installed — ready for a local model."
-          : "Installed — ready to power bots.",
+      readyNote: readyNoteFor(instance),
     }));
   const readyEngines = engines.filter((e) => engineReady(e.instance));
   const setupEngines = engines.filter((e) => !engineReady(e.instance));
@@ -276,6 +298,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 </>
               )}
             </div>
+            {instances && readyEngines.length === 0 && (
+              <div className="mt-3 shrink-0">
+                <ZeroReadyNotice hasSetupRows={setupEngines.length > 0} />
+              </div>
+            )}
             <button
               onClick={() => setStep(capabilities.dictation.available ? 2 : 3)}
               className="mt-5 w-full shrink-0 rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white"
