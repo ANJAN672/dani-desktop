@@ -26,3 +26,9 @@ Run every check on macOS Apple Silicon, macOS Intel, Windows x64 and Linux x64 b
 ## Pass evidence
 
 Attach the build version and a result row for every matrix item. For acoustic behavior, include a short screen recording showing the physical device and the production call UI. For cleanup, include OS media indicators plus application diagnostics. Mark untested platforms unavailable. Voice is not investor-demo-ready until every advertised platform passes.
+
+## Local runtime preflight
+
+`GET /api/live-call/local/status` reports STT and TTS separately. A model file alone never counts as ready. The preview stays off unless `features.localSpeech` is explicitly true, and still reports unavailable until executable runtime files and all pinned payloads are present. The server accepts 16-bit WAV for `/api/live-call/local/transcribe` and returns WAV from `/api/live-call/local/speak`; physical microphone, speaker, latency, and echo behavior still require this checklist on each target.
+
+Runtime provenance and redistribution notes live in `third_party/local-speech/README.md`. Upstream references: https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.3 and https://github.com/nazdridoy/kokoro-tts/tree/v2.3.2.

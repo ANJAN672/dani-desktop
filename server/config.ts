@@ -222,23 +222,18 @@ const featureConfigSchema = z.object({
   browser: z.boolean().optional(),
   /** Spec 060 serving gate. Default-off until the kernel rollout is enabled. */
   proactive: z.boolean().optional(),
-  /** Spec 100 Laya decision-service gate. Default-off; no Laya process,
-   * download, or decision runs without this explicit opt-in. */
+  /** Spec 100 Laya decision-service gate. Default-off. */
   laya: z.boolean().optional(),
-  /** Spec 100 shadow scoring gate. Scores real jobs against the route Hermes
-   * actually took; never alters execution. Requires features.laya. */
+  /** Spec 100 shadow scoring gate. */
   layaShadow: z.boolean().optional(),
-  /** Spec 100 route execution gate. Lets the router send bounded jobs to the
-   * Laya-scored CUA path. Requires features.laya. Hermes stays authoritative
-   * while this is off. */
+  /** Spec 100 route execution gate. */
   layaRouting: z.boolean().optional(),
+  /** Native Whisper/Kokoro runtime. Off unless explicitly enabled. */
+  localSpeech: z.boolean().optional(),
 });
 const layaConfigSchema = z.object({
-  /** Which pinned checkpoint the service loads (spec 100 manifest). */
   checkpoint: z.enum(["typed-decisions", "english", "multilingual"]).optional(),
   device: z.enum(["auto", "cpu", "cuda"]).optional(),
-  /** Explicit consent to download checkpoint bytes and build the local python
-   * environment. Never implied by the feature gate. */
   allowDownload: z.boolean().optional(),
   minConfidence: z.number().min(0).max(1).optional(),
   minActProbability: z.number().min(0).max(1).optional(),
@@ -327,22 +322,13 @@ export interface AppConfig {
   localVm?: { mode?: "shared" | "per-bot"; maxInstances?: number };
   /** Opt-in product experiments. Every flag defaults to disabled. */
   features?: {
-    skillRecorder?: boolean;
-    showToolCalls?: boolean;
-    browser?: boolean;
-    proactive?: boolean;
-    laya?: boolean;
-    layaShadow?: boolean;
-    layaRouting?: boolean;
+    skillRecorder?: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean;
+    laya?: boolean; layaShadow?: boolean; layaRouting?: boolean; localSpeech?: boolean;
   };
-  /** Laya bounded decision service tuning (spec 100). All optional; the
-   * service stays inert unless features.laya is on. */
   laya?: {
     checkpoint?: "typed-decisions" | "english" | "multilingual";
     device?: "auto" | "cpu" | "cuda";
-    allowDownload?: boolean;
-    minConfidence?: number;
-    minActProbability?: number;
+    allowDownload?: boolean; minConfidence?: number; minActProbability?: number;
   };
   /** Named browser sessions any bot can be pointed at. */
   browserProfiles?: BrowserProfile[];
@@ -501,19 +487,10 @@ export function proactiveEnabled(cfg: AppConfig): boolean {
 }
 
 /** Spec 100 service gate. Default-off. */
-export function layaEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.laya === true;
-}
-
-/** Spec 100 shadow scoring gate. Meaningful only with features.laya. */
-export function layaShadowEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.layaShadow === true;
-}
-
-/** Spec 100 route execution gate. Meaningful only with features.laya. */
-export function layaRoutingEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.layaRouting === true;
-}
+export function layaEnabled(cfg: AppConfig): boolean { return cfg.features?.laya === true; }
+export function layaShadowEnabled(cfg: AppConfig): boolean { return cfg.features?.layaShadow === true; }
+export function layaRoutingEnabled(cfg: AppConfig): boolean { return cfg.features?.layaRouting === true; }
+export function localSpeechEnabled(cfg: AppConfig): boolean { return cfg.features?.localSpeech === true; }
 
 /** Workspace-level gate for the experimental built-in browser. A bot's own
  * switch sits under it, so either can withhold the browser. */

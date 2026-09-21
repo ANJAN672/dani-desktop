@@ -1,12 +1,7 @@
 export interface FeatureFlagConfig {
   features?: {
-    skillRecorder?: boolean;
-    showToolCalls?: boolean;
-    browser?: boolean;
-    proactive?: boolean;
-    laya?: boolean;
-    layaShadow?: boolean;
-    layaRouting?: boolean;
+    skillRecorder?: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean;
+    laya?: boolean; layaShadow?: boolean; layaRouting?: boolean; localSpeech?: boolean;
   };
 }
 
@@ -32,18 +27,7 @@ export function proactiveEnabled(config: FeatureFlagConfig | null | undefined): 
   return config?.features?.proactive === true;
 }
 
-/** Laya bounded decisions are rollout-gated and default off (spec 100). */
-export function layaEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.laya === true;
-}
-
-/** Laya shadow scoring is a separate gate on top of the service gate. */
-export function layaShadowEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.layaShadow === true;
-}
-
-/** Laya route execution is the last gate to open; Hermes stays authoritative
- * until it does. */
-export function layaRoutingEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.layaRouting === true;
-}
+export function layaEnabled(config: FeatureFlagConfig | null | undefined): boolean { return config?.features?.laya === true; }
+export function layaShadowEnabled(config: FeatureFlagConfig | null | undefined): boolean { return config?.features?.layaShadow === true; }
+export function layaRoutingEnabled(config: FeatureFlagConfig | null | undefined): boolean { return config?.features?.layaRouting === true; }
+export function localSpeechEnabled(config: FeatureFlagConfig | null | undefined): boolean { return config?.features?.localSpeech === true; }

@@ -22,3 +22,7 @@ This page records what is implemented and what still needs platform proof. It is
 - UI screenshots are required after the live path is wired.
 
 A PR must not describe end-to-end duplex voice as complete until every item above has passing evidence.
+
+## Real proxy readiness command
+
+Run `pnpm e2e:realtime-proxy` on a machine whose Dani config contains the production `liveCall.proxyUrl`, or set `DANI_REALTIME_PROXY_URL`. The command has no local fallback and contacts that HTTPS service to mint real short-lived session material. It reports that WebRTC was not exercised because the CLI has no browser microphone. Use the physical hardware checklist for the subsequent real microphone, SDP, data-channel, and transcription run; do not cite the proxy probe as acoustic evidence.

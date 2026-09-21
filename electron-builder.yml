@@ -64,6 +64,12 @@ extraResources:
     to: licenses/hpke-core-LICENSE.txt
   - from: third_party/hpke-js/common-LICENSE.txt
     to: licenses/hpke-common-LICENSE.txt
+  - from: third_party/local-speech/whisper.cpp-LICENSE.txt
+    to: licenses/whisper.cpp-LICENSE.txt
+  - from: third_party/local-speech/kokoro-tts-LICENSE.txt
+    to: licenses/kokoro-tts-LICENSE.txt
+  - from: third_party/local-speech/README.md
+    to: licenses/local-speech-README.md
   - from: dist
     to: ui
   - from: dist-server

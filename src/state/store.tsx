@@ -345,7 +345,7 @@ export interface ConfigStatus {
    * never echoed back. */
   tts?: { configured: boolean; ready: boolean; voice: string; provider?: "elevenlabs" | "system" };
   /** Provider choice only. Cloud credentials stay behind the OAuth proxy. */
-  liveCall?: { provider: "local" | "openai-realtime"; proxyConfigured: boolean };
+  liveCall?: { provider: "local" | "openai-realtime"; proxyConfigured: boolean; localSpeech?: { enabled: boolean; ready: boolean; stt: { ready: boolean; reason?: string }; tts: { ready: boolean; reason?: string } } };
   /** Shared write-only credential for on-demand GPT Image avatars. */
   imageGen?: { configured: boolean };
   /** who's using the app — collected in onboarding, shown in the sidebar */
@@ -353,7 +353,7 @@ export interface ConfigStatus {
   /** UI language override; "" (or absent) follows the system language. */
   language?: string;
   /** Opt-in flags. Absent means off. */
-  features?: { skillRecorder: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean };
+  features?: { skillRecorder: boolean; showToolCalls?: boolean; browser?: boolean; proactive?: boolean; localSpeech?: boolean };
   /** Named browser sessions any bot can be pointed at. */
   browserProfiles?: BrowserProfile[];
   /** Explicit metered-use confirmations (spec 010 R8); never secret. */

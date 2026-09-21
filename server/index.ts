@@ -202,6 +202,7 @@ import {
   type TaskRecord,
 } from "./store.ts";
 import * as tts from "./tts/index.ts";
+import { localSpeechStatus, synthesizeLocal, transcribeLocalWav } from "./local-speech-runtime.ts";
 import { narrateTool, toUtterances } from "./tts/speech-text.ts";
 import { buildTurnContext, engineIsFresh } from "./turn-context.ts";
 import { extractTurnImages } from "./turn-images.ts";
@@ -7195,7 +7196,7 @@ async function perBotLocalVmCountForModeChange(): Promise<number | null> {
   return existingPerBotLocalVmCount(runtime.runtime);
 }
 
-function configStatus() {
+async function configStatus() {
   return {
     xai: { configured: Boolean(cfg.xai?.key) },
     composio: {
@@ -7208,7 +7209,7 @@ function configStatus() {
     // the chosen voice is a setting, not a secret; the key is reported the
     // same configured-or-not way as every other credential
     tts: tts.describeVoice(cfg),
-    liveCall: { provider: cfg.liveCall?.provider ?? "local", proxyConfigured: Boolean(cfg.liveCall?.proxyUrl) },
+    liveCall: { provider: cfg.liveCall?.provider ?? "local", proxyConfigured: Boolean(cfg.liveCall?.proxyUrl), localSpeech: await localSpeechStatus(cfg) },
     imageGen: { configured: Boolean(cfg.imageGen?.key) },
     // not a secret — the sidebar shows it
     profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
@@ -7226,6 +7227,7 @@ function configStatus() {
       skillRecorder: skillRecorderEnabled(cfg),
       showToolCalls: showToolCallsEnabled(cfg),
       browser: builtInBrowserEnabled(cfg),
+      localSpeech: cfg.features?.localSpeech === true,
     },
     // partitionId is non-secret routing metadata. The renderer needs it to
     // show the same durable session as an agent, but config PATCH validation
@@ -11731,7 +11733,7 @@ const server = createServer(async (req, res) => {
 
     // ── app config (API keys — never echoed back, booleans only) ──
     if (method === "GET" && path === "/api/config") {
-      const status = configStatus();
+      const status = await configStatus();
       if (auth.kind === "session" && !auth.scopes.includes("admin")) {
         // configured-or-not is fine; an SSH alias, an email, a browser
         // partition id are not a client's business
@@ -12117,7 +12119,7 @@ const server = createServer(async (req, res) => {
               if (!mandatoryError) mandatoryError = error;
             }
           }
-          const status = configStatus();
+          const status = await configStatus();
           broadcast({ kind: "config", ...status });
           if (mandatoryError) throw mandatoryError;
           return status;
@@ -12152,6 +12154,24 @@ const server = createServer(async (req, res) => {
         const message = error instanceof Error ? error.message : "Live-call session failed";
         return json(res, /invalid|expected|must|required/i.test(message) ? 400 : 502, { error: message });
       }
+    }
+
+    if (method === "GET" && path === "/api/live-call/local/status") {
+      return json(res, 200, await localSpeechStatus(cfg));
+    }
+    if (method === "POST" && path === "/api/live-call/local/transcribe") {
+      const contentType = String(req.headers["content-type"] ?? "").split(";", 1)[0].trim();
+      if (contentType !== "audio/wav" && contentType !== "audio/x-wav") return json(res, 415, { error: "local transcription accepts 16-bit WAV audio" });
+      const chunks: Buffer[] = []; let size = 0;
+      for await (const chunk of req) { size += chunk.length; if (size > 20_000_000) return json(res, 413, { error: "local transcription audio is limited to 20 MB" }); chunks.push(Buffer.from(chunk)); }
+      try { return json(res, 200, { text: await transcribeLocalWav(cfg, Buffer.concat(chunks)) }); }
+      catch (error) { return json(res, 503, { error: error instanceof Error ? error.message : "Local transcription failed" }); }
+    }
+    if (method === "POST" && path === "/api/live-call/local/speak") {
+      const parsed = speakSpeechInputSchema.safeParse(await readBody(req));
+      if (!parsed.success) { const error = voiceInputError(parsed.error); return json(res, error.status, { error: error.message }); }
+      try { const audio = await synthesizeLocal(cfg, parsed.data.text); res.writeHead(200, { "content-type": audio.mime, "content-length": String(audio.bytes.byteLength), "cache-control": "no-store" }); return res.end(Buffer.from(audio.bytes)); }
+      catch (error) { return json(res, 503, { error: error instanceof Error ? error.message : "Local speech synthesis failed" }); }
     }
 
     // ── voice ─────────────────────────────────────────────────────────

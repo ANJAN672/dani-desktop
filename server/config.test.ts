@@ -18,6 +18,7 @@ import { customMcpServers,
   showToolCallsEnabled,
   saveConfig,
   skillRecorderEnabled,
+  localSpeechEnabled,
   builtInBrowserEnabled,
   browserProfilePartitionId,
   browserProfilePartitionTarget,
@@ -312,6 +313,9 @@ describe("configuration boundaries", () => {
       features: { skillRecorder: true },
     });
     expect(skillRecorderEnabled({ features: { skillRecorder: true } })).toBe(true);
+    expect(localSpeechEnabled({})).toBe(false);
+    expect(parseConfigPatch({ features: { localSpeech: true } })).toEqual({ features: { localSpeech: true } });
+    expect(localSpeechEnabled({ features: { localSpeech: true } })).toBe(true);
     // the built-in browser is an independent explicit opt-in
     expect(builtInBrowserEnabled({})).toBe(false);
     expect(builtInBrowserEnabled({ features: { skillRecorder: true } })).toBe(false);
