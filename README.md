@@ -21,7 +21,7 @@ Talk to them like contacts. Watch them work. Approve what matters.
 
 <br>
 
-> Installers are published only after a version-tag build produces and verifies the complete macOS, Windows, and Linux set. Until that release gate passes, build from source below.
+> Desktop installers for macOS, Windows, and Ubuntu: [download the latest release](https://github.com/somdipto/dani-desktop/releases/latest), or use the direct per-OS links in Quick start below.
 
 <br>
 
@@ -201,7 +201,17 @@ See [MCP server setup and tool reference](docs/mcp-server.md).
 
 ## Quick start
 
-**Installers:** release artifacts are intentionally not linked until a version-tag build passes the complete-set gate for macOS, Windows, and Linux.
+**Installers - one download per desktop OS** (links always resolve to the [newest release](https://github.com/somdipto/dani-desktop/releases/latest); the versioned filenames bump with each release):
+
+| Platform | Download |
+|---|---|
+| macOS, Apple silicon | [DaniBot-0.1.55-arm64.dmg](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-arm64.dmg) |
+| macOS, Intel | [DaniBot-0.1.55-x64.dmg](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-x64.dmg) |
+| Windows | [DaniBot-0.1.55-setup.exe](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-setup.exe) |
+| Ubuntu, AppImage | [DaniBot-0.1.55-x86_64.AppImage](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-x86_64.AppImage) |
+| Ubuntu, .deb | [DaniBot-0.1.55-amd64.deb](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-amd64.deb) |
+
+The Windows installer is unsigned, so SmartScreen shows an "unknown publisher" prompt on first run. First launch opens the setup wizard on every platform.
 
 See the [Ubuntu Desktop guide](docs/linux-desktop.md) for platform notes and source-build prerequisites.
 Any desktop build can also pair as a client to another Windows, macOS, or Ubuntu host over Tailscale; see [desktop-to-desktop companion mode](docs/desktop-companion.md).
@@ -347,8 +357,8 @@ possible (different drive, folder busy) the old folder stays behind and can be r
 ## Status
 
 Early but real — the loop works end to end: message → agent → streamed reply → tools → approvals →
-computer use. Installers for macOS, Windows, and Ubuntu 24.04 x64 publish together once the complete-set
-release gate passes; Ubuntu remains a beta with the
+computer use. Installers for macOS, Windows, and Ubuntu 24.04 x64 publish together per release; Ubuntu remains a
+beta with the
 capability limits above. Rough edges to expect: hosted/mobile connectivity is still being built, and webhook
 triggers currently use the local receiver rather than an always-on hosted relay.
 Voice needs an ElevenLabs key, and calls are macOS-only for now (they ride the same on-device dictation as
