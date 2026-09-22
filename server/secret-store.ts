@@ -35,6 +35,7 @@ export const SECRET_PATHS = [
   { section: "opencodeGo", field: "apiKey", env: "OPENCODE_API_KEY", label: "opencodeGo.apiKey" },
   { section: "tts", field: "key", env: "DANI_TTS_KEY", legacyEnv: "OMB_TTS_KEY", label: "tts.key" },
   { section: "imageGen", field: "key", env: "DANI_OPENAI_IMAGE_KEY", legacyEnv: "OMB_OPENAI_IMAGE_KEY", label: "imageGen.key" },
+  { section: "liveCall", field: "apiKey", env: "DANI_OPENAI_REALTIME_KEY", label: "liveCall.apiKey" },
 ] as const;
 
 /** Every env name (primary + legacy rebrand alias) that can carry a secret.

@@ -21,3 +21,26 @@ describe("OpenAI Realtime OAuth proxy", () => {
     await expect(createOpenAIRealtimeSession("https://proxy.example/session", request, expired as typeof fetch)).rejects.toThrow("expired");
   });
 });
+
+describe("OpenAI Realtime BYOK", () => {
+  it("mints a short-lived token without returning or serializing the long-lived key", async () => {
+    const longLived = "sk-realtime-fixture-never-return";
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toEqual(expect.objectContaining({ authorization: `Bearer ${longLived}` }));
+      expect(String(init?.body)).not.toContain(longLived);
+      return new Response(JSON.stringify({ value: "ek-short-lived", expires_at: 2_000_000_000, session: { id: "sess-byok" } }), { status: 200 });
+    });
+    const { createOpenAIRealtimeByokSession } = await import("./live-call-proxy.ts");
+    const session = await createOpenAIRealtimeByokSession(longLived, request, fetchImpl as typeof fetch, 1_000);
+    expect(session).toEqual({ id: "sess-byok", provider: "openai-realtime", endpoint: "https://api.openai.com/v1/realtime/calls", ephemeralToken: "ek-short-lived", expiresAt: 2_000_000_000_000 });
+    expect(JSON.stringify(session)).not.toContain(longLived);
+  });
+
+  it("never includes provider error bodies or the long-lived key in errors", async () => {
+    const longLived = "sk-realtime-fixture-error";
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: { message: `bad ${longLived}` } }), { status: 401 }));
+    const { createOpenAIRealtimeByokSession } = await import("./live-call-proxy.ts");
+    await expect(createOpenAIRealtimeByokSession(longLived, request, fetchImpl as typeof fetch)).rejects.toThrow("HTTP 401");
+    try { await createOpenAIRealtimeByokSession(longLived, request, fetchImpl as typeof fetch); } catch (error) { expect(String(error)).not.toContain(longLived); }
+  });
+});

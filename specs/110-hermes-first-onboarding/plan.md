@@ -1,12 +1,12 @@
 # Plan - Hermes-first seamless onboarding
 
-Requirements: R-BOOT-001 R-BOOT-002 R-RUNTIME-001 R-RUNTIME-002 R-RUNTIME-003 R-RUNTIME-004 R-UI-001 R-UI-002 R-UI-003 R-MODEL-005 R-PRIV-001 R-LAYA-005
+Requirements: R-BOOT-001 R-BOOT-002 R-RUNTIME-001 R-RUNTIME-002 R-RUNTIME-003 R-RUNTIME-004 R-UI-001 R-UI-002 R-UI-003 R-MODEL-005 R-SEC-001 R-PRIV-001 R-LAYA-005
 
 ## Order
 
 1. Prove payload/license/platform feasibility (R-BOOT-001).
 2. Build manifest verification, locking, safe extraction, atomic activation, repair, and probe state machine (R-BOOT-002, R-RUNTIME-001..003).
-3. Enforce Hermes-only production selection and supporting OpenCode route (R-RUNTIME-004, R-MODEL-005).
+3. Enforce Hermes-only production selection, supporting OpenCode route, write-only BYOK lanes, and scoped brokered computer capability for Hermes plus the optional Laya-routed CUA path (R-RUNTIME-004, R-MODEL-005, R-SEC-001).
 4. Replace the engine matrix with the `/api/runtime/bootstrap` product state while preserving limited mode and QR pairing (R-UI-001..003).
 5. Separate local profile from account/telemetry and complete Laya's nonblocking lane (R-PRIV-001, R-LAYA-005).
 

@@ -284,6 +284,8 @@ const appConfigSchema = z.object({
   liveCall: z.object({
     provider: z.enum(["local", "openai-realtime"]).optional(),
     proxyUrl: optionalText,
+    /** Write-only OpenAI Realtime BYOK credential. */
+    apiKey: optionalText,
   }).optional(),
   /** OpenAI key used only by the in-process avatar image generator. */
   imageGen: z.object({ key: optionalText }).optional(),
@@ -327,7 +329,7 @@ export interface AppConfig {
   vps?: { sshAlias?: string };
   opencodeGo?: { apiKey?: string };
   tts?: { key?: string; voice?: string; provider?: "elevenlabs" | "system" };
-  liveCall?: { provider?: "local" | "openai-realtime"; proxyUrl?: string };
+  liveCall?: { provider?: "local" | "openai-realtime"; proxyUrl?: string; apiKey?: string };
   imageGen?: { key?: string };
   profile?: { name?: string; email?: string };
   rooms?: { turnTimeoutMinutes: number };
@@ -578,6 +580,8 @@ export function loadConfig(): AppConfig {
   cfg.tts = { ...cfg.tts };
   const ttsKey = process.env.DANI_TTS_KEY ?? process.env.OMB_TTS_KEY;
   if (ttsKey !== undefined) cfg.tts.key = ttsKey;
+  cfg.liveCall = { ...cfg.liveCall };
+  if (process.env.DANI_OPENAI_REALTIME_KEY !== undefined) cfg.liveCall.apiKey = process.env.DANI_OPENAI_REALTIME_KEY;
   cfg.imageGen = { ...cfg.imageGen };
   const imageKey = process.env.DANI_OPENAI_IMAGE_KEY ?? process.env.OMB_OPENAI_IMAGE_KEY;
   if (imageKey !== undefined) cfg.imageGen.key = imageKey;
@@ -601,6 +605,7 @@ export function syncCredentialEnv(patch: Partial<AppConfig>): void {
     [patch.tts?.key, "DANI_TTS_KEY"],
     [patch.tts?.key, "OMB_TTS_KEY"],
     [patch.imageGen?.key, "DANI_OPENAI_IMAGE_KEY"],
+    [patch.liveCall?.apiKey, "DANI_OPENAI_REALTIME_KEY"],
     [patch.imageGen?.key, "OMB_OPENAI_IMAGE_KEY"],
   ];
   for (const [value, name] of secrets) {
@@ -636,6 +641,7 @@ export const WORKSPACE_CREDENTIAL_ENV = [
   "DANI_TTS_KEY",
   "OMB_TTS_KEY",
   "DANI_OPENAI_IMAGE_KEY",
+  "DANI_OPENAI_REALTIME_KEY",
   "OMB_OPENAI_IMAGE_KEY",
   "COMPOSIO_API_KEY",
   "DANI_COMPOSIO_BROKER_TOKEN",
@@ -706,7 +712,7 @@ export function saveConfig(patch: Partial<AppConfig>): void {
   } else {
     storedProfiles = { success: false };
   }
-  for (const key of ["xai", "openaiCompat", "composio", "box", "opencodeGo", "tts", "imageGen", "profile", "rooms", "localVm", "features"] as const) {
+  for (const key of ["xai", "openaiCompat", "composio", "box", "opencodeGo", "tts", "liveCall", "imageGen", "profile", "rooms", "localVm", "features"] as const) {
     const section = checkedPatch[key];
     if (!section) continue;
     const current = jsonObjectSchema.safeParse(disk[key]);

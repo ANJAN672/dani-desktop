@@ -42,3 +42,51 @@ export async function createOpenAIRealtimeSession(proxyUrl: string, input: unkno
   if (session.expiresAt !== undefined && session.expiresAt <= Date.now()) throw new Error("Realtime session already expired");
   return session;
 }
+
+const openAIClientSecretSchema = z.object({
+  value: z.string().min(1),
+  expires_at: z.number().int().positive(),
+  session: z.object({ id: z.string().min(1).optional() }).passthrough().optional(),
+}).passthrough();
+
+/** Mint one short-lived Realtime client secret in the trusted harness process.
+ * The long-lived BYOK key is used only in the Authorization header and is
+ * never included in the return value, response errors, or renderer state. */
+export async function createOpenAIRealtimeByokSession(
+  apiKey: string,
+  input: unknown,
+  fetchImpl: typeof fetch = fetch,
+  now = Date.now(),
+) {
+  const request = requestSchema.parse(input);
+  const key = apiKey.trim();
+  if (!key) throw new Error("OpenAI Realtime API key is not configured");
+  const response = await fetchImpl("https://api.openai.com/v1/realtime/client_secrets", {
+    method: "POST",
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      expires_after: { anchor: "created_at", seconds: 600 },
+      session: {
+        type: "realtime",
+        model: "gpt-realtime",
+        output_modalities: ["audio"],
+        instructions: request.participants.map((participant) => participant.instructions).filter(Boolean).join("\n\n") || undefined,
+        audio: { input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "server_vad", create_response: false, interrupt_response: false } } },
+      },
+    }),
+    redirect: "error",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`OpenAI Realtime credential service returned HTTP ${response.status}`);
+  const secret = openAIClientSecretSchema.parse(body);
+  const expiresAt = secret.expires_at * 1_000;
+  if (expiresAt <= now) throw new Error("OpenAI Realtime credential service returned an expired client secret");
+  return {
+    id: secret.session?.id ?? `realtime-${secret.expires_at}`,
+    provider: "openai-realtime" as const,
+    endpoint: "https://api.openai.com/v1/realtime/calls",
+    ephemeralToken: secret.value,
+    expiresAt,
+  };
+}

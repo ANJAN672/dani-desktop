@@ -334,6 +334,7 @@ export function messageVersions(bot: Bot, message: Message): Message[] {
 /** GET /api/config — configured flags only; secrets are never echoed. */
 export interface ConfigStatus {
   xai?: { configured: boolean };
+  openai?: { configured: boolean };
   composio: { configured: boolean; mode?: "managed" | "self-hosted" | "unavailable" };
   box: { configured: boolean };
   vps: { configured: boolean; sshAlias: string };
@@ -345,7 +346,7 @@ export interface ConfigStatus {
    * never echoed back. */
   tts?: { configured: boolean; ready: boolean; voice: string; provider?: "elevenlabs" | "system" };
   /** Provider choice only. Cloud credentials stay behind the OAuth proxy. */
-  liveCall?: { provider: "local" | "openai-realtime"; proxyConfigured: boolean; localSpeech?: { enabled: boolean; ready: boolean; stt: { ready: boolean; reason?: string }; tts: { ready: boolean; reason?: string } } };
+  liveCall?: { provider: "local" | "openai-realtime"; proxyConfigured: boolean; byokConfigured?: boolean; localSpeech?: { enabled: boolean; ready: boolean; stt: { ready: boolean; reason?: string }; tts: { ready: boolean; reason?: string } } };
   /** Shared write-only credential for on-demand GPT Image avatars. */
   imageGen?: { configured: boolean };
   /** who's using the app — collected in onboarding, shown in the sidebar */
@@ -370,12 +371,13 @@ export interface BrowserProfile {
 
 export type ConfigStatusFrame = Pick<
   ConfigStatus,
-  "xai" | "composio" | "box" | "vps" | "rooms" | "localVm" | "opencodeGo" | "tts" | "liveCall" | "imageGen" | "profile" | "language" | "features" | "browserProfiles" | "meteredAcknowledgements"
+  "xai" | "openai" | "composio" | "box" | "vps" | "rooms" | "localVm" | "opencodeGo" | "tts" | "liveCall" | "imageGen" | "profile" | "language" | "features" | "browserProfiles" | "meteredAcknowledgements"
 >;
 
 export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
   return {
     xai: frame.xai,
+    openai: frame.openai,
     composio: frame.composio,
     box: frame.box,
     vps: frame.vps,
@@ -383,6 +385,7 @@ export function configStatusFromFrame(frame: ConfigStatusFrame): ConfigStatus {
     localVm: frame.localVm,
     opencodeGo: frame.opencodeGo,
     tts: frame.tts,
+    liveCall: frame.liveCall,
     imageGen: frame.imageGen,
     profile: frame.profile,
     language: frame.language,

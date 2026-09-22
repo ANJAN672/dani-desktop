@@ -36,6 +36,9 @@ WHEN onboarding reaches device setup, THE SYSTEM SHALL keep QR pairing optional,
 ### R-MODEL-005 - Free is not ready
 WHEN a free/open/local model is considered, THE SYSTEM SHALL independently verify model health, task capability, account/quota, billing class, and current availability; missing free capacity SHALL NOT silently spend or select another harness.
 
+### R-SEC-001 - Write-only on-device credentials and scoped computer use
+WHEN the owner saves a provider credential or a bot uses a computer, THE SYSTEM SHALL keep long-lived keys in the trusted on-device credential path, expose status only, and require a scoped brokered computer capability for both Hermes and the optional Laya-routed CUA path.
+
 ### R-PRIV-001 - Local profile independent of telemetry
 WHEN profile data is saved locally, THE SYSTEM SHALL keep account, waitlist, and telemetry operations separate, consented, retryable, erasable, and nonblocking.
 

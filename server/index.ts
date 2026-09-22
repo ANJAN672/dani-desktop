@@ -80,7 +80,7 @@ import {
   vpsAliasResourceChangeError,
 } from "./cloud-backend.ts";
 import * as composio from "./composio.ts";
-import { createOpenAIRealtimeSession } from "./live-call-proxy.ts";
+import { createOpenAIRealtimeByokSession, createOpenAIRealtimeSession } from "./live-call-proxy.ts";
 import { prepareSpeechInputSchema, speakSpeechInputSchema, voiceInputError } from "./voice-route-contracts.ts";
 import { chiefOfStaffSystemPrompt } from "./chief-of-staff.ts";
 import { peerAllowed, peerRosterSystemPrompt, reachablePeers } from "./peer-roster.ts";
@@ -7376,6 +7376,7 @@ async function perBotLocalVmCountForModeChange(): Promise<number | null> {
 async function configStatus() {
   return {
     xai: { configured: Boolean(cfg.xai?.key) },
+    openai: { configured: Boolean(cfg.openaiCompat?.key) },
     composio: {
       configured: composio.configured(cfg),
       mode: composio.connectionMode(cfg),
@@ -7386,7 +7387,7 @@ async function configStatus() {
     // the chosen voice is a setting, not a secret; the key is reported the
     // same configured-or-not way as every other credential
     tts: tts.describeVoice(cfg),
-    liveCall: { provider: cfg.liveCall?.provider ?? "local", proxyConfigured: Boolean(cfg.liveCall?.proxyUrl), localSpeech: await localSpeechStatus(cfg) },
+    liveCall: { provider: cfg.liveCall?.provider ?? "local", proxyConfigured: Boolean(cfg.liveCall?.proxyUrl), byokConfigured: Boolean(cfg.liveCall?.apiKey), localSpeech: await localSpeechStatus(cfg) },
     imageGen: { configured: Boolean(cfg.imageGen?.key) },
     // not a secret — the sidebar shows it
     profile: { name: cfg.profile?.name ?? "", email: cfg.profile?.email ?? "" },
@@ -12462,10 +12463,14 @@ const server = createServer(async (req, res) => {
       if ((cfg.liveCall?.provider ?? "local") !== "openai-realtime") {
         return json(res, 409, { error: "OpenAI Realtime is not selected" });
       }
+      const input = await readBody(req, 32_768);
       const proxyUrl = cfg.liveCall?.proxyUrl?.trim();
-      if (!proxyUrl) return json(res, 409, { error: "OpenAI Realtime OAuth proxy is not configured" });
+      const apiKey = cfg.liveCall?.apiKey?.trim();
+      if (!apiKey && !proxyUrl) return json(res, 409, { error: "OpenAI Realtime is not configured" });
       try {
-        return json(res, 201, await createOpenAIRealtimeSession(proxyUrl, await readBody(req, 32_768)));
+        return json(res, 201, apiKey
+          ? await createOpenAIRealtimeByokSession(apiKey, input)
+          : await createOpenAIRealtimeSession(proxyUrl!, input));
       } catch (error) {
         const message = error instanceof Error ? error.message : "Live-call session failed";
         return json(res, /invalid|expected|must|required/i.test(message) ? 400 : 502, { error: message });

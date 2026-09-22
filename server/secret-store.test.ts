@@ -28,6 +28,7 @@ const FIX = {
   opencodeGo: "opencode-fixture-key-5555",
   tts: "tts-fixture-key-6666",
   imageGen: "image-fixture-key-7777",
+  realtime: "realtime-fixture-key-8888",
 };
 
 function plaintextConfig(extra: Record<string, unknown> = {}) {
@@ -39,6 +40,7 @@ function plaintextConfig(extra: Record<string, unknown> = {}) {
     opencodeGo: { apiKey: FIX.opencodeGo },
     tts: { key: FIX.tts, provider: "elevenlabs" },
     imageGen: { key: FIX.imageGen },
+    liveCall: { apiKey: FIX.realtime, provider: "openai-realtime" },
     language: "en",
     ...extra,
   };
@@ -53,6 +55,7 @@ function coveredEnv(): NodeJS.ProcessEnv {
     OPENCODE_API_KEY: FIX.opencodeGo,
     OMB_TTS_KEY: FIX.tts,
     OMB_OPENAI_IMAGE_KEY: FIX.imageGen,
+    DANI_OPENAI_REALTIME_KEY: FIX.realtime,
   };
 }
 
@@ -134,7 +137,7 @@ describe("extractSecrets", () => {
   it("splits secrets out and deletes (never blanks) the fields", () => {
     const doc = plaintextConfig();
     const { secrets, scrubbed } = extractSecrets(doc);
-    expect(Object.keys(secrets)).toHaveLength(7);
+    expect(Object.keys(secrets)).toHaveLength(8);
     expect(secrets["xai.key"]).toBe(FIX.xai);
     expect(secrets["composio.apiKey"]).toBe(FIX.composio);
     // non-secret siblings survive
@@ -185,7 +188,7 @@ describe("scrubPlaintextSecretsAtBoot", () => {
       onWarning,
     });
     expect(result.scrubbed).toBe(true);
-    expect(result.removed).toHaveLength(7);
+    expect(result.removed).toHaveLength(8);
     const after = JSON.parse(io.files[CONFIG_PATH]!);
     expect(plaintextSecretsPresent(after)).toEqual([]);
     // non-secret settings preserved
@@ -317,7 +320,7 @@ describe("scrubPlaintextSecretsAtBoot", () => {
         onWarning: () => {},
       });
       expect(result.scrubbed).toBe(true);
-      expect(result.removed).toHaveLength(7);
+      expect(result.removed).toHaveLength(8);
       const after = JSON.parse(readFileSync(configPath, "utf8"));
       expect(plaintextSecretsPresent(after)).toEqual([]);
       expect(after.language).toBe("en");

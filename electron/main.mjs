@@ -2389,10 +2389,12 @@ ipcMain.handle("assemblyai:streaming-token", guard("assemblyai:streaming-token",
 const CREDENTIAL_PATCH = {
   composioApiKey: (value) => ({ composio: { apiKey: value } }),
   xaiApiKey: (value) => ({ xai: { key: value } }),
+  openaiApiKey: (value) => ({ openaiCompat: { key: value } }),
   boxToken: (value) => ({ box: { token: value } }),
   opencodeGoApiKey: (value) => ({ opencodeGo: { apiKey: value } }),
   ttsKey: (value) => ({ tts: { key: value } }),
   openaiImageApiKey: (value) => ({ imageGen: { key: value } }),
+  openaiRealtimeApiKey: (value) => ({ liveCall: { apiKey: value } }),
 };
 
 async function saveWorkspaceCredential(name, value) {

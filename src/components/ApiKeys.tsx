@@ -6,7 +6,7 @@ import { Check, CircleHelp, ExternalLink, Loader2, TriangleAlert } from "lucide-
 import { api, useStore, type ConfigStatus } from "@/state/store";
 import { cn } from "@/lib/cn";
 
-export type ConfigSection = "composio" | "box" | "opencodeGo";
+export type ConfigSection = "composio" | "box" | "opencodeGo" | "openai" | "openaiRealtime";
 
 const SECTIONS: Record<
   ConfigSection,
@@ -18,12 +18,16 @@ const SECTIONS: Record<
   },
   box: { body: (v) => ({ box: { token: v } }), flag: (c) => c.box.configured },
   opencodeGo: { body: (v) => ({ opencodeGo: { apiKey: v } }), flag: (c) => c.opencodeGo?.configured ?? false },
+  openai: { body: (v) => ({ openaiCompat: { key: v } }), flag: (c) => c.openai?.configured ?? false },
+  openaiRealtime: { body: (v) => ({ liveCall: { apiKey: v } }), flag: (c) => c.liveCall?.byokConfigured ?? false },
 };
 
-const ELECTRON_CREDENTIAL: Record<ConfigSection, "composioApiKey" | "boxToken" | "opencodeGoApiKey"> = {
+const ELECTRON_CREDENTIAL: Record<ConfigSection, "composioApiKey" | "boxToken" | "opencodeGoApiKey" | "openaiApiKey" | "openaiRealtimeApiKey"> = {
   composio: "composioApiKey",
   box: "boxToken",
   opencodeGo: "opencodeGoApiKey",
+  openai: "openaiApiKey",
+  openaiRealtime: "openaiRealtimeApiKey",
 };
 
 const CREDENTIALS: Record<
@@ -54,6 +58,24 @@ const CREDENTIALS: Record<
     linkLabel: "Open Box API key guide",
     optional: true,
     warning: "Box is a paid service after its trial. Usage may incur charges.",
+  },
+  openaiRealtime: {
+    label: "OpenAI Realtime API key",
+    placeholder: "sk-…",
+    description: "Your OpenAI key for live voice calls. Dani uses it locally to mint a short-lived Realtime token; the saved key never reaches the chat window.",
+    href: "https://platform.openai.com/api-keys",
+    linkLabel: "Open OpenAI API keys",
+    optional: true,
+    warning: "OpenAI Realtime usage is billed to your OpenAI account.",
+  },
+  openai: {
+    label: "OpenAI API key",
+    placeholder: "sk-…",
+    description: "Your standard OpenAI key for normal model use. It stays encrypted on this computer and is never shown again after saving.",
+    href: "https://platform.openai.com/api-keys",
+    linkLabel: "Open OpenAI API keys",
+    optional: true,
+    warning: "OpenAI API usage is billed to your OpenAI account.",
   },
   opencodeGo: {
     label: "OpenCode API key",

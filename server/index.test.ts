@@ -7285,20 +7285,25 @@ describe("harness HTTP API", () => {
       const saved = await isolatedApi("PUT", "/api/config?secretStorage=external", {
         composio: { apiKey: "ak_good" },
         opencodeGo: { apiKey: "opencode-external" },
+        liveCall: { apiKey: "realtime-external", provider: "openai-realtime" },
         profile: { name: "External Store" },
       });
       expect(saved.status).toBe(200);
       expect(saved.body.composio).toEqual({ configured: true, mode: "self-hosted" });
       expect(saved.body.opencodeGo).toEqual({ configured: true });
+      expect(saved.body.liveCall).toMatchObject({ provider: "openai-realtime", byokConfigured: true });
       expect(saved.body.profile).toEqual({ name: "External Store", email: "" });
       expect(JSON.stringify(saved.body)).not.toContain("ak_good");
+      expect(JSON.stringify(saved.body)).not.toContain("realtime-external");
 
       const disk = JSON.parse(readFileSync(join(isolatedData, "config.json"), "utf8"));
       expect(disk.composio).toMatchObject({ apiKey: "", sessionId: "trs_config_test" });
       expect(disk.opencodeGo).toEqual({ apiKey: "" });
+      expect(disk.liveCall).toEqual({ apiKey: "", provider: "openai-realtime" });
       expect(disk.profile).toEqual({ name: "External Store" });
       expect(JSON.stringify(disk)).not.toContain("ak_good");
       expect(JSON.stringify(disk)).not.toContain("opencode-external");
+      expect(JSON.stringify(disk)).not.toContain("realtime-external");
 
       // A later ordinary setting save reloads config; the in-process secure-env
       // override must keep Composio configured until the next app launch.
@@ -7397,6 +7402,17 @@ describe("harness HTTP API", () => {
     if (process.platform !== "win32") {
       expect(statSync(join(home, ".danibot", "webhooks.json")).mode & 0o777).toBe(0o600);
     }
+  });
+
+  it("stores the standard OpenAI key as configured-only status", async () => {
+    const put = await api("PUT", "/api/config", { openaiCompat: { key: "sk-standard-secret" } });
+    expect(put.status).toBe(200);
+    expect(put.body.openai).toEqual({ configured: true });
+    expect(JSON.stringify(put.body)).not.toContain("sk-standard-secret");
+
+    const after = await api("GET", "/api/config");
+    expect(after.body.openai).toEqual({ configured: true });
+    expect(JSON.stringify(after.body)).not.toContain("sk-standard-secret");
   });
 
   it("stores OpenCode Go credentials as a configured-only status", async () => {

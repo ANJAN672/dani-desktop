@@ -452,6 +452,7 @@ describe("config status frames", () => {
     expect(
       configStatusFromFrame({
         xai: { configured: true },
+        openai: { configured: true },
         composio: { configured: true, mode: "managed" },
         box: { configured: false },
         vps: { configured: true, sshAlias: "homelab" },
@@ -459,11 +460,13 @@ describe("config status frames", () => {
         localVm: { mode: "per-bot", maxInstances: 3 },
         opencodeGo: { configured: true },
         tts: { configured: true, ready: true, voice: "Ada" },
+        liveCall: { provider: "openai-realtime", proxyConfigured: false, byokConfigured: true },
         profile: { name: "Ian", email: "ian@example.test" },
         features: { skillRecorder: true },
       }),
     ).toEqual({
       xai: { configured: true },
+      openai: { configured: true },
       composio: { configured: true, mode: "managed" },
       box: { configured: false },
       vps: { configured: true, sshAlias: "homelab" },
@@ -471,6 +474,7 @@ describe("config status frames", () => {
       localVm: { mode: "per-bot", maxInstances: 3 },
       opencodeGo: { configured: true },
       tts: { configured: true, ready: true, voice: "Ada" },
+      liveCall: { provider: "openai-realtime", proxyConfigured: false, byokConfigured: true },
       profile: { name: "Ian", email: "ian@example.test" },
       features: { skillRecorder: true },
     });

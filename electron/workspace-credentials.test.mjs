@@ -10,9 +10,11 @@ describe("workspace credential migration", () => {
   it("moves every plaintext secret into the store and deletes the field", () => {
     const config = {
       xai: { key: "xai-secret", url: "https://api.example.test/v1" },
+      openaiCompat: { key: "openai-secret", model: "gpt-test" },
       box: { token: "box-secret" },
       tts: { key: "tts-secret", voice: "narrator" },
       imageGen: { key: "image-secret" },
+      liveCall: { apiKey: "realtime-secret", provider: "openai-realtime" },
       opencodeGo: { apiKey: "ocg-secret" },
       profile: { name: "Ada" },
     };
@@ -21,18 +23,22 @@ describe("workspace credential migration", () => {
     expect(result.credentialsChanged).toBe(true);
     expect(result.credentials).toEqual({
       xaiApiKey: "xai-secret",
+      openaiApiKey: "openai-secret",
       boxToken: "box-secret",
       ttsKey: "tts-secret",
       opencodeGoApiKey: "ocg-secret",
       openaiImageApiKey: "image-secret",
+      openaiRealtimeApiKey: "realtime-secret",
     });
     // secrets are DELETED (not blanked) so "" stays meaningful as "cleared";
     // non-secret siblings (endpoint url, chosen voice) stay in the file
     expect(result.config).toEqual({
       xai: { url: "https://api.example.test/v1" },
+      openaiCompat: { model: "gpt-test" },
       box: {},
       tts: { voice: "narrator" },
       imageGen: {},
+      liveCall: { provider: "openai-realtime" },
       opencodeGo: {},
       profile: { name: "Ada" },
     });
@@ -114,20 +120,25 @@ describe("workspace credential env", () => {
     expect(
       workspaceCredentialEnv({
         xaiApiKey: "xai-secret",
+        openaiApiKey: "openai-secret",
         boxToken: "box-secret",
         ttsKey: "tts-secret",
         opencodeGoApiKey: "ocg-secret",
         openaiImageApiKey: "image-secret",
+        openaiRealtimeApiKey: "realtime-secret",
+      openaiRealtimeApiKey: "realtime-secret",
         composioApiKey: "ak_handled-separately",
       }),
     ).toEqual({
       XAI_API_KEY: "xai-secret",
+      OPENAI_COMPAT_API_KEY: "openai-secret",
       BOX_TOKEN: "box-secret",
       DANI_TTS_KEY: "tts-secret",
       OMB_TTS_KEY: "tts-secret",
       OPENCODE_API_KEY: "ocg-secret",
       DANI_OPENAI_IMAGE_KEY: "image-secret",
       OMB_OPENAI_IMAGE_KEY: "image-secret",
+      DANI_OPENAI_REALTIME_KEY: "realtime-secret",
     });
   });
 

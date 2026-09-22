@@ -858,6 +858,8 @@ export function SettingsModal() {
                     </div>
                   ) : null}
                   <TranscriptionSettings />
+                  <ApiKeyRow section="openai" />
+                  <ApiKeyRow section="openaiRealtime" />
                   <ApiKeyRow section="box" />
                   <VpsConnection />
                   <ApiKeyRow section="opencodeGo" />

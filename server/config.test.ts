@@ -563,6 +563,7 @@ describe("credential env preference", () => {
     "OMB_TTS_KEY",
     "OMB_OPENAI_IMAGE_KEY",
     "COMPOSIO_API_KEY",
+    "DANI_OPENAI_REALTIME_KEY",
   ] as const;
   let saved: Record<string, string | undefined>;
 
@@ -592,6 +593,7 @@ describe("credential env preference", () => {
         opencodeGo: { apiKey: "file-ocg" },
         tts: { key: "file-tts", voice: "narrator" },
         imageGen: { key: "file-image" },
+        liveCall: { apiKey: "file-realtime", provider: "openai-realtime" },
       }),
     );
     process.env.XAI_API_KEY = "env-xai";
@@ -599,23 +601,26 @@ describe("credential env preference", () => {
     process.env.OPENCODE_API_KEY = "env-ocg";
     process.env.OMB_TTS_KEY = "env-tts";
     process.env.OMB_OPENAI_IMAGE_KEY = "env-image";
+    process.env.DANI_OPENAI_REALTIME_KEY = "env-realtime";
     const cfg = loadConfig();
     expect(cfg.xai).toEqual({ key: "env-xai", url: "https://api.example.test/v1" });
     expect(cfg.box).toEqual({ token: "env-box" });
     expect(cfg.opencodeGo).toEqual({ apiKey: "env-ocg" });
     expect(cfg.tts).toEqual({ key: "env-tts", voice: "narrator" });
     expect(cfg.imageGen).toEqual({ key: "env-image" });
+    expect(cfg.liveCall).toEqual({ apiKey: "env-realtime", provider: "openai-realtime" });
   });
 
   it("falls back to the config file when the env var is unset (dev mode)", () => {
     writeFileSync(
       join(DATA_DIR, "config.json"),
-      JSON.stringify({ xai: { key: "file-xai" }, tts: { key: "file-tts" }, imageGen: { key: "file-image" } }),
+      JSON.stringify({ xai: { key: "file-xai" }, tts: { key: "file-tts" }, imageGen: { key: "file-image" }, liveCall: { apiKey: "file-realtime" } }),
     );
     const cfg = loadConfig();
     expect(cfg.xai?.key).toBe("file-xai");
     expect(cfg.tts?.key).toBe("file-tts");
     expect(cfg.imageGen?.key).toBe("file-image");
+    expect(cfg.liveCall?.apiKey).toBe("file-realtime");
   });
 
   it("loads legacy browser profiles without resetting config and canonicalizes them on the next write", () => {
@@ -683,6 +688,7 @@ describe("credential env preference", () => {
       xai: { key: "just-saved" },
       composio: { apiKey: "ak_just_saved" },
       box: { token: "" },
+      liveCall: { apiKey: "realtime-just-saved" },
       profile: { name: "Ada" },
     });
     // a saved value replaces the boot-time one; a cleared value drops it;
@@ -690,6 +696,7 @@ describe("credential env preference", () => {
     expect(process.env.XAI_API_KEY).toBe("just-saved");
     expect(process.env.COMPOSIO_API_KEY).toBe("ak_just_saved");
     expect(process.env.BOX_TOKEN).toBeUndefined();
+    expect(process.env.DANI_OPENAI_REALTIME_KEY).toBe("realtime-just-saved");
     expect(process.env.OMB_TTS_KEY).toBeUndefined();
   });
 
@@ -740,6 +747,7 @@ describe("workspace credential env strip", () => {
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("BOX_TOKEN");
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("OMB_TTS_KEY");
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("OMB_OPENAI_IMAGE_KEY");
+    expect(WORKSPACE_CREDENTIAL_ENV).toContain("DANI_OPENAI_REALTIME_KEY");
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("OMB_BROWSER_CONNECTION");
     expect(WORKSPACE_CREDENTIAL_ENV).toContain("OMB_USER_DATA");
   });
