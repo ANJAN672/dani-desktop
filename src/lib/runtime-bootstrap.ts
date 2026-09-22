@@ -13,6 +13,12 @@ export interface RuntimeBootstrapStatus {
   phase: RuntimeBootstrapPhase;
   progress: { completedBytes: number; totalBytes: number } | null;
   runtime: { kind: "hermes"; version: string | null; source: "bundled" | "managed" | "external" | null };
+  readiness: {
+    runtime: { state: "checking" | "ready" | "error"; hermes: boolean; opencode: boolean };
+    modelRoute: { state: "checking" | "ready" | "error" };
+    taskReady: boolean;
+    activeRuntime: "hermes" | "opencode" | null;
+  };
   canRetry: boolean;
   canContinueLimited: boolean;
   error: { code: string; message: string } | null;
@@ -36,6 +42,16 @@ export function parseBootstrapStatus(value: unknown): RuntimeBootstrapStatus | n
   if (runtime.version !== null && typeof runtime.version !== "string") return null;
   if (runtime.source !== null && (typeof runtime.source !== "string" || !SOURCES.has(runtime.source))) return null;
   if (typeof candidate.canRetry !== "boolean" || typeof candidate.canContinueLimited !== "boolean") return null;
+  const readiness = candidate.readiness as Record<string, unknown> | undefined;
+  const runtimeReadiness = readiness?.runtime as Record<string, unknown> | undefined;
+  const modelRoute = readiness?.modelRoute as Record<string, unknown> | undefined;
+  if (!readiness || !runtimeReadiness || !modelRoute) return null;
+  if (typeof readiness.taskReady !== "boolean") return null;
+  if (readiness.activeRuntime !== null && readiness.activeRuntime !== "hermes" && readiness.activeRuntime !== "opencode") return null;
+  if (!["checking", "ready", "error"].includes(String(runtimeReadiness.state))) return null;
+  if (typeof runtimeReadiness.hermes !== "boolean" || typeof runtimeReadiness.opencode !== "boolean") return null;
+  if (!["checking", "ready", "error"].includes(String(modelRoute.state))) return null;
+  if (candidate.state === "ready" && readiness.taskReady !== true) return null;
   const progress = candidate.progress as Record<string, unknown> | null | undefined;
   if (progress !== null && progress !== undefined) {
     if (typeof progress !== "object") return null;
@@ -56,6 +72,12 @@ export const BOOTSTRAP_UNAVAILABLE: RuntimeBootstrapStatus = {
   phase: null,
   progress: null,
   runtime: { kind: "hermes", version: null, source: null },
+  readiness: {
+    runtime: { state: "error", hermes: false, opencode: false },
+    modelRoute: { state: "error" },
+    taskReady: false,
+    activeRuntime: null,
+  },
   canRetry: true,
   canContinueLimited: true,
   error: {

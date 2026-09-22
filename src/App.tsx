@@ -17,6 +17,7 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { DesktopCapabilitiesProvider } from "@/components/DesktopCapabilities";
 import { RoutinesPage } from "@/components/RoutinesPage";
 import { NoEngines } from "@/components/NoEngines";
+import { RuntimePreparation } from "@/components/RuntimePreparation";
 import { CommandPalette } from "@/components/CommandPalette";
 import { LocalVmWorkspace } from "@/components/LocalVmWorkspace";
 import { BrowserWorkspace } from "@/components/BrowserWorkspace";
@@ -310,7 +311,17 @@ function Shell() {
   );
 }
 
+function RuntimeTaskGate({ onReady }: { onReady: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-app p-8">
+      <RuntimePreparation variant="screen" onReady={onReady} />
+    </div>
+  );
+}
+
 export default function App() {
+  const remoteClient = window.dani?.remoteClient?.active === true;
+  const [runtimeReady, setRuntimeReady] = useState(remoteClient);
   const [gated, setGated] = useState(() => window.dani?.remoteClient?.active !== true && !emailGateDone());
   useEffect(() => {
     initAnalytics();
@@ -319,7 +330,8 @@ export default function App() {
     <DesktopCapabilitiesProvider>
       <StoreProvider>
         <Shell />
-        {gated && <Onboarding onDone={() => setGated(false)} />}
+        {!runtimeReady && <RuntimeTaskGate onReady={() => setRuntimeReady(true)} />}
+        {runtimeReady && gated && <Onboarding onDone={() => setGated(false)} />}
       </StoreProvider>
     </DesktopCapabilitiesProvider>
   );

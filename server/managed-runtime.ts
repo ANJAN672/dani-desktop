@@ -158,6 +158,9 @@ async function extractArchive(entry: RuntimeEntry, archive: string, staging: str
       file: archive,
       strict: true,
       preservePaths: false,
+      // Payload archives have one signed top-level directory; manifests are
+      // rooted inside it (bin/, probe/, NOTICE, SBOM).
+      strip: 1,
       filter: (path, tarEntry) => {
         validatePath(path);
         const archiveEntry = tarEntry as { type?: string; mode?: number };
@@ -235,6 +238,7 @@ export class ManagedRuntimeService {
   private opencodeServer: ReturnType<typeof spawn> | null = null;
   private routeMonitor: ReturnType<typeof setInterval> | null = null;
   private bridgeUrl: string | null = null;
+  private taskReadyHandler: (() => Promise<void>) | null = null;
   private status: RuntimeBootstrapStatus = this.statusValue("checking", "detect");
   constructor(options: { resourcesRoot: string; dataDir: string }) {
     this.resourcesRoot = join(options.resourcesRoot, "managed-runtimes");
@@ -253,6 +257,7 @@ export class ManagedRuntimeService {
     }
   }
   bootstrapStatus(): RuntimeBootstrapStatus { return structuredClone(this.status); }
+  setTaskReadyHandler(handler: () => Promise<void>) { this.taskReadyHandler = handler; }
   executable(kind: ManagedRuntimeKind): string | null { return this.active[kind] ?? null; }
   useManagedExecutables() {
     if (this.active.hermes) process.env.DANI_MANAGED_HERMES_EXECUTABLE = this.active.hermes;
@@ -272,7 +277,14 @@ export class ManagedRuntimeService {
     if (!this.bootstrapRun) {
       this.status = this.statusValue("installing", "verify-bundled");
       this.bootstrapRun = Promise.all([this.install("hermes"), this.install("opencode")])
-        .then(async () => { await this.startModelRoute(); this.refreshReadyStatus(); })
+        .then(async () => {
+          await this.startModelRoute();
+          // Keep bootstrap non-ready until product state has adopted the managed
+          // executable and exact model. Otherwise a fresh UI can dispatch its
+          // quiz against the empty selection captured at server boot.
+          await this.taskReadyHandler?.();
+          this.refreshReadyStatus();
+        })
         .catch(error => {
           const code = this.errorCode(error, "activation-failed");
           this.status = this.statusValue(code === "payload-missing" ? "blocked-error" : "repairable-error", null, safeError(code, productMessage(code)));
@@ -336,7 +348,9 @@ export class ManagedRuntimeService {
     this.bridge.once("exit", () => { this.setModelRouteReadiness("error"); });
     this.bridgeUrl = bridgeUrl;
     await waitForReady(`${bridgeUrl}/ready`, 30_000);
-    this.setModelRouteReadiness("ready");
+    // Do not publish taskReady yet. The awaited taskReadyHandler reloads the
+    // provider registry and repairs/seeds the starter bot first.
+    this.modelRouteState = "ready";
     this.routeMonitor = setInterval(() => { void this.checkRoute(); }, 10_000); this.routeMonitor.unref?.();
   }
   private async checkRoute() {

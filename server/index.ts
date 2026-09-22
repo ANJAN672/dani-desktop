@@ -1297,7 +1297,26 @@ function reportProactiveJob(threadId: string, jobId: string, status: "completed"
 }
 const sendSequencer = new SendSequencer();
 bootSelection = await defaultSelection();
-store.seedIfEmpty();
+// A first-ever boot has no activated runtime yet. Never persist an empty
+// starter selection or dispatch its onboarding quiz. Bootstrap completion
+// performs this seed after the exact free route has become task-ready.
+if (bootSelection.instanceId && bootSelection.model) store.seedIfEmpty();
+managedRuntimes.setTaskReadyHandler(async () => {
+  managedRuntimes.useManagedExecutables();
+  await registry.load(instanceConfigs(cfg));
+  const readySelection = await defaultSelection();
+  if (!readySelection.instanceId || !readySelection.model) {
+    throw Object.assign(new Error("managed Hermes has no live model route"), { code: "model-route-failed" });
+  }
+  bootSelection = readySelection;
+  // Repair v0.1.56-era starters that were persisted before runtime readiness.
+  for (const bot of store.bots) {
+    if (!bot.modelSelection.instanceId || !bot.modelSelection.model) {
+      store.patchBot(bot.id, { modelSelection: readySelection });
+    }
+  }
+  store.seedIfEmpty();
+});
 attachProactiveProposalListener();
 reconcileProactiveProposalCards();
 // A committed profile cleanup means both its config deletion and bot-reference

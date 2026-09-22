@@ -17,6 +17,12 @@ const base: RuntimeBootstrapStatus = {
   phase: null,
   progress: null,
   runtime: { kind: "hermes", version: null, source: null },
+  readiness: {
+    runtime: { state: "checking", hermes: false, opencode: false },
+    modelRoute: { state: "checking" },
+    taskReady: false,
+    activeRuntime: null,
+  },
   canRetry: false,
   canContinueLimited: false,
   error: null,
@@ -35,6 +41,8 @@ describe("parseBootstrapStatus", () => {
     expect(parseBootstrapStatus({ ...base, runtime: { kind: "opencode", version: null, source: null } })).toBeNull();
     expect(parseBootstrapStatus({ ...base, progress: { completedBytes: "5", totalBytes: 10 } })).toBeNull();
     expect(parseBootstrapStatus({ ...base, error: { code: 1, message: "x" } })).toBeNull();
+    expect(parseBootstrapStatus({ ...base, readiness: undefined })).toBeNull();
+    expect(parseBootstrapStatus({ ...base, state: "ready", readiness: { ...base.readiness, taskReady: false } })).toBeNull();
   });
 
   it("the absent-endpoint fallback is a repairable error, never ready", () => {
@@ -47,8 +55,8 @@ describe("parseBootstrapStatus", () => {
 
 describe("bootstrapView", () => {
   it("ready carries the verified version", () => {
-    const view = bootstrapView({ ...base, state: "ready", runtime: { kind: "hermes", version: "0.21.0", source: "bundled" } });
-    expect(view).toEqual({ kind: "ready", version: "0.21.0" });
+    const view = bootstrapView({ ...base, state: "ready", runtime: { kind: "hermes", version: "0.21.4", source: "managed" }, readiness: { ...base.readiness, runtime: { state: "ready", hermes: true, opencode: true }, modelRoute: { state: "ready" }, taskReady: true } });
+    expect(view).toEqual({ kind: "ready", version: "0.21.4" });
   });
 
   it("installing maps phases to product language and computes bounded progress", () => {

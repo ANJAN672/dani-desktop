@@ -75,6 +75,10 @@ await build({
   allowOverwrite: true,
   logLevel: "info",
   plugins: [yamlEsmPlugin],
+  // Inlined CommonJS dependencies may retain dynamic requires of Node built-ins
+  // (extract-zip -> debug -> tty). The packaged tree has no node_modules, but
+  // built-ins are valid; give esbuild's ESM require shim the native loader.
+  banner: { js: 'import { createRequire as __daniCreateRequire } from "node:module"; const require = __daniCreateRequire(import.meta.url);' },
 });
 
 // The Laya decision service's python sidecar is not a JS entry point: it is

@@ -11,7 +11,7 @@ import { brand } from "../lib/brand";
 // ("Preparing Dani" - no harness choice, no manual install), what the app
 // may use (TCC), then an optional phone setup that can always be resumed
 // from Settings → Remote access. Every check is skippable or recoverable —
-// onboarding must never brick the app.
+// onboarding never dispatches its quiz or enables chat before task readiness.
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { capabilities } = useDesktopCapabilities();
@@ -139,7 +139,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <RuntimePreparation
             variant="onboarding"
             onReady={() => setStep(capabilities.dictation.available ? 2 : 3)}
-            onContinueLimited={() => setStep(capabilities.dictation.available ? 2 : 3)}
           />
         )}
 
