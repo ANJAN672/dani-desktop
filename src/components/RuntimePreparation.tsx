@@ -72,9 +72,18 @@ export function RuntimePreparation({
         return current;
       });
     }, 1_500);
+    // Coming back to the window is the other way a settled state stops being
+    // true: someone left to fix something and returned. Without this the
+    // screen keeps showing a failure that has already been resolved, which
+    // reads as the app being stuck.
+    const refresh = () => {
+      if (active) void read();
+    };
+    window.addEventListener("focus", refresh);
     return () => {
       active = false;
       window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
     };
   }, [read]);
 

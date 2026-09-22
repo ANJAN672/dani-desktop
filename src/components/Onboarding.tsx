@@ -5,6 +5,7 @@ import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
 import { PhoneSetupFlow } from "./PhoneSetupFlow";
 import { RuntimePreparation } from "./RuntimePreparation";
+import { clearDraft, readDraft, writeDraft } from "@/lib/onboarding-draft";
 import { brand } from "../lib/brand";
 
 // First-run onboarding: who you are (email), Dani preparing its own runtime,
@@ -19,8 +20,10 @@ import { brand } from "../lib/brand";
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { capabilities } = useDesktopCapabilities();
   const [step, setStep] = useState(0);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  // Restored once, on mount: a save that failed or an app that was quit
+  // mid-setup must not cost the person their typing (issue #18 criterion 7).
+  const [name, setName] = useState(() => readDraft().name);
+  const [email, setEmail] = useState(() => readDraft().email);
   // What the runtime bootstrap step concluded, for the completion event only.
   // It is never the gate: RuntimePreparation advances on the server's live
   // readiness probe, not on anything this component believes.
@@ -63,6 +66,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       setSavingProfile(false);
       return;
     }
+    // Saved for real, so the draft has nothing left to protect.
+    clearDraft();
     identifyEmail(email.trim().toLowerCase());
     setStep(1);
   };
@@ -70,6 +75,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     track("onboarding_step", { step });
   }, [step]);
+
+  // Kept local to this machine and dropped the moment it is no longer needed.
+  // It is a convenience, never the source of truth: the saved profile is.
+  useEffect(() => {
+    if (step === 0) writeDraft({ name, email });
+  }, [step, name, email]);
 
   useEffect(() => {
     if (step === 2 && capabilities.dictation.available) {
@@ -86,6 +97,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       runtime: runtimeOutcome,
       mic: perms?.mic ?? "n/a",
     });
+    clearDraft();
     setEmailGateDone("submitted");
     onDone();
   };

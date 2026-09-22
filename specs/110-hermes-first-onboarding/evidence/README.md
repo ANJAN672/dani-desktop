@@ -105,6 +105,34 @@ secrets or large unredacted logs.
 - What this does NOT prove: anything about a packaged installer on any target,
   and nothing about the ready path, which needs a real runtime.
 
+## E-UI-FLOW-001 - the whole first run, driven end to end
+
+- Requirement: R-UI-001, R-UI-002, R-UI-003, R-PRIV-001.
+- Class: VISUAL and REAL_SERVING_PATH against the development UI.
+  **Not** PACKAGED.
+- Method: a server booted against a throwaway home with a staged payload whose
+  digest was deliberately wrong, the UI driven by clicking through every step.
+- Observed, in order:
+  1. Welcome step. Name and email typed, then the page reloaded: both came
+     back, which is criterion 7's "input survives restart".
+  2. Preparation step reported `runtime.digest-mismatch` with retry,
+     diagnostics and Continue anyway. Retry re-ran and stayed on the same
+     truthful state, because nothing had changed.
+  3. The payload digest was then corrected on disk and an owner-authenticated
+     repair was issued. It returned `installing` immediately, activated the
+     runtime under its digest on disk, and the state moved to
+     `runtime.absent`: activation succeeded and the placeholder does not
+     answer, so readiness was still not claimed.
+  4. Device pairing step present, optional, and stating it can be resumed from
+     Settings and Remote access.
+  5. Continue anyway reached the normal app in limited mode. The draft was
+     cleared once onboarding finished.
+- One gap was found and fixed: a settled error never re-checked, so a failure
+  resolved elsewhere kept showing. The screen now also re-reads on window
+  focus, matching the convention the removed engine step already used.
+- What this does NOT prove: the ready path, which needs a real runtime, and
+  anything about a packaged installer.
+
 ## Open blockers before issue 18 can close
 
 Recorded here so the gap between "this branch is done" and "the issue is done"
