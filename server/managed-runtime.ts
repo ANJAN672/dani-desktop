@@ -15,11 +15,21 @@ export type RuntimeBootstrapStatus = {
   phase: "detect" | "verify-bundled" | "activate" | "probe" | null;
   progress: { completedBytes: number; totalBytes: number } | null;
   runtime: { kind: "hermes"; version: string | null; source: "bundled" | "managed" | "external" | null };
+  readiness: {
+    runtime: { state: "checking" | "ready" | "error"; hermes: boolean; opencode: boolean };
+    modelRoute: { state: "checking" | "ready" | "error" };
+    taskReady: boolean;
+  };
   canRetry: boolean;
   canContinueLimited: boolean;
   error: { code: string; message: string } | null;
 };
 
+export function managedRuntimeReadiness(input: { hermes: boolean; opencode: boolean; modelRoute: "checking" | "ready" | "error" }) {
+  const runtimeReady = input.hermes && input.opencode;
+  const taskReady = runtimeReady && input.modelRoute === "ready";
+  return { runtime: { state: runtimeReady ? "ready" as const : "error" as const, hermes: input.hermes, opencode: input.opencode }, modelRoute: { state: input.modelRoute }, taskReady };
+}
 const targetSchema = z.enum(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "win32-x64", "win32-arm64"]);
 const runtimeSchema = z.object({
   name: z.enum(["hermes-runtime-payload", "opencode-runtime-payload"]),
@@ -193,22 +203,23 @@ export class ManagedRuntimeService {
   private readonly installRoot: string;
   private active: Partial<Record<ManagedRuntimeKind, string>> = {};
   private run: Partial<Record<ManagedRuntimeKind, Promise<void>>> = {};
-  private status: RuntimeBootstrapStatus = { schemaVersion: 1, state: "checking", phase: "detect", progress: null, runtime: { kind: "hermes", version: null, source: null }, canRetry: false, canContinueLimited: true, error: null };
+  private bootstrapRun: Promise<void> | null = null;
+  private modelRouteState: "checking" | "ready" | "error" = "checking";
+  private status: RuntimeBootstrapStatus = this.statusValue("checking", "detect");
   constructor(options: { resourcesRoot: string; dataDir: string }) {
     this.resourcesRoot = join(options.resourcesRoot, "managed-runtimes");
     this.installRoot = join(options.dataDir, "managed-runtimes");
     this.recoverActive("hermes"); this.recoverActive("opencode");
   }
   async initialize() {
-    await this.verifyRecovered("opencode").catch(() => { delete this.active.opencode; });
-    try {
-      await this.verifyRecovered("hermes");
-      const pointer = JSON.parse(readFileSync(this.pointer("hermes"), "utf8")) as { version: string };
-      this.status = { schemaVersion: 1, state: "ready", phase: null, progress: null, runtime: { kind: "hermes", version: pointer.version, source: "managed" }, canRetry: false, canContinueLimited: false, error: null };
-    } catch (error) {
-      delete this.active.hermes;
-      const code = typeof (error as { code?: unknown })?.code === "string" ? String((error as { code: string }).code) : "not-activated";
-      this.status = { schemaVersion: 1, state: "repairable-error", phase: null, progress: null, runtime: { kind: "hermes", version: null, source: null }, canRetry: true, canContinueLimited: true, error: safeError(code, code === "not-activated" ? "Dani's local runtime needs to be prepared." : productMessage(code)) };
+    const results = await Promise.allSettled([this.verifyRecovered("hermes"), this.verifyRecovered("opencode")]);
+    if (results[0]?.status === "rejected") delete this.active.hermes;
+    if (results[1]?.status === "rejected") delete this.active.opencode;
+    if (results.every(result => result.status === "fulfilled")) this.refreshReadyStatus();
+    else {
+      const error = results.find(result => result.status === "rejected") as PromiseRejectedResult | undefined;
+      const code = this.errorCode(error?.reason, "not-activated");
+      this.status = this.statusValue("repairable-error", null, safeError(code, code === "not-activated" ? "Dani's local runtimes need to be prepared." : productMessage(code)));
     }
   }
   bootstrapStatus(): RuntimeBootstrapStatus { return structuredClone(this.status); }
@@ -217,6 +228,10 @@ export class ManagedRuntimeService {
     if (this.active.hermes) process.env.DANI_MANAGED_HERMES_EXECUTABLE = this.active.hermes;
     if (this.active.opencode) process.env.DANI_MANAGED_OPENCODE_EXECUTABLE = this.active.opencode;
   }
+  setModelRouteReadiness(state: "checking" | "ready" | "error") {
+    this.modelRouteState = state;
+    if (this.active.hermes && this.active.opencode) this.refreshReadyStatus();
+  }
   async install(kind: ManagedRuntimeKind): Promise<void> {
     const current = this.run[kind];
     if (current) return current;
@@ -224,9 +239,34 @@ export class ManagedRuntimeService {
     this.run[kind] = task; return task;
   }
   startBootstrap(): RuntimeBootstrapStatus {
-    if (!this.run.hermes) void this.install("hermes").catch(() => undefined);
+    if (!this.bootstrapRun) {
+      this.status = this.statusValue("installing", "verify-bundled");
+      this.bootstrapRun = Promise.all([this.install("hermes"), this.install("opencode")])
+        .then(() => { this.refreshReadyStatus(); })
+        .catch(error => {
+          const code = this.errorCode(error, "activation-failed");
+          this.status = this.statusValue(code === "payload-missing" ? "blocked-error" : "repairable-error", null, safeError(code, productMessage(code)));
+        })
+        .finally(() => { this.bootstrapRun = null; });
+    }
     return this.bootstrapStatus();
   }
+  private statusValue(state: RuntimeBootstrapStatus["state"], phase: RuntimeBootstrapStatus["phase"], error: RuntimeBootstrapStatus["error"] = null): RuntimeBootstrapStatus {
+    const hermes = Boolean(this.active.hermes), opencode = Boolean(this.active.opencode);
+    const runtimeReady = hermes && opencode;
+    const taskReady = runtimeReady && this.modelRouteState === "ready";
+    return {
+      schemaVersion: 1, state: taskReady ? "ready" : state, phase, progress: null,
+      runtime: { kind: "hermes", version: hermes ? this.activeVersion("hermes") : null, source: hermes ? "managed" : null },
+      readiness: { runtime: { state: runtimeReady ? "ready" : state === "checking" || state === "installing" ? "checking" : "error", hermes, opencode }, modelRoute: { state: this.modelRouteState }, taskReady },
+      canRetry: state === "repairable-error", canContinueLimited: !taskReady, error,
+    };
+  }
+  private refreshReadyStatus() { this.status = this.statusValue("checking", null); }
+  private activeVersion(kind: ManagedRuntimeKind): string | null {
+    try { return (JSON.parse(readFileSync(this.pointer(kind), "utf8")) as { version?: string }).version ?? null; } catch { return null; }
+  }
+  private errorCode(error: unknown, fallback: string) { return typeof (error as { code?: unknown })?.code === "string" ? String((error as { code: string }).code) : fallback; }
   private pointer(kind: ManagedRuntimeKind) { return join(this.installRoot, kind, "current.json"); }
   private recoverActive(kind: ManagedRuntimeKind) {
     try {
@@ -246,16 +286,11 @@ export class ManagedRuntimeService {
     return parsed.data;
   }
   private async activate(kind: ManagedRuntimeKind) {
-    if (kind === "hermes") this.status = { ...this.status, state: "installing", phase: "verify-bundled", progress: null, canRetry: false, error: null };
-    let entry: RuntimeEntry;
-    try {
-      entry = this.manifestEntry(kind);
+    const entry = this.manifestEntry(kind);
       const archive = join(this.resourcesRoot, "archives", archiveName(entry));
       const archiveInfo = await lstat(archive);
       if (!archiveInfo.isFile() || archiveInfo.isSymbolicLink() || archiveInfo.size !== entry.archiveSize) throw Object.assign(new Error("runtime archive size mismatch"), { code: "verification-failed" });
-      if (kind === "hermes") this.status.progress = { completedBytes: 0, totalBytes: entry.archiveSize };
       if (await digestFile(archive) !== entry.archiveSha256) throw Object.assign(new Error("runtime archive digest mismatch"), { code: "verification-failed" });
-      if (kind === "hermes") this.status = { ...this.status, phase: "activate", progress: { completedBytes: entry.archiveSize, totalBytes: entry.archiveSize } };
       const kindRoot = join(this.installRoot, kind); await mkdir(kindRoot, { recursive: true });
       const manifestDigest = createHash("sha256").update(JSON.stringify(entry)).digest("hex");
       const installation = `${entry.version}-${manifestDigest.slice(0, 12)}`;
@@ -271,7 +306,6 @@ export class ManagedRuntimeService {
           const info = await lstat(safeJoin(staging, relPath));
           if (!info.isFile() || info.isSymbolicLink()) throw Object.assign(new Error("runtime legal metadata is missing"), { code: "verification-failed" });
         }
-        if (kind === "hermes") this.status = { ...this.status, phase: "probe" };
         await this.probe(kind, stagedExecutable, entry, staging);
         if (!existsSync(finalRoot)) await rename(staging, finalRoot);
         if (await inspectExtracted(finalRoot) !== entry.unpackedSize) throw Object.assign(new Error("existing activation size mismatch"), { code: "verification-failed" });
@@ -282,12 +316,6 @@ export class ManagedRuntimeService {
         if (kind === "hermes") process.env.DANI_MANAGED_HERMES_EXECUTABLE = executable;
         else process.env.DANI_MANAGED_OPENCODE_EXECUTABLE = executable;
       } finally { await rm(staging, { recursive: true, force: true }).catch(() => undefined); }
-      if (kind === "hermes") this.status = { schemaVersion: 1, state: "ready", phase: null, progress: null, runtime: { kind: "hermes", version: entry.version, source: "managed" }, canRetry: false, canContinueLimited: false, error: null };
-    } catch (error) {
-      const code = typeof (error as { code?: unknown })?.code === "string" ? String((error as { code: string }).code) : "activation-failed";
-      if (kind === "hermes") this.status = { schemaVersion: 1, state: code === "payload-missing" ? "blocked-error" : "repairable-error", phase: null, progress: null, runtime: { kind: "hermes", version: null, source: null }, canRetry: code !== "payload-missing", canContinueLimited: true, error: safeError(code, productMessage(code)) };
-      throw error;
-    }
   }
   private async verifyRecovered(kind: ManagedRuntimeKind) {
     const executable = this.active[kind];

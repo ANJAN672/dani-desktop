@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseManagedRuntimeManifest, safeManagedRuntimeRelativePath, safeManagedRuntimeSymlinkTarget } from "./managed-runtime.ts";
+import { managedRuntimeReadiness, parseManagedRuntimeManifest, safeManagedRuntimeRelativePath, safeManagedRuntimeSymlinkTarget } from "./managed-runtime.ts";
 const valid = {
   manifestVersion: 1, name: "hermes-runtime-payload", target: "linux-x64", version: "0.21.4",
   upstreamCommit: "d337b736aa1e8ebecfab043842d13e4a2d2f48a3", archiveSha256: "b".repeat(64),
@@ -30,6 +30,11 @@ describe("managed runtime manifest", () => {
     for (const target of ["/usr/bin/python", "C:\\Python\\python.exe", "../../../../outside"]) {
       expect(() => safeManagedRuntimeSymlinkTarget("/payload", "/payload/runtime/bin/python", target), target).toThrow();
     }
+  });
+  it("requires both runtimes and the model route before task-ready", () => {
+    expect(managedRuntimeReadiness({ hermes: true, opencode: false, modelRoute: "ready" })).toMatchObject({ runtime: { state: "error", hermes: true, opencode: false }, taskReady: false });
+    expect(managedRuntimeReadiness({ hermes: true, opencode: true, modelRoute: "checking" })).toMatchObject({ runtime: { state: "ready" }, modelRoute: { state: "checking" }, taskReady: false });
+    expect(managedRuntimeReadiness({ hermes: true, opencode: true, modelRoute: "ready" })).toMatchObject({ runtime: { state: "ready" }, modelRoute: { state: "ready" }, taskReady: true });
   });
   it("requires explicit degradation entries for mac-x64", () => {
     expect(() => parseManagedRuntimeManifest({ ...valid, target: "darwin-x64", degradations: [] })).toThrow();
