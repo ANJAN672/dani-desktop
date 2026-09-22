@@ -162,11 +162,20 @@ function normalizeManagedBrokerUrl(value: string): string {
   return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
+// Dual-listed with the legacy prefix: the desktop shell's rebranded sender
+// and this receiver must pair in every shipped combination (see
+// scripts/desktop-channel-contract.test.mjs).
+const MANAGED_BROKER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "danibot:managed-composio",
+  "openmausbot:managed-composio",
+]);
+
 export function applyManagedBrokerMessage(message: unknown): boolean {
   const parsed = managedBrokerMessageSchema.safeParse(message);
   if (
     !parsed.success ||
-    parsed.data.type !== "openmausbot:managed-composio" ||
+    typeof parsed.data.type !== "string" ||
+    !MANAGED_BROKER_MESSAGE_TYPES.has(parsed.data.type) ||
     !Object.hasOwn(parsed.data, "access")
   ) {
     return false;

@@ -308,11 +308,23 @@ async function importIdentity(message: Record<string, unknown>): Promise<PhoneSe
   return { keyId, privateKey: imported };
 }
 
+// Dual-listed with the legacy prefix: the desktop shell's rebranded senders
+// and these receivers must pair in every shipped combination (see
+// scripts/desktop-channel-contract.test.mjs).
+const PHONE_SECRET_KEY_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "danibot:phone-secret-key",
+  "openmausbot:phone-secret-key",
+]);
+const PHONE_SECRET_SAVE_RESULT_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "danibot:phone-secret-save-result",
+  "openmausbot:phone-secret-save-result",
+]);
+
 function decodeSaveResult(raw: unknown): { requestId: string; ok: boolean; error?: string } | null {
   const message = (raw as { data?: unknown } | null)?.data ?? raw;
   if (!message || typeof message !== "object" || Array.isArray(message)) return null;
   const value = message as Record<string, unknown>;
-  if (value.type !== "openmausbot:phone-secret-save-result") return null;
+  if (typeof value.type !== "string" || !PHONE_SECRET_SAVE_RESULT_MESSAGE_TYPES.has(value.type)) return null;
   if (typeof value.requestId !== "string" || !ROUTE_ID.test(value.requestId) || typeof value.ok !== "boolean") {
     return null;
   }
@@ -360,7 +372,7 @@ export class PhoneSecretBridge {
     const message = (raw as { data?: unknown } | null)?.data ?? raw;
     if (!message || typeof message !== "object" || Array.isArray(message)) return false;
     const record = message as Record<string, unknown>;
-    if (record.type === "openmausbot:phone-secret-key") {
+    if (typeof record.type === "string" && PHONE_SECRET_KEY_MESSAGE_TYPES.has(record.type)) {
       // Keep the rejection inside the promise. A request receives a bounded
       // 503; an invalid parent message must never become an unhandled reject.
       this.identity = importIdentity(record);

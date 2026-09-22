@@ -153,17 +153,30 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setProfileError(null);
     // persisted server-side (~/.danibot/config.json) — the sidebar
     // footer reads it back through /api/config
+    let res: Response;
     try {
-      const res = await fetch("/api/config", {
+      res = await fetch("/api/config", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profile: { name: name.trim(), email: email.trim().toLowerCase() } }),
       });
-      if (!res.ok) throw new Error(`save failed (${res.status})`);
     } catch {
-      // R5: a first-run save failure says so and keeps the user on the step;
-      // silently advancing would lose the profile without a word.
-      setProfileError("Could not save your profile - check the app is running, then try again.");
+      // The request never reached the server: the background server died or
+      // is restarting. Name that — "check the app is running" sent people
+      // hunting for a setting that does not exist.
+      setProfileError("The app's background server isn't answering. Quit and reopen Dani Bot, then try again.");
+      setSavingProfile(false);
+      return;
+    }
+    if (!res.ok) {
+      // The server answered and refused: its own message names the cause
+      // (a conflict, a busy save, a validation rule), which beats a guess.
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      setProfileError(
+        body?.error
+          ? `Could not save your profile: ${body.error}`
+          : `Could not save your profile (error ${res.status}). You can also skip for now and add this later in Settings.`,
+      );
       setSavingProfile(false);
       return;
     }

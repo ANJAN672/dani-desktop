@@ -89,6 +89,15 @@ test("accepts only bounded private save requests", () => {
   }), null);
 });
 
+test("accepts the legacy openmausbot save-request generation from an older server child", () => {
+  assert.deepEqual(decodePhoneSecretSaveRequest({
+    type: "openmausbot:phone-secret-save",
+    requestId: "request_1",
+    target: "xaiApiKey",
+    value: "  secret  ",
+  }), { requestId: "request_1", target: "xaiApiKey", value: "secret" });
+});
+
 test("save results expose only a bounded error", () => {
   assert.deepEqual(phoneSecretSaveResult("request_1", true), {
     type: "danibot:phone-secret-save-result",

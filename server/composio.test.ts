@@ -268,14 +268,17 @@ describe.sequential("Composio Sessions", () => {
     setManagedBrokerAccess(null);
   });
   it("ignores credential sync without access and clears only on explicit null", () => {
-    const messageType = "openmausbot:managed-composio";
-    setManagedBrokerAccess({ url: "http://127.0.0.1:3210/", token: "a".repeat(64) });
+    // Both product generations of the desktop shell's private message type
+    // must pair with this receiver (scripts/desktop-channel-contract.test.mjs).
+    for (const messageType of ["openmausbot:managed-composio", "danibot:managed-composio"]) {
+      setManagedBrokerAccess({ url: "http://127.0.0.1:3210/", token: "a".repeat(64) });
 
-    expect(applyManagedBrokerMessage({ type: messageType })).toBe(false);
-    expect(connectionMode({})).toBe("managed");
+      expect(applyManagedBrokerMessage({ type: messageType })).toBe(false);
+      expect(connectionMode({})).toBe("managed");
 
-    expect(applyManagedBrokerMessage({ type: messageType, access: null })).toBe(true);
-    expect(connectionMode({})).toBe("unavailable");
+      expect(applyManagedBrokerMessage({ type: messageType, access: null })).toBe(true);
+      expect(connectionMode({})).toBe("unavailable");
+    }
   });
 
   it("does not reuse a self-hosted catalog after the project key changes", async () => {

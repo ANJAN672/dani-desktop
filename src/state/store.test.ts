@@ -592,6 +592,17 @@ describe("onboarding quiz", () => {
     });
   });
 
+  it("re-opens the quiz when its answer never reached the bot", () => {
+    const state = { ...initialState, bots: [bot], selectedId: bot.id };
+    const settled = reducer(state, { type: "answerCard", botId: bot.id, messageId: "q", answer: "Work & projects" });
+    expect(settled.bots[0]?.messages.find((message) => message.id === "q")?.card?.dismissed).toBe(true);
+    const reopened = reducer(settled, { type: "reopenCard", botId: bot.id, messageId: "q" });
+    expect(reopened.bots[0]?.messages.find((message) => message.id === "q")?.card).toMatchObject({
+      dismissed: false,
+    });
+    expect(reopened.bots[0]?.messages.find((message) => message.id === "q")?.card?.answered).toBeUndefined();
+  });
+
   it("leaves a live permission card in place", () => {
     const askBot: Bot = {
       ...bot,

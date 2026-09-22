@@ -7229,7 +7229,10 @@ describe("harness HTTP API", () => {
           on(event, callback) {
             if (event !== "message") return;
             listener = callback;
-            queueMicrotask(() => listener?.({ data: { type: "openmausbot:desktop-mutation-token", token } }));
+            // The real shell sends the current (danibot:) generation of the
+            // capability message; the legacy generation is exercised by the
+            // credential-save harness earlier in this file.
+            queueMicrotask(() => listener?.({ data: { type: "danibot:desktop-mutation-token", token } }));
           },
           postMessage(message) {
             // Shell stub: accept private-channel messages without a real UI.

@@ -134,10 +134,19 @@ export function phoneSecretPrivateKeyMessage(identity) {
   };
 }
 
+// The server child and this shell carry both product generations on the
+// private channel: receivers accept the legacy (openmausbot:) and current
+// (danibot:) type prefixes. Pinned cross-side by
+// scripts/desktop-channel-contract.test.mjs.
+const PHONE_SECRET_SAVE_REQUEST_TYPES = new Set([
+  "danibot:phone-secret-save",
+  "openmausbot:phone-secret-save",
+]);
+
 export function decodePhoneSecretSaveRequest(rawMessage) {
   const message = rawMessage?.data ?? rawMessage;
   if (!message || typeof message !== "object" || Array.isArray(message)) return null;
-  if (message.type !== "danibot:phone-secret-save") return null;
+  if (!PHONE_SECRET_SAVE_REQUEST_TYPES.has(message.type)) return null;
   if (typeof message.requestId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(message.requestId)) return null;
   if (typeof message.target !== "string" || !/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(message.target)) return null;
   if (typeof message.value !== "string") return null;

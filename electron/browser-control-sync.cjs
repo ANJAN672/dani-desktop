@@ -4,6 +4,14 @@ const BOT_ID = /^[A-Za-z0-9_-]{1,120}$/;
 const PROFILE_PARTITION_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+// The server child and this shell carry both product generations on the
+// private channel: receivers accept the legacy (openmausbot:) and current
+// (danibot:) type prefixes. Pinned cross-side by
+// scripts/desktop-channel-contract.test.mjs.
+const BROWSER_CONTROL_TYPES = new Set(["danibot:browser-control", "openmausbot:browser-control"]);
+const BROWSER_BOT_DELETED_TYPES = new Set(["danibot:browser-bot-deleted", "openmausbot:browser-bot-deleted"]);
+const BROWSER_PROFILE_DELETED_TYPES = new Set(["danibot:browser-profile-deleted", "openmausbot:browser-profile-deleted"]);
+
 function lifecycleRequestId(message) {
   if (message.requestId === undefined) return undefined;
   const requestId = String(message.requestId ?? "");
@@ -17,7 +25,7 @@ function lifecycleRequestId(message) {
  * release IPC can do that, after its server-first release succeeds. */
 function applyBrowserControlHold(message, take) {
   if (!message || Object.prototype.toString.call(message) !== "[object Object]") return false;
-  if (message.type !== "danibot:browser-control") return false;
+  if (!BROWSER_CONTROL_TYPES.has(message.type)) return false;
   if (message.held !== true || !BOT_ID.test(String(message.botId ?? ""))) {
     throw new Error("invalid browser-control hold message");
   }
@@ -31,7 +39,7 @@ function applyBrowserControlHold(message, take) {
  * accepted from the renderer or loopback HTTP. */
 function decodeBrowserLifecycleMessage(message) {
   if (!message || Object.prototype.toString.call(message) !== "[object Object]") return null;
-  if (message.type === "danibot:browser-bot-deleted") {
+  if (BROWSER_BOT_DELETED_TYPES.has(message.type)) {
     const botId = String(message.botId ?? "");
     if (!BOT_ID.test(botId)) throw new Error("invalid browser bot-deleted message");
     const requestId = lifecycleRequestId(message);
@@ -39,7 +47,7 @@ function decodeBrowserLifecycleMessage(message) {
     if (requestId) lifecycle.requestId = requestId;
     return lifecycle;
   }
-  if (message.type === "danibot:browser-profile-deleted") {
+  if (BROWSER_PROFILE_DELETED_TYPES.has(message.type)) {
     const partitionId = String(message.partitionId ?? "");
     if (!PROFILE_PARTITION_ID.test(partitionId) || partitionId === "guest") {
       throw new Error("invalid browser profile-deleted message");

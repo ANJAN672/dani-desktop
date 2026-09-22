@@ -464,10 +464,18 @@ function postDesktopPrivateMessage(message: DesktopPrivateMessage): boolean {
     return false;
   }
 }
+// The shell and this server carry both product generations on the private
+// channel: receivers accept the legacy (openmausbot:) and current (danibot:)
+// type prefixes, the same dual-listing as server/browser-connection.ts.
+// Pinned cross-side by scripts/desktop-channel-contract.test.mjs.
+const DESKTOP_MUTATION_TOKEN_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "danibot:desktop-mutation-token",
+  "openmausbot:desktop-mutation-token",
+]);
 function applyDesktopMutationTokenMessage(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const message = raw as Record<string, unknown>;
-  if (message.type !== "openmausbot:desktop-mutation-token") return false;
+  if (typeof message.type !== "string" || !DESKTOP_MUTATION_TOKEN_MESSAGE_TYPES.has(message.type)) return false;
   if (typeof message.token !== "string" || !OWNER_CAPABILITY_PATTERN.test(message.token)) {
     throw new Error("invalid desktop mutation capability");
   }

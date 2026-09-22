@@ -17,6 +17,12 @@ describe("private browser control sync", () => {
     expect(take).toHaveBeenCalledWith("bot-a");
   });
 
+  it("accepts the legacy openmausbot hold generation from an older server child", () => {
+    const take = vi.fn();
+    expect(applyBrowserControlHold({ type: "openmausbot:browser-control", botId: "bot-a", held: true }, take)).toBe(true);
+    expect(take).toHaveBeenCalledWith("bot-a");
+  });
+
   it("never treats a generic server release as authority to clear the local gate", () => {
     const take = vi.fn();
     expect(() => applyBrowserControlHold({ type: "danibot:browser-control", botId: "bot-a", held: false }, take))
@@ -40,6 +46,19 @@ describe("private browser lifecycle sync", () => {
     })).toEqual({ type: "bot-deleted", requestId, botId: "bot_A-1" });
     expect(decodeBrowserLifecycleMessage({
       type: "danibot:browser-profile-deleted",
+      requestId,
+      partitionId: "Client_1",
+    })).toEqual({ type: "profile-deleted", requestId, partitionId: "Client_1" });
+  });
+
+  it("accepts the legacy openmausbot deletion generation from an older server child", () => {
+    expect(decodeBrowserLifecycleMessage({
+      type: "openmausbot:browser-bot-deleted",
+      requestId,
+      botId: "bot_A-1",
+    })).toEqual({ type: "bot-deleted", requestId, botId: "bot_A-1" });
+    expect(decodeBrowserLifecycleMessage({
+      type: "openmausbot:browser-profile-deleted",
       requestId,
       partitionId: "Client_1",
     })).toEqual({ type: "profile-deleted", requestId, partitionId: "Client_1" });

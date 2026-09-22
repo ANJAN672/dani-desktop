@@ -650,6 +650,7 @@ export type Action =
   | { type: "threadActive"; threadId: string; activeLeafId: string }
   | { type: "answerCard"; botId: string; messageId: string; answer: string }
   | { type: "dismissCard"; botId: string; messageId: string }
+  | { type: "reopenCard"; botId: string; messageId: string }
   // permission cards answer by THREAD, so a request raised inside a room
   // can be answered the same way as one in a 1:1 chat
   | {
@@ -965,6 +966,10 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case "dismissCard":
       return patchCard(state, action.botId, action.messageId, { dismissed: true });
+    // an answer that never reached the bot re-opens the quiz, so the
+    // optimistic settle cannot strand the user without a way to retry
+    case "reopenCard":
+      return patchCard(state, action.botId, action.messageId, { answered: undefined, dismissed: false });
     case "decideRequest":
       return state; // the server's request.resolved patch settles the card
     case "botAdded":
@@ -2048,11 +2053,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   }),
                 });
               }
-              persistCard(action.botId, action.messageId, { answered: action.answer, dismissed: true });
               return api(`/api/bots/${action.botId}/messages`, {
                 method: "POST",
                 body: JSON.stringify({ text: action.answer }),
-              });
+              }).then(
+                () => persistCard(action.botId, action.messageId, { answered: action.answer, dismissed: true }),
+                (error) => {
+                  // The answer never reached the bot. Re-open the quiz —
+                  // server-side and locally — rather than leaving it settled
+                  // around an answer nothing received.
+                  persistCard(action.botId, action.messageId, { answered: "", dismissed: false });
+                  rawDispatch({ type: "reopenCard", botId: action.botId, messageId: action.messageId });
+                  throw error;
+                },
+              );
             })
             .catch(showError);
           break;

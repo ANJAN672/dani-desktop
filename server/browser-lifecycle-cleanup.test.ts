@@ -48,6 +48,29 @@ describe("durable browser lifecycle cleanup", () => {
     expect(JSON.parse(readFileSync(file, "utf8"))).toEqual([]);
   });
 
+  it("acknowledges the current danibot result generation from the desktop shell", async () => {
+    const file = journal();
+    let coordinator!: BrowserCleanupCoordinator;
+    coordinator = new BrowserCleanupCoordinator({
+      file,
+      timeoutMs: 50,
+      retryMs: [60_000],
+      send(message) {
+        const { requestId } = message;
+        queueMicrotask(() => coordinator.receive({
+          type: "danibot:browser-lifecycle-result",
+          requestId,
+          ok: true,
+        }));
+        return true;
+      },
+    });
+    const request = coordinator.commit(coordinator.prepare("profile", "work"));
+
+    await expect(coordinator.ensure(request)).resolves.toBe(true);
+    expect(coordinator.pending()).toEqual([]);
+  });
+
   it("does not report completion without an ACK and blocks profile-id reuse across restart", async () => {
     const file = journal();
     const coordinator = new BrowserCleanupCoordinator({

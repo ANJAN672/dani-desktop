@@ -40,8 +40,11 @@ const browserCleanupJournalSchema = z.array(browserCleanupTargetSchema).max(MAX_
     });
   }
 });
+// Dual-listed with the legacy prefix: the desktop shell's rebranded sender
+// and this receiver must pair in every shipped combination (see
+// scripts/desktop-channel-contract.test.mjs).
 const browserCleanupResultSchema = z.object({
-  type: z.literal("openmausbot:browser-lifecycle-result"),
+  type: z.enum(["danibot:browser-lifecycle-result", "openmausbot:browser-lifecycle-result"]),
   requestId: z.string().regex(REQUEST_ID),
   ok: z.boolean(),
 }).strict();
@@ -279,7 +282,10 @@ export class BrowserCleanupCoordinator {
   /** Consume only this protocol's result. A late success still clears the
    * durable journal even when the request's timeout already fired. */
   receive(message: BrowserCleanupIncomingMessage | undefined): boolean {
-    if (message?.type !== "openmausbot:browser-lifecycle-result") return false;
+    if (
+      message?.type !== "danibot:browser-lifecycle-result" &&
+      message?.type !== "openmausbot:browser-lifecycle-result"
+    ) return false;
     const parsed = browserCleanupResultSchema.safeParse(message);
     if (!parsed.success) throw new Error("invalid browser lifecycle result");
     const result = parsed.data;

@@ -114,6 +114,25 @@ describe("PhoneSecretBridge", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it("pairs with the current danibot generations of the private channel types", async () => {
+    const material = await keyMaterial();
+    let bridge!: PhoneSecretBridge;
+    const send = vi.fn((message: { requestId: string }) => {
+      queueMicrotask(() => bridge.receive({
+        type: "danibot:phone-secret-save-result",
+        requestId: message.requestId,
+        ok: true,
+      }));
+      return true;
+    });
+    bridge = new PhoneSecretBridge(send, 200);
+    bridge.receive({ ...material.message, type: "danibot:phone-secret-key" });
+
+    const context = await seal(baseContext(material.keyId), material.publicKey);
+    await expect(bridge.provide(context)).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the card-bound envelope and saves through the private parent", async () => {
     const material = await keyMaterial();
     let bridge!: PhoneSecretBridge;
