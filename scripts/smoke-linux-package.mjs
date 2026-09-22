@@ -194,11 +194,11 @@ const desktopEnv = {
   XDG_CURRENT_DESKTOP: "GNOME",
   CUA_DRIVER_PATH: sentinel,
   OMB_COMPOSIO_BROKER_URL: `http://127.0.0.1:${brokerAddress.port}`,
-  OMB_SMOKE_TEST: "1",
-  OMB_SMOKE_CUA: hardDeath || bundled || sessionBlocked ? "0" : "1",
-  OMB_SMOKE_BUNDLED_CUA: bundled ? "1" : "0",
+  DANI_SMOKE_TEST: "1",
+  DANI_SMOKE_CUA: hardDeath || bundled || sessionBlocked ? "0" : "1",
+  DANI_SMOKE_BUNDLED_CUA: bundled ? "1" : "0",
 };
-if (hardDeath || signalShutdown) desktopEnv.OMB_SMOKE_KEEP_OPEN = "1";
+if (hardDeath || signalShutdown) desktopEnv.DANI_SMOKE_KEEP_OPEN = "1";
 if (bundled) delete desktopEnv.CUA_DRIVER_PATH;
 if (wayland) desktopEnv.WAYLAND_DISPLAY = "wayland-smoke";
 else delete desktopEnv.WAYLAND_DISPLAY;
@@ -494,7 +494,7 @@ try {
     const restart = spawn(executable, wayland ? ["--ozone-platform=x11"] : [], {
       cwd: root,
       detached: true,
-      env: { ...desktopEnv, OMB_SMOKE_KEEP_OPEN: "0" },
+      env: { ...desktopEnv, DANI_SMOKE_KEEP_OPEN: "0" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     try {
