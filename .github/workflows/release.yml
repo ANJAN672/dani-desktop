@@ -91,12 +91,20 @@ jobs:
           test -f release/DaniBot-${{ needs.prepare.outputs.version }}-x86_64.AppImage
           test -f release/DaniBot-${{ needs.prepare.outputs.version }}-amd64.deb
           test -f release/latest-linux.yml
+      - name: Create stable download names
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${{ needs.prepare.outputs.version }}
+          cp "release/DaniBot-$version-x86_64.AppImage" release/DaniBot.AppImage
+          cp "release/DaniBot-$version-amd64.deb" release/danibot-amd64.deb
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-release
           path: |
             release/DaniBot-*.AppImage
             release/DaniBot-*.deb
+            release/danibot-amd64.deb
             release/latest-linux.yml
           if-no-files-found: error
           retention-days: 7
@@ -129,6 +137,12 @@ jobs:
           set -euo pipefail
           test -f release/DaniBot-${{ needs.prepare.outputs.version }}-setup.exe
           test -f release/latest.yml
+      - name: Create stable download name
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${{ needs.prepare.outputs.version }}
+          cp "release/DaniBot-$version-setup.exe" release/DaniBot-setup.exe
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-release
@@ -176,6 +190,13 @@ jobs:
             test -f "release/DaniBot-$version-$arch.zip"
           done
           test -f release/latest-mac.yml
+      - name: Create stable download names
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${{ needs.prepare.outputs.version }}
+          cp "release/DaniBot-$version-x64.dmg" release/DaniBot-Intel.dmg
+          cp "release/DaniBot-$version-arm64.dmg" release/DaniBot-Silicon.dmg
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-release
@@ -214,6 +235,11 @@ jobs:
             "DaniBot-$VERSION-arm64.dmg"
             "DaniBot-$VERSION-arm64.zip"
             "DaniBot-$VERSION-x64.dmg"
+            DaniBot.AppImage
+            danibot-amd64.deb
+            DaniBot-setup.exe
+            DaniBot-Intel.dmg
+            DaniBot-Silicon.dmg
             latest-linux.yml latest.yml latest-mac.yml
           )
           for file in "${required[@]}"; do
