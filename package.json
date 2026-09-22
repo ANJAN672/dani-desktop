@@ -80,7 +80,9 @@
     "dani-agent": "node --experimental-strip-types server/dani-agent.ts",
     "build:speech-models": "node scripts/prepare-speech-models.mjs",
     "smoke:kernel-profiles": "dbus-run-session -- xvfb-run -a node scripts/smoke-packaged-kernel-profiles.mjs",
-    "e2e:realtime-proxy": "node scripts/openai-realtime-proxy-e2e.mjs"
+    "e2e:realtime-proxy": "node scripts/openai-realtime-proxy-e2e.mjs",
+    "sdd:check": "python3 docs/dani-sdd-kit/scripts/check_kit.py",
+    "sdd:test": "python3 docs/dani-sdd-kit/scripts/check_kit.py --self-test"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",

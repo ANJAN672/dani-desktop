@@ -1,16 +1,19 @@
-# Feature implementation plan
-Specification: specs/NNN-.../spec.md
-Baseline and review status: ...
+# Tasks - Feature title
 
-## Dependency order and acceptance gate
-Task number | Exact files | Consumes/produces interface | Failing test | Minimal implementation | Passing test and evidence | Review status
+Baseline `main` SHA/tree:
+Approved spec and plan:
 
-For each task:
-- [ ] Inspect relevant code and existing tests; capture baseline.
-- [ ] Add a narrowly scoped failing regression/acceptance test; run it and record RED.
-- [ ] Implement minimal change; run focused and impacted tests; record GREEN.
-- [ ] Refactor without changing behavior; run tests, static checks, secret scanning.
-- [ ] Independent spec and code review; address findings.
-- [ ] Commit only the scoped diff if authorized.
+```yaml
+slice: S-NNN-01
+base: <verified-main-sha>
+requirements: [R-NNN-001]
+files: [exact/allowlist]
+blocked_by: []
+produces: [observable-outcome]
+validation: [focused-test, impacted-test, artifact-gate]
+rollback: <reversal-strategy>
+```
 
-Use independently verifiable vertical slices rather than fake placeholder implementations.
+- [ ] T-NNN-001 [R-NNN-001] Exact task outcome, files, prerequisites, RED/GREEN evidence, critic cases, rollback, and parallel-safety decision.
+
+No task may create behavior absent from the approved spec. No requirement may lack a task or explicit external blocker.

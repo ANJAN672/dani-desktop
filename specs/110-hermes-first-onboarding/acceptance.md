@@ -1,0 +1,11 @@
+# Acceptance - Hermes-first seamless onboarding
+
+| AC ID | Requirement | Minimum evidence | Status | Evidence identity |
+|---|---|---|---|---|
+| AC-BOOT-001 | R-BOOT-001,R-BOOT-002,R-RUNTIME-001,R-RUNTIME-002,R-RUNTIME-003 | PACKAGED,CLEAN_MACHINE | NOT DONE | none |
+| AC-RUNTIME-001 | R-RUNTIME-004 | REAL_SERVING_PATH | NOT DONE | none |
+| AC-UI-001 | R-UI-001,R-UI-002 | PACKAGED,VISUAL | NOT DONE | none |
+| AC-PAIR-001 | R-UI-003 | PACKAGED | NOT DONE | none |
+| AC-MODEL-001 | R-MODEL-005 | LIVE_PROVIDER,SECURITY | NOT DONE | none |
+| AC-PRIV-001 | R-PRIV-001 | PRIVACY,SECURITY | NOT DONE | none |
+| AC-LAYA-001 | R-LAYA-005 | REAL_SERVING_PATH | NOT DONE | none |

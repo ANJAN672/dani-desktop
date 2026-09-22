@@ -3,6 +3,8 @@
 **Deliverable:** an executable engineering assignment plus 13 portable Agent Skills and specification templates. No codebase changes are implied or claimed.
 
 ## Usage
+
+Canonical integration and release branch: `main`. Historical `prod` references are provenance, not current instructions.
 1. Extract this kit beside or inside the DANI repository and open it from your coding agent with actual repository access.
 2. Read `MASTER_PROMPT.md`, then activate `skills/repo-forensics/SKILL.md`. Use other skills when their descriptions apply.
 3. Optionally install GitHub Spec Kit using its **official existing-project guide** after checking your git state. Choose the coding-agent integration it actually supports. Invoke the process commands in your coding agent, not as terminal shell commands.

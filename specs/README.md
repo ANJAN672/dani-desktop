@@ -4,7 +4,7 @@ One plan, one kit. Every area of the Dani desktop recovery has a numbered spec i
 directory. Any engineer can pick up any spec and execute it without asking for context.
 
 - Audience: the founder and incoming engineers.
-- Repo: `somdipto/dani-desktop`. Branch: `prod` only. Never target `main`.
+- Repo: `somdipto/dani-desktop`. Canonical integration and release branch: `main` only. Historical `prod` references are provenance, not current instructions.
 - Source epics: GitHub issues #9-#14, tracker #15. Specs 010-050 and 100 restate those
   epics with landed/remaining ledgers; specs 060-090 are new and fill the gaps the
   epics do not cover (proactive experience, model-only picker, first-run install,
@@ -25,7 +25,7 @@ Every spec has the same sections:
 
 ## Working agreements (apply to every slice of every spec)
 
-- **Branch per slice, PR into `prod`.** Small reviewable slices; no mixed feature work.
+- **Small cumulative slices into `main`.** Each slice records its verified `main` base, requirement IDs, exact file map, validation, rollback, head/tree, and bundle hash. Review branches may be used when the repository workflow requires them; `main` is the only integration/release target.
 - **Commit identity:** all commits authored and committed as
   `Somdipto Nandy <somdiptonandy@gmail.com>`.
 - **Delivery:** until a push-capable code route exists, each slice ships as a verified
@@ -43,7 +43,7 @@ Every spec has the same sections:
      the PR body. "Critic found nothing" requires listing the attack cases run.
 - **Validation floor per slice:** focused tests, typecheck, lint/diff checks, and the
   relevant packaged/serving-path tests. Full repo suite must run to completion before
-  a slice is promoted into the unified prod candidate (see master plan P0 gate).
+  a slice is promoted into the unified `main` candidate (see master plan P0 gate).
 - **Working product over green tests.** A criterion is done only when evidenced the way
   the criterion says: unit tests for units, the real serving path for serving claims,
   the installed artifact for install claims, physical hardware for audio claims.
@@ -51,8 +51,8 @@ Every spec has the same sections:
 
 ## Status legend
 
-- **LANDED** - merged into the unified prod candidate, with commit ID.
-- **BUILT** - slice complete and validated, in consolidation (not yet in unified prod).
+- **LANDED** - merged into the unified `main` candidate, with commit ID.
+- **BUILT** - slice complete and validated, in consolidation (not yet in unified `main`).
 - **ACTIVE** - workstream running, no complete slice yet.
 - **OPEN** - specified, not started.
 - **PARKED** - explicitly deferred by the founder; plan references but never schedules.
