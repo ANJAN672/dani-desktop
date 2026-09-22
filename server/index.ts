@@ -4,10 +4,11 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, join } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 import { z } from "zod";
 import { validateQuietHours } from "./dani-policy.ts";
+import { ManagedRuntimeService } from "./managed-runtime.ts";
 import { botAvatarUrlFromStoredPath } from "../shared/bot-avatar.ts";
 import {
   approvalModeFor,
@@ -412,6 +413,12 @@ if (SECRET_STORE.warning) {
 }
 scrubPlaintextSecretsAtBoot({ dataDir: DATA_DIR, store: SECRET_STORE, env: process.env });
 const cfg = loadConfig();
+const managedRuntimes = new ManagedRuntimeService({
+  resourcesRoot: process.env.DANI_RESOURCES_PATH ?? process.env.OMB_RESOURCES_PATH ?? resolve(process.cwd(), "dist-native"),
+  dataDir: DATA_DIR,
+});
+await managedRuntimes.initialize();
+managedRuntimes.useManagedExecutables();
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 const bundledSkills = loadBundledSkills();
@@ -11762,6 +11769,15 @@ const server = createServer(async (req, res) => {
       // this the answer is frozen at boot and "check again" is a no-op.
       resetPathCache();
       return json(res, 200, { instances: await registry.describe() });
+    }
+
+    if (path === "/api/runtime/bootstrap" && method === "GET") {
+      return json(res, 200, managedRuntimes.bootstrapStatus());
+    }
+    if (path === "/api/runtime/bootstrap" && method === "POST") {
+      if (!String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) return json(res, 415, { error: "content-type must be application/json" });
+      await readBody(req, 1_024);
+      return json(res, 202, managedRuntimes.startBootstrap());
     }
 
     const instanceAction = /^\/api\/instances\/([\w.-]+)\/(refresh-models|install|auth\/start|auth\/complete|auth\/cancel|verify|acknowledge-metered)$/.exec(path);

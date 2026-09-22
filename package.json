@@ -88,6 +88,7 @@
     "@hpke/core": "1.9.0",
     "@trycua/cua-driver": "0.22.1",
     "clsx": "^2.1.1",
+    "extract-zip": "^2.0.1",
     "lucide-react": "^0.539.0",
     "mdast-util-from-markdown": "^2.0.3",
     "posthog-js": "^1.415.6",
@@ -99,6 +100,7 @@
     "remark-gfm": "^4.0.1",
     "shiki": "^4.4.3",
     "tailwind-merge": "^3.3.1",
+    "tar": "^7.5.22",
     "yaml": "^2.9.0",
     "zod": "4.4.3"
   },

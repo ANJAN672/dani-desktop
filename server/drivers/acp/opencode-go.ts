@@ -349,6 +349,7 @@ const support = (loadCatalog: OpenCodeCatalogLoader): AcpSupport => ({
   displayName: "OpenCode",
   models: STATIC_MODELS,
   defaultCli: "opencode",
+  resolveCommand: async (_env, config) => ({ command: process.env.DANI_MANAGED_OPENCODE_EXECUTABLE || config.cli }),
   nativeSource: "opencode.acp",
   loginNote:
     "OpenCode has no usable models — run `opencode auth login` or connect a provider in the OpenCode app",

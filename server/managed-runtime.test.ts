@@ -1,0 +1,38 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { parseManagedRuntimeManifest, safeManagedRuntimeRelativePath, safeManagedRuntimeSymlinkTarget } from "./managed-runtime.ts";
+const valid = {
+  manifestVersion: 1, name: "hermes-runtime-payload", target: "linux-x64", version: "0.21.4",
+  upstreamCommit: "d337b736aa1e8ebecfab043842d13e4a2d2f48a3", archiveSha256: "b".repeat(64),
+  archiveSize: 86_596_540, unpackedSize: 250_270_424, format: "tar.gz", executableRelPath: "bin/hermes-acp",
+  probe: { argv: ["probe/run-probe.sh"], protocol: "acp-jsonrpc-stdio: initialize", expectedVersion: "0.21.4" },
+  noticeRelPath: "NOTICE", sbomRelPath: "SBOM.cdx.json", degradations: ["no-pillow-heif"],
+};
+describe("managed runtime manifest", () => {
+  it("accepts the real manifest-v1 payload contract", () => {
+    const fixture = process.env.HERMES_MANIFEST_FIXTURE;
+    const manifest = fixture ? JSON.parse(readFileSync(fixture, "utf8")) : valid;
+    expect(parseManagedRuntimeManifest(manifest)).toMatchObject({ manifestVersion: 1, name: "hermes-runtime-payload", target: "linux-x64" });
+  });
+  it("rejects missing integrity, provenance, probe, and legal metadata fields", () => {
+    for (const field of ["upstreamCommit", "archiveSha256", "archiveSize", "unpackedSize", "probe", "noticeRelPath", "sbomRelPath"]) {
+      const payload = { ...valid } as Record<string, unknown>; delete payload[field];
+      expect(() => parseManagedRuntimeManifest(payload), field).toThrow();
+    }
+  });
+  it("rejects unsafe payload paths", () => {
+    for (const path of ["../hermes", "bin/../hermes", "/bin/hermes", "C:\\hermes.exe", "bin//hermes"]) expect(() => safeManagedRuntimeRelativePath(path), path).toThrow();
+    expect(safeManagedRuntimeRelativePath("bin/hermes")).toBe("bin/hermes");
+  });
+  it("allows contained relative symlinks and rejects absolute or escaping targets", () => {
+    expect(safeManagedRuntimeSymlinkTarget("/payload", "/payload/runtime/bin/python", "python3.11")).toBe("/payload/runtime/bin/python3.11");
+    expect(safeManagedRuntimeSymlinkTarget("/payload", "/payload/terminfo/x/xterm", "../../share/terminfo/x/xterm")).toBe("/payload/share/terminfo/x/xterm");
+    for (const target of ["/usr/bin/python", "C:\\Python\\python.exe", "../../../../outside"]) {
+      expect(() => safeManagedRuntimeSymlinkTarget("/payload", "/payload/runtime/bin/python", target), target).toThrow();
+    }
+  });
+  it("requires explicit degradation entries for mac-x64", () => {
+    expect(() => parseManagedRuntimeManifest({ ...valid, target: "darwin-x64", degradations: [] })).toThrow();
+    expect(parseManagedRuntimeManifest({ ...valid, target: "darwin-x64", degradations: ["host probe pending"] })).toBeTruthy();
+  });
+});

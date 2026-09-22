@@ -15,8 +15,8 @@ import { decodeInjectId, hostApiKey, INJECT_SEP, localHost, mergeLocalInject } f
 import { createAcpDriver, type AcpSupport } from "./core.ts";
 import { classifyHermesError } from "../../hermes-provider-policy.ts";
 
-export const HERMES_PINNED_VERSION = "0.21.0";
-export const HERMES_PINNED_RELEASE = "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.0";
+export const HERMES_PINNED_VERSION = "0.21.4";
+export const HERMES_PINNED_RELEASE = "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.21";
 
 const EMPTY: ModelCatalog = { default: "", options: [] };
 
@@ -416,6 +416,7 @@ const support: AcpSupport = {
     return model;
   },
   defaultCli: "hermes",
+  resolveCommand: async (_env, config) => ({ command: process.env.DANI_MANAGED_HERMES_EXECUTABLE || config.cli }),
   nativeSource: "hermes.acp",
   loginNote: "Hermes CLI is not installed",
   install: {
@@ -429,7 +430,8 @@ const support: AcpSupport = {
   },
   spawnArgs: () => ["acp"],
   snapshot: async (env, config) => await new Promise((resolve) => {
-    execFile(config.cli, ["--version"], { env: env as NodeJS.ProcessEnv, timeout: 8_000 }, (error, stdout) => {
+    const cli = process.env.DANI_MANAGED_HERMES_EXECUTABLE || config.cli;
+    execFile(cli, ["--version"], { env: env as NodeJS.ProcessEnv, timeout: 8_000 }, (error, stdout) => {
       if (error) return resolve({ state: "unavailable", reason: "`hermes` CLI not found" });
       const version = String(stdout).trim();
       const compatible = new RegExp(`(?:^|\\s)v?${HERMES_PINNED_VERSION.replaceAll(".", "\\.")}(?:\\s|$|\\()`).test(version);

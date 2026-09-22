@@ -222,4 +222,4 @@ describe("hermesAcpModelId", () => {
 });
 
 
-describe("Hermes release pin",()=>{it("pins a traceable upstream release",()=>{expect(HERMES_PINNED_VERSION).toBe("0.21.0");expect(HERMES_PINNED_RELEASE).toBe("https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.0");expect(HermesAgentDriver.install?.docsUrl).toContain("hermes-agent.nousresearch.com")})});
+describe("Hermes release pin",()=>{it("pins a traceable upstream release",()=>{expect(HERMES_PINNED_VERSION).toBe("0.21.4");expect(HERMES_PINNED_RELEASE).toBe("https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.21");expect(HermesAgentDriver.install?.docsUrl).toContain("hermes-agent.nousresearch.com")})});
