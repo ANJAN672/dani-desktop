@@ -10,6 +10,9 @@ on:
         required: false
         type: string
   push:
+    branches:
+      - main
+      - prod
     tags:
       - "v*"
 
@@ -17,8 +20,10 @@ permissions:
   contents: read
 
 concurrency:
+  # A newer push to the same branch supersedes an older build. Tags and manual
+  # runs use their own refs, so they do not cancel branch releases.
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   prepare:
