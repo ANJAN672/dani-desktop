@@ -185,6 +185,16 @@ export function findCliCandidates(name: string): string[] {
 export interface ResolvedSpawn {
   command: string;
   args: string[];
+  /**
+   * Variables the launcher set before invoking the command.
+   *
+   * A `.cmd` launcher that configures its interpreter (a module search path,
+   * a no-user-site flag) and then runs an executable is not decoration: run
+   * the executable without them and it fails, or worse, silently resolves
+   * different code. Resolving the command means resolving what it was going to
+   * run with.
+   */
+  env?: Record<string, string>;
 }
 
 /** Split a `cli` string into [command, ...fixedArgs] on unquoted whitespace —
@@ -250,8 +260,49 @@ function nodeExe(near: string): string | null {
   return (process.versions as Record<string, string | undefined>).electron ? null : process.execPath;
 }
 
-/** npm/pnpm .cmd shims all spell their target as "%dp0%\..." (or
- * "%~dp0\..."). Whatever of those exists on disk is what the shim runs. */
+/**
+ * Expand `%~dp0` and any `set "NAME=..."` the shim defined, relative to it.
+ *
+ * Still a parser and never a shell: only literal assignments from this same
+ * file are substituted, nothing is executed, and the environment of this
+ * process is deliberately not consulted, so a shim cannot be steered by an
+ * ambient variable. The passes are bounded because `set` can reference an
+ * earlier `set`, and a self-referential pair must terminate rather than spin.
+ */
+function expandCmdVars(value: string, dir: string, vars: Map<string, string>): string {
+  let out = value;
+  for (let pass = 0; pass < 5 && out.includes("%"); pass++) {
+    const next = out
+      .replace(/%~dp0/gi, `${dir}\\`)
+      .replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, (whole, name: string) => vars.get(name.toUpperCase()) ?? whole);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/** Quoted tokens on a line, in order. Quotes group; nothing is evaluated. */
+function quotedTokens(line: string): string[] {
+  return [...line.matchAll(/"([^"]*)"/g)].map((m) => m[1]!);
+}
+
+/**
+ * What a `.cmd` shim actually runs.
+ *
+ * npm and pnpm shims name their target directly as `"%~dp0\..."`. Launchers
+ * that ship inside a relocatable payload usually take one step more, setting a
+ * root variable first and invoking through it, and they carry fixed arguments
+ * that are part of the command rather than decoration:
+ *
+ *     set "ROOT=%~dp0.."
+ *     "%ROOT%\runtime\python.exe" -m some_module %*
+ *
+ * Both shapes resolve here to a real executable plus the arguments the shim
+ * would have passed. Dropping those arguments would be worse than failing:
+ * the command would launch and do the wrong thing. An unparseable shim still
+ * returns null, so it stays unspawnable rather than crossing the no-shell
+ * boundary this module exists to hold.
+ */
 function parseCmdShim(shim: string): ResolvedSpawn | null {
   let text: string;
   try {
@@ -260,16 +311,44 @@ function parseCmdShim(shim: string): ResolvedSpawn | null {
     return null;
   }
   const dir = dirname(shim);
-  const targets = [...text.matchAll(/"%~?dp0%?\\?([^"]+)"/g)]
-    .map((m) => join(dir, m[1]))
+
+  // The historic direct form, kept exactly as it was.
+  const direct = [...text.matchAll(/"%~?dp0%?\\?([^"]+)"/g)]
+    .map((m) => join(dir, m[1]!))
     .filter((p) => isFile(p) && basename(p).toLowerCase() !== "node.exe");
-  const script = targets.find((p) => /\.[cm]?js$/i.test(p));
+  const script = direct.find((p) => /\.[cm]?js$/i.test(p));
   if (script) {
     const node = nodeExe(dir);
     if (node) return { command: node, args: [script] };
   }
-  const exe = targets.find((p) => extname(p).toLowerCase() === ".exe");
-  return exe ? { command: exe, args: [] } : null;
+  const exe = direct.find((p) => extname(p).toLowerCase() === ".exe");
+  if (exe) return { command: exe, args: [] };
+
+  // Indirect form: collect assignments, then find the line that invokes a real
+  // executable through them and keep that line's fixed arguments.
+  const vars = new Map<string, string>();
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    const set = /^\s*set\s+"([A-Za-z_][A-Za-z0-9_]*)=([^"]*)"\s*$/.exec(line);
+    if (set) vars.set(set[1]!.toUpperCase(), expandCmdVars(set[2]!, dir, vars));
+  }
+  for (const line of lines) {
+    if (/^\s*set\s/i.test(line)) continue;
+    const tokens = quotedTokens(line);
+    if (tokens.length === 0) continue;
+    const candidate = expandCmdVars(tokens[0]!, dir, vars);
+    if (!isFile(candidate) || extname(candidate).toLowerCase() !== ".exe") continue;
+    // Everything after the command token on that line, minus cmd's own
+    // forward-all placeholder, which the caller's own args replace.
+    const tail = line.slice(line.indexOf(`"${tokens[0]!}"`) + tokens[0]!.length + 2);
+    const args = splitCliString(tail)
+      .filter((token) => token !== "%*" && token !== "%1" && token !== "%~1")
+      .map((token) => expandCmdVars(token, dir, vars));
+    const env: Record<string, string> = {};
+    for (const [name, value] of vars) env[name] = value;
+    return { command: candidate, args, env };
+  }
+  return null;
 }
 
 /** `#!/usr/bin/env node` → `node <script>`. Only node: nothing else has a
@@ -311,7 +390,9 @@ function resolveWord(cli: string, args: string[]): ResolvedSpawn {
   const ext = extname(file).toLowerCase();
   if (ext === ".cmd" || ext === ".bat") {
     const direct = parseCmdShim(file);
-    return direct ? { command: direct.command, args: [...direct.args, ...args] } : { command: file, args };
+    return direct
+      ? { command: direct.command, args: [...direct.args, ...args], ...(direct.env ? { env: direct.env } : {}) }
+      : { command: file, args };
   }
   if (ext === ".exe" || ext === ".com") return { command: file, args };
   const viaNode = parseNodeShebang(file);

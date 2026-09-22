@@ -4,7 +4,7 @@
 // without an OpenRouter key — that is the "HTTP 401: Missing Authentication
 // header" failure. Inject writes providers.<host> and session/set_model
 // `custom:<host>:<model>` instead.
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -12,11 +12,16 @@ import { parse as parseYaml } from "yaml";
 
 import type { ModelCatalog } from "../../contracts.ts";
 import { decodeInjectId, hostApiKey, INJECT_SEP, localHost, mergeLocalInject } from "../local-inject.ts";
+import { execCli } from "../../procs.ts";
 import { createAcpDriver, type AcpSupport } from "./core.ts";
 import { classifyHermesError } from "../../hermes-provider-policy.ts";
 
-export const HERMES_PINNED_VERSION = "0.21.0";
-export const HERMES_PINNED_RELEASE = "https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.0";
+// Must match the runtime the product actually ships. scripts/pbs-digests.json
+// and scripts/hermes_manifest.py pin upstream commit d337b736 (tag v2026.9.21),
+// which reports itself as 0.21.4; a constant that disagrees with the shipped
+// payload rejects the very runtime Dani just installed and verified.
+export const HERMES_PINNED_VERSION = "0.21.4";
+export const HERMES_PINNED_RELEASE = "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.21";
 
 const EMPTY: ModelCatalog = { default: "", options: [] };
 
@@ -429,7 +434,12 @@ const support: AcpSupport = {
   },
   spawnArgs: () => ["acp"],
   snapshot: async (env, config) => await new Promise((resolve) => {
-    execFile(config.cli, ["--version"], { env: env as NodeJS.ProcessEnv, timeout: 8_000 }, (error, stdout) => {
+    // execCli, not execFile: the runtime Dani manages is reached through a
+    // launcher, and on Windows a .cmd cannot be spawned without a shell. The
+    // shared resolver turns it into the real executable and its fixed
+    // arguments without crossing the no-shell boundary, which raw execFile
+    // would simply fail on.
+    execCli(config.cli, ["--version"], { env: env as NodeJS.ProcessEnv, timeout: 8_000 }, (error, stdout) => {
       if (error) return resolve({ state: "unavailable", reason: "`hermes` CLI not found" });
       const version = String(stdout).trim();
       const compatible = new RegExp(`(?:^|\\s)v?${HERMES_PINNED_VERSION.replaceAll(".", "\\.")}(?:\\s|$|\\()`).test(version);

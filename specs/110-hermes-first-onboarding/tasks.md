@@ -1,6 +1,6 @@
 # Tasks - Hermes-first seamless onboarding
 
-- [ ] T-BOOT-001 [R-BOOT-001] Produce per-target artifact/license/size/probe feasibility evidence; block absent targets.
+- [ ] T-BOOT-001 [R-BOOT-001] Produce per-target artifact/license/size/probe feasibility evidence; block absent targets. win-x64 built and activated end to end on a real host (E-BOOT-REAL-001); linux-x64, mac-arm64 and mac-x64 still unbuilt here and need their own hosts or CI.
 - [x] T-BOOT-002 [R-BOOT-002,R-RUNTIME-001,R-RUNTIME-002,R-RUNTIME-003] Implement and adversarially test trusted activation and recovery. Verify/extract/activate/repair/rollback implemented and tested; PACKAGED and CLEAN_MACHINE evidence still missing, and no real payload is staged yet.
 - [x] T-RUNTIME-001 [R-RUNTIME-004] Enforce Hermes-only release selection and migrate stale bot selections. Mutation-boundary rejection and deterministic boot migration landed; PACKAGED evidence still missing.
 - [ ] T-MODEL-001 [R-MODEL-005] Implement live free/local capability and billing probes with no paid fallback.

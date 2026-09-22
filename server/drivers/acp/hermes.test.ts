@@ -1,6 +1,7 @@
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { removeTempDir } from "../../testing/cleanup.ts";
@@ -222,4 +223,23 @@ describe("hermesAcpModelId", () => {
 });
 
 
-describe("Hermes release pin",()=>{it("pins a traceable upstream release",()=>{expect(HERMES_PINNED_VERSION).toBe("0.21.0");expect(HERMES_PINNED_RELEASE).toBe("https://github.com/NousResearch/hermes-agent/releases/tag/v0.21.0");expect(HermesAgentDriver.install?.docsUrl).toContain("hermes-agent.nousresearch.com")})});
+describe("Hermes release pin", () => {
+  it("pins a traceable upstream release", () => {
+    expect(HERMES_PINNED_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(HERMES_PINNED_RELEASE).toMatch(/^https:\/\/github\.com\/NousResearch\/hermes-agent\/releases\/tag\//);
+    expect(HermesAgentDriver.install?.docsUrl).toContain("hermes-agent.nousresearch.com");
+  });
+
+  it("agrees with the version the shipped payload actually reports", () => {
+    // Asserted against the payload builder rather than repeated as a literal.
+    // Two hand-maintained copies of the same pin are exactly how the driver
+    // came to reject the very runtime this repository builds: the payload
+    // moved to 0.21.4 while this constant still said 0.21.0, so a correctly
+    // installed runtime probed as "not found".
+    const manifestBuilder = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "scripts", "hermes_manifest.py"),
+      "utf8",
+    );
+    expect(manifestBuilder).toContain(`"version": "${HERMES_PINNED_VERSION}"`);
+  });
+});

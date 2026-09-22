@@ -133,6 +133,35 @@ secrets or large unredacted logs.
 - What this does NOT prove: the ready path, which needs a real runtime, and
   anything about a packaged installer.
 
+## E-BOOT-REAL-001 - a real runtime payload, built and activated
+
+- Requirement: R-BOOT-001, R-BOOT-002, R-RUNTIME-001, R-RUNTIME-002
+  (partial evidence for AC-BOOT-001).
+- Class: REAL_SERVING_PATH on one host. **Not** PACKAGED, **not**
+  CLEAN_MACHINE, and one target only.
+- Built with the repository's own `scripts/build-hermes-payload.sh` for
+  `win-x64` from the pinned upstream commit `d337b736`, on Windows.
+  Result: 89,204,188 byte archive, 250 MB unpacked, 67 distributions, every
+  wheel digest matched the locked hash set, manifest v1 emitted.
+- The built runtime answers for itself: `hermes.cmd --version` prints
+  "Hermes Agent v0.21.4 (2026.9.21)".
+- Activated by Dani on a live server from a throwaway home: digest verified,
+  extracted, moved into place under its digest, and the instance resolved to
+  the absolute managed path under `runtimes/hermes/versions/<digest>/`.
+- The live probe then reported the runtime **available at version 0.21.4**,
+  read from the runtime Dani had just installed. Bootstrap nonetheless
+  reported `runtime.no-model`, because runtime-ready is not model-ready and
+  claiming otherwise is the failure mode this spec exists to prevent.
+- Four real defects were found only because a genuine payload existed, and all
+  four are fixed: the extractor rejected GNU long-name records, which a
+  bundled Python tree is full of; it did not look through the archive's
+  top-level directory; activation ran too late in boot and tripped an
+  uninitialised binding; and the Hermes driver spawned its launcher with raw
+  `execFile`, which cannot run a `.cmd` on Windows and dropped the launcher's
+  fixed arguments and environment.
+- What this does NOT prove: any other target, any packaged installer, any
+  clean machine, and not readiness, which additionally needs a model.
+
 ## Open blockers before issue 18 can close
 
 Recorded here so the gap between "this branch is done" and "the issue is done"

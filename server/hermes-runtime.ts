@@ -13,7 +13,7 @@
 // user can recover from absent.
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { chmod, mkdir, open, readFile, rename, rm, stat, writeFile, type FileHandle } from "node:fs/promises";
+import { chmod, mkdir, open, readdir, readFile, rename, rm, stat, writeFile, type FileHandle } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -165,6 +165,17 @@ export interface ExtractResult {
   bytes: number;
 }
 
+/** GNU long-name and long-link records. A real payload is full of the first:
+ * the ustar name field holds 100 characters, and a bundled Python tree goes
+ * well past that, so tar emits the true name as its own record. Refusing them
+ * would mean refusing every archive anyone actually builds. */
+const GNU_LONGNAME = 0x4c; // 'L'
+const GNU_LONGLINK = 0x4b; // 'K'
+
+/** A long name is a path, not a payload. Bound it so a crafted record cannot
+ * make us buffer arbitrary memory before any of it is validated. */
+const MAX_LONG_NAME = 8 * 1024;
+
 /**
  * Stream a gzipped tar into `destination`.
  *
@@ -173,10 +184,14 @@ export interface ExtractResult {
  * run that fails on a small machine.
  *
  * Only regular files and directories are written. Links of either kind,
- * devices, FIFOs and sparse/PAX/GNU extensions are refused outright: a runtime
+ * devices, FIFOs and PAX/sparse extensions are refused outright: a runtime
  * payload has no legitimate use for them, and each is a way out of the
- * destination directory. `budget` bounds the expanded size so a corrupt or
- * hostile archive cannot fill the disk after passing the digest check.
+ * destination directory. GNU long-name records are read, because they carry an
+ * ordinary path that is simply too long for the header, and the name they
+ * carry goes through exactly the same validation as any other.
+ *
+ * `budget` bounds the expanded size so a corrupt or hostile archive cannot
+ * fill the disk after passing the digest check.
  */
 export async function extractTarGz(
   archivePath: string,
@@ -188,7 +203,14 @@ export async function extractTarGz(
   let written = 0;
   let files = 0;
   let sawEnd = false;
-  let active: { handle: FileHandle; remaining: number; padding: number } | null = null;
+  /** Either bytes destined for a file, or a long-name record being collected. */
+  type Active =
+    | { kind: "file"; handle: FileHandle; remaining: number; padding: number }
+    | { kind: "name"; chunks: Buffer[]; remaining: number; padding: number; isLink: boolean };
+  let active: Active | null = null;
+  /** The name the next header must use, from a preceding long-name record. */
+  let pendingName: string | null = null;
+  let pendingLinkIsLong = false;
   const openHandles = new Set<FileHandle>();
   const fail = (code: string, message: string) => new HermesRuntimeError(code, message);
 
@@ -202,7 +224,8 @@ export async function extractTarGz(
               if (pending.length === 0) break;
               const take = Math.min(active.remaining, pending.length);
               if (take > 0) {
-                await active.handle.write(pending.subarray(0, take));
+                if (active.kind === "file") await active.handle.write(pending.subarray(0, take));
+                else active.chunks.push(Buffer.from(pending.subarray(0, take)));
                 active.remaining -= take;
                 pending = pending.subarray(take);
               }
@@ -211,8 +234,14 @@ export async function extractTarGz(
               active.padding -= skip;
               pending = pending.subarray(skip);
               if (active.padding > 0) break;
-              await active.handle.close();
-              openHandles.delete(active.handle);
+              if (active.kind === "file") {
+                await active.handle.close();
+                openHandles.delete(active.handle);
+              } else {
+                const raw = Buffer.concat(active.chunks).toString("utf8").replace(/\0+$/, "");
+                if (active.isLink) pendingLinkIsLong = true;
+                else pendingName = raw;
+              }
               active = null;
               continue;
             }
@@ -229,13 +258,30 @@ export async function extractTarGz(
             if (tarOctal(block, 148, 8, "checksum") !== headerChecksum(block)) {
               throw fail("runtime.archive-invalid", "invalid tar header checksum");
             }
-            const prefix = tarText(block, 345, 155);
-            const base = tarText(block, 0, 100);
-            const name = safeMemberPath(prefix ? `${prefix}/${base}` : base);
             const typeByte = block[156]!;
             const size = tarOctal(block, 124, 12, "member size");
+            const padding = (TAR_BLOCK - (size % TAR_BLOCK)) % TAR_BLOCK;
+
+            if (typeByte === GNU_LONGNAME || typeByte === GNU_LONGLINK) {
+              if (size > MAX_LONG_NAME) throw fail("runtime.archive-unsafe", "long name record is implausibly large");
+              active = { kind: "name", chunks: [], remaining: size, padding, isLink: typeByte === GNU_LONGLINK };
+              continue;
+            }
+
+            const prefix = tarText(block, 345, 155);
+            const base = tarText(block, 0, 100);
+            // A preceding long-name record wins over the truncated header
+            // field, which is the whole reason it was emitted.
+            const rawName = pendingName ?? (prefix ? `${prefix}/${base}` : base);
+            pendingName = null;
+            const name = safeMemberPath(rawName);
             const mode = tarOctal(block, 100, 8, "mode");
-            if (tarText(block, 157, 100)) throw fail("runtime.archive-unsafe", `links are not allowed: ${name}`);
+            // A long-link record means this member is a link even though the
+            // header's own link field is empty.
+            if (tarText(block, 157, 100) || pendingLinkIsLong) {
+              pendingLinkIsLong = false;
+              throw fail("runtime.archive-unsafe", `links are not allowed: ${name}`);
+            }
 
             const target = resolve(root, name);
             // Belt and braces: even with a validated name, confirm the
@@ -261,7 +307,7 @@ export async function extractTarGz(
             // are dropped: a runtime payload never needs them, and honouring
             // them would turn an archive member into a privilege bug.
             if (process.platform !== "win32" && (mode & 0o100) !== 0) await chmod(target, 0o755);
-            active = { handle, remaining: size, padding: (TAR_BLOCK - (size % TAR_BLOCK)) % TAR_BLOCK };
+            active = { kind: "file", handle, remaining: size, padding };
           }
           callback();
         } catch (error) {
@@ -360,6 +406,35 @@ export function activateBundledRuntime(options: ActivateOptions): Promise<Activa
   return run;
 }
 
+/**
+ * The directory inside `staging` that holds the payload.
+ *
+ * Archives are usually packed with the payload root as one wrapping directory,
+ * so the executable sits one level deeper than the manifest's path suggests.
+ * Exactly one level is unwrapped, only when the staging root does not already
+ * hold the executable, and only when the wrapper genuinely contains it. A
+ * payload missing its executable therefore still fails, rather than being
+ * rescued by a hopeful search.
+ */
+async function resolvePayloadRoot(staging: string, executableRelPath: string): Promise<string> {
+  const parts = executableRelPath.split("/");
+  if (existsSync(join(staging, ...parts))) return staging;
+  let entries: string[];
+  try {
+    entries = await readdir(staging);
+  } catch {
+    return staging;
+  }
+  if (entries.length !== 1) return staging;
+  const inner = join(staging, entries[0]!);
+  try {
+    if (!(await stat(inner)).isDirectory()) return staging;
+  } catch {
+    return staging;
+  }
+  return existsSync(join(inner, ...parts)) ? inner : staging;
+}
+
 async function activateOnce(options: ActivateOptions): Promise<ActivationLayout> {
   const { payloadDir, dataDir, target } = options;
   const manifestPath = join(payloadDir, `${target}.manifest.json`);
@@ -406,17 +481,26 @@ async function activateOnce(options: ActivateOptions): Promise<ActivationLayout>
   await mkdir(dirname(layout.versionDir), { recursive: true });
   await mkdir(staging, { recursive: true });
 
+  // The directory that actually becomes the installed runtime: `staging`
+  // itself, or the single wrapper directory the archive packed it in.
+  let payloadRoot = staging;
   try {
     // A little headroom over the declared size: tar rounds members up to
     // 512-byte blocks, so the written total can exceed the recorded tree size.
     await extractTarGz(archivePath, staging, manifest.unpackedSize + 64 * 1024 * 1024);
-    const stagedExecutable = join(staging, ...manifest.executableRelPath.split("/"));
+    // `executableRelPath` is relative to the payload root, and tar archives are
+    // conventionally packed with that root as a single wrapping directory. Look
+    // through exactly one such wrapper, and only when it actually contains the
+    // promised executable, so this can never turn a broken payload into an
+    // apparently working one.
+    payloadRoot = await resolvePayloadRoot(staging, manifest.executableRelPath);
+    const stagedExecutable = join(payloadRoot, ...manifest.executableRelPath.split("/"));
     if (!existsSync(stagedExecutable)) {
       throw new HermesRuntimeError("runtime.executable-missing", "the bundled runtime is incomplete");
     }
     if (process.platform !== "win32") await chmod(stagedExecutable, 0o755);
     await writeFile(
-      join(staging, INSTALL_RECORD),
+      join(payloadRoot, INSTALL_RECORD),
       JSON.stringify({
         digest: manifest.archiveSha256,
         version: manifest.version,
@@ -424,10 +508,12 @@ async function activateOnce(options: ActivateOptions): Promise<ActivationLayout>
         completedAt: new Date().toISOString(),
       }),
     );
-    // The record is written inside staging, so the directory only becomes
-    // visible under its final name once it is already complete.
+    // The record is written inside the staged tree, so the directory only
+    // becomes visible under its final name once it is already complete.
     await rm(layout.versionDir, { recursive: true, force: true });
-    await rename(staging, layout.versionDir);
+    await rename(payloadRoot, layout.versionDir);
+    // Only the now-empty wrapper is left behind; the payload moved out of it.
+    if (payloadRoot !== staging) await rm(staging, { recursive: true, force: true }).catch(() => {});
   } catch (error) {
     await rm(staging, { recursive: true, force: true }).catch(() => {});
     throw error;

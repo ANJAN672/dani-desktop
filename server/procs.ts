@@ -62,6 +62,7 @@ export function spawnCli(
   assertSafeCliArgv(resolved);
   const child = spawn(resolved.command, resolved.args, {
     ...opts,
+    ...(resolved.env ? { env: { ...(opts.env ?? process.env), ...resolved.env } } : {}),
     // posix: own process group so kill(-pid) reaps child MCP servers;
     // win32: taskkill /T does the reaping instead (see killCliTree)
     ...(process.platform === "win32" ? { windowsHide: true } : { detached: true }),
@@ -95,7 +96,10 @@ export function execCli(
     queueMicrotask(() => cb(error instanceof Error ? error : new Error(String(error)), "", ""));
     return;
   }
-  execFile(resolved.command, resolved.args, { ...opts, windowsHide: true, encoding: "utf8" }, (err, stdout, stderr) =>
+  // A launcher's own variables take precedence: it sets them unconditionally,
+  // so an ambient value of the same name is exactly what it meant to override.
+  const execEnv = resolved.env ? { ...(opts.env ?? process.env), ...resolved.env } : opts.env;
+  execFile(resolved.command, resolved.args, { ...opts, env: execEnv, windowsHide: true, encoding: "utf8" }, (err, stdout, stderr) =>
     cb(err, stdout, stderr),
   );
 }

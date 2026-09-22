@@ -420,6 +420,67 @@ if (SECRET_STORE.warning) {
 }
 scrubPlaintextSecretsAtBoot({ dataDir: DATA_DIR, store: SECRET_STORE, env: process.env });
 const cfg = loadConfig();
+// Where the packaged app keeps its per-target runtime payload. Empty outside a
+// packaged build unless a developer points at a staged payload explicitly, so
+// dev runs, the CLI and the test suite never touch activation.
+const HERMES_PAYLOAD_DIR = (process.env.DANI_HERMES_PAYLOAD_DIR ?? "").trim()
+  || (process.env.DANI_RESOURCES_PATH ? join(process.env.DANI_RESOURCES_PATH, "runtimes", "hermes") : "");
+/** Last activation failure, so bootstrap can report a cause instead of a shrug. */
+let runtimeActivationCode: string | null = null;
+
+/** The canonical Hermes instance id (server/config.ts default fleet). */
+const HERMES_INSTANCE_ID = "hermes";
+
+/**
+ * Prepare the product's own runtime from the bundled payload (issue #18
+ * acceptance criteria 1 and 3).
+ *
+ * Idempotent and cheap once installed: a completed activation for the same
+ * digest is detected and reused, so this is a directory check on every launch
+ * after the first. On success the resolved absolute executable is written into
+ * the instance config, because a GUI process does not inherit a terminal's
+ * PATH and must never depend on one.
+ */
+function currentHermesCli(): string {
+  const entry = cfg.instances?.[HERMES_INSTANCE_ID];
+  const config = entry && typeof entry.config === "object" && entry.config ? (entry.config as { cli?: unknown }) : null;
+  return typeof config?.cli === "string" ? config.cli : "";
+}
+
+async function activateManagedHermes(reload: boolean): Promise<string | null> {
+  if (!HERMES_PAYLOAD_DIR) return "runtime.payload-missing";
+  const target = selectTarget(process.platform, process.arch);
+  // No payload is published for this machine. That is a truthful, permanent
+  // state, not something a retry can change.
+  if (!target) return "runtime.unsupported-platform";
+  try {
+    const layout = await activateBundledRuntime({ payloadDir: HERMES_PAYLOAD_DIR, dataDir: DATA_DIR, target });
+    if (currentHermesCli() !== layout.executable) {
+      const updated = withInstanceCli(cfg, HERMES_INSTANCE_ID, layout.executable);
+      if (updated.ok) {
+        saveConfig({ instances: updated.config.instances });
+        Object.assign(cfg, loadConfig());
+        // At boot this runs before the registry loads, so the resolved path is
+        // simply part of the configuration everything else starts from. Only a
+        // later repair has a live registry to rebuild.
+        if (reload) await reloadProviders();
+      }
+    }
+    return null;
+  } catch (error) {
+    const code = error instanceof HermesRuntimeError ? error.code : "runtime.activation-failed";
+    // The user only ever sees the stable code. The local diagnostic log keeps
+    // the message, because an unexpected failure with no detail anywhere is
+    // impossible to act on.
+    console.warn(`[runtime] activation failed (${code}): ${error instanceof Error ? error.message : String(error)}`);
+    return code;
+  }
+}
+
+// Activate before the registry loads: the resolved absolute path then belongs
+// to the configuration every later component is built from, instead of being
+// patched into a fleet and a kernel that have already been constructed.
+if (HERMES_PAYLOAD_DIR) runtimeActivationCode = await activateManagedHermes(false);
 const registry = new ProviderRegistry(BUILT_IN_DRIVERS);
 await registry.load(instanceConfigs(cfg));
 const bundledSkills = loadBundledSkills();
@@ -1185,7 +1246,7 @@ function startRuntimeRepair(): Promise<void> {
     // Repair is the same operation as first preparation: verify the bundled
     // payload and activate it. A corrupt or interrupted install is detected as
     // absent and replaced, which is what makes retry idempotent.
-    runtimeActivationCode = await activateManagedHermes();
+    runtimeActivationCode = await activateManagedHermes(true);
     if (!hermesId) return;
     try {
       await registry.installRuntime(hermesId);
@@ -1355,50 +1416,6 @@ function reportProactiveJob(threadId: string, jobId: string, status: "completed"
     },
   });
 }
-// Where the packaged app keeps its per-target runtime payload. Empty outside a
-// packaged build unless a developer points at a staged payload explicitly, so
-// dev runs, the CLI and the test suite never touch activation.
-const HERMES_PAYLOAD_DIR = (process.env.DANI_HERMES_PAYLOAD_DIR ?? "").trim()
-  || (process.env.DANI_RESOURCES_PATH ? join(process.env.DANI_RESOURCES_PATH, "runtimes", "hermes") : "");
-/** Last activation failure, so bootstrap can report a cause instead of a shrug. */
-let runtimeActivationCode: string | null = null;
-
-/**
- * Prepare the product's own runtime from the bundled payload (issue #18
- * acceptance criteria 1 and 3).
- *
- * Idempotent and cheap once installed: a completed activation for the same
- * digest is detected and reused, so this is a directory check on every launch
- * after the first. On success the resolved absolute executable is written into
- * the instance config, because a GUI process does not inherit a terminal's
- * PATH and must never depend on one.
- */
-async function activateManagedHermes(): Promise<string | null> {
-  if (!HERMES_PAYLOAD_DIR) return "runtime.payload-missing";
-  const target = selectTarget(process.platform, process.arch);
-  // No payload is published for this machine. That is a truthful, permanent
-  // state, not something a retry can change.
-  if (!target) return "runtime.unsupported-platform";
-  try {
-    const layout = await activateBundledRuntime({ payloadDir: HERMES_PAYLOAD_DIR, dataDir: DATA_DIR, target });
-    const hermesId = registry.instances().find((instance) => instance.driverKind === "hermesAgent")?.instanceId ?? "hermes";
-    if (registry.cliTarget(hermesId)?.cli !== layout.executable) {
-      const updated = withInstanceCli(cfg, hermesId, layout.executable);
-      if (updated.ok) {
-        saveConfig({ instances: updated.config.instances });
-        Object.assign(cfg, loadConfig());
-        await reloadProviders();
-      }
-    }
-    return null;
-  } catch (error) {
-    const code = error instanceof HermesRuntimeError ? error.code : "runtime.activation-failed";
-    // Redacted on purpose: the cause is a stable code, never a path or stderr.
-    console.warn(`[runtime] activation failed (${code})`);
-    return code;
-  }
-}
-
 /** Move bots off a harness a release build will not dispatch (issue #18).
  *
  * Runs once at boot, after the fleet is loaded so the decision sees real
@@ -1429,7 +1446,6 @@ async function migrateStaleHarnessSelections(): Promise<void> {
 }
 
 const sendSequencer = new SendSequencer();
-if (HERMES_PAYLOAD_DIR) runtimeActivationCode = await activateManagedHermes();
 bootSelection = await defaultSelection();
 await migrateStaleHarnessSelections();
 store.seedIfEmpty();

@@ -237,6 +237,45 @@ winOnly("resolveCli (Windows)", () => {
     expect(stdout.trim()).toBe("shebang a,b");
   });
 
+  it("follows a launcher that sets a root variable, keeping its fixed args", () => {
+    // The shape a relocatable payload ships: a root variable, an interpreter
+    // reached through it, and module arguments that are part of the command.
+    mkdirSync(join(dir, "runtime"), { recursive: true });
+    writeFileSync(join(dir, "runtime", "python.exe"), "MZ-not-really");
+    writeFileSync(
+      join(dir, "ombfake.cmd"),
+      [
+        "@echo off",
+        'set "PAYLOAD_ROOT=%~dp0."',
+        'set "PYTHONPATH=%PAYLOAD_ROOT%\\app;%PAYLOAD_ROOT%\\vendor"',
+        'set "PYTHONNOUSERSITE=1"',
+        '"%PAYLOAD_ROOT%\\runtime\\python.exe" -m acp_adapter %*',
+        "",
+      ].join("\n"),
+    );
+    onPath();
+    const resolved = resolveCli("ombfake", ["--version"]);
+    expect(resolved.command.toLowerCase()).toMatch(/python\.exe$/);
+    // Losing "-m acp_adapter" would launch a bare interpreter and look like it
+    // worked, which is worse than failing to resolve at all.
+    expect(resolved.args).toEqual(["-m", "acp_adapter", "--version"]);
+    // The launcher's own variables are part of how the command runs.
+    expect(resolved.env?.PYTHONNOUSERSITE).toBe("1");
+    expect(resolved.env?.PYTHONPATH).toContain("app");
+    expect(resolved.env?.PYTHONPATH).toContain("vendor");
+  });
+
+  it("does not invent a target when the launcher's executable is absent", () => {
+    writeFileSync(
+      join(dir, "ombfake.cmd"),
+      ['@echo off', 'set "ROOT=%~dp0."', '"%ROOT%\\runtime\\python.exe" -m thing %*', ""].join("\n"),
+    );
+    onPath();
+    // Nothing on disk to run: the shim stays unresolved rather than being
+    // rewritten into something that would fail confusingly later.
+    expect(resolveCli("ombfake", []).command.toLowerCase()).toMatch(/ombfake\.cmd$/);
+  });
+
   it("never crosses the no-shell boundary for an unparseable shim", () => {
     const shim = join(dir, "ombfake.cmd");
     writeFileSync(shim, "@ECHO OFF\ncustom-launcher %*\n");
