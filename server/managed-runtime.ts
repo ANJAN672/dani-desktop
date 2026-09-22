@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { chmod, lstat, mkdir, open, readFile, readlink, readdir, rename, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import extractZip from "extract-zip";
 import * as tar from "tar";
 import { z } from "zod";
@@ -188,7 +188,7 @@ const productMessage = (code: string) => ({
 
 async function run(command: string, args: string[], timeoutMs: number, input?: string): Promise<{ stdout: string; stderr: string }> {
   return await new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     const timer = setTimeout(() => { child.kill(); reject(Object.assign(new Error("runtime probe timed out"), { code: "probe-failed" })); }, timeoutMs);
     child.stdout.on("data", chunk => stdout.push(Buffer.from(chunk)));
@@ -339,7 +339,12 @@ export class ManagedRuntimeService {
     const config = (await readFile(bridgeTemplate, "utf8")).replaceAll("http://127.0.0.1:4110", bridgeUrl);
     writeFileAtomic(join(hermesHome, "config.yaml"), config, { mode: 0o600 });
     process.env.HERMES_HOME = hermesHome;
-    this.opencodeServer = spawn(opencode, ["serve", "--pure", "--hostname", "127.0.0.1", "--port", String(upstreamPort)], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+    // The signed activation entry point is the ACP wrapper. The supervised
+    // HTTP service is its sibling immutable OpenCode binary.
+    const opencodeServer = join(dirname(opencode), process.platform === "win32" ? "opencode.exe" : "opencode");
+    const opencodeServerInfo = await lstat(opencodeServer);
+    if (!opencodeServerInfo.isFile() || opencodeServerInfo.isSymbolicLink()) throw Object.assign(new Error("OpenCode service executable is missing"), { code: "model-route-failed" });
+    this.opencodeServer = spawn(opencodeServer, ["serve", "--pure", "--hostname", "127.0.0.1", "--port", String(upstreamPort)], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
     this.opencodeServer.once("exit", () => { this.setModelRouteReadiness("error"); });
     this.bridge = spawn(process.execPath, [bridgeScript], {
       stdio: ["ignore", "ignore", "pipe"], windowsHide: true,
