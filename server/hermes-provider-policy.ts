@@ -17,6 +17,13 @@ const CAPABILITIES: Readonly<Record<string, HermesProviderCapability>> = Object.
 });
 
 export function hermesProviderCapability(modelId: string | undefined): HermesProviderCapability {
+  // The managed runtime owns this reserved alias and only reports task-ready
+  // after probing the exact zero-cost OpenCode route. It is therefore local
+  // for spend gating even though the user-facing Hermes session keeps the
+  // configured-model alias rather than exposing the supporting route.
+  if (modelId === "hermes-default" && Boolean(process.env.DANI_MANAGED_HERMES_EXECUTABLE && process.env.DANI_MANAGED_OPENCODE_EXECUTABLE)) {
+    return { provider: "managed-opencode", vision: "unknown", quota: "local", billing: "local" };
+  }
   const provider = modelId?.split(":", 1)[0]?.toLowerCase() || "unknown";
   return CAPABILITIES[provider] ?? { provider, vision: "unknown", quota: "unknown", billing: "unknown" };
 }
