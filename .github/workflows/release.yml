@@ -264,5 +264,30 @@ jobs:
               --target "$SHA" --draft --title "Dani Bot $VERSION" \
               --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
-          gh release upload "$tag" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          # Upload one unique basename at a time. A single wildcard request can
+          # fail after partially succeeding, which makes a rerun ambiguous.
+          # Per-file clobber plus bounded retries makes this step idempotent.
+          declare -A uploaded=()
+          find release-assets -maxdepth 1 -type f -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' asset; do
+                name=$(basename "$asset")
+                if [[ -n "${uploaded[$name]:-}" ]]; then
+                  echo "::error::duplicate release asset basename: $name"
+                  exit 1
+                fi
+                uploaded[$name]=1
+                for attempt in 1 2 3; do
+                  if gh release upload "$tag" "$asset" \
+                    --repo "$GITHUB_REPOSITORY" --clobber; then
+                    break
+                  fi
+                  if [[ "$attempt" == 3 ]]; then
+                    echo "::error::failed to upload $name after $attempt attempts"
+                    exit 1
+                  fi
+                  echo "retrying $name after upload attempt $attempt"
+                  sleep $((attempt * 5))
+                done
+              done
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft | grep -qx true
