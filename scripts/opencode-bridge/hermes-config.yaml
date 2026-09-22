@@ -1,0 +1,13 @@
+model:
+  provider: opencode-free
+  default: opencode/big-pickle
+  base_url: http://127.0.0.1:4110/v1
+  api_key: local-bridge
+  api_mode: chat_completions
+providers:
+  opencode-free:
+    name: OpenCode Free Bridge
+    base_url: http://127.0.0.1:4110/v1
+    api_key: local-bridge
+    api_mode: chat_completions
+    model: opencode/big-pickle
