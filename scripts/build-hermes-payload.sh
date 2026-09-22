@@ -261,8 +261,35 @@ json.dump(dists, open(os.path.join(sys.argv[1], "INSTALLED.json"), "w"), indent=
 print(f"    installed set: {len(dists)} distributions")
 PYEOF2
 
+# Normalize every payload entry before packing. Archive metadata is part of the
+# activation trust boundary: no entry may remain group/world-writable.
+find "$PAYLOAD" -type d -exec chmod 0755 {} +
+find "$PAYLOAD" -type f -exec chmod a-w,go-w {} +
+chmod 0755 "$PAYLOAD/bin/hermes" "$PAYLOAD/bin/hermes-acp" "$PAYLOAD/probe/run-probe.sh"
+python3 - "$PAYLOAD" <<'PYMODE'
+import os, stat, sys
+for base, dirs, files in os.walk(sys.argv[1], followlinks=False):
+    for name in dirs + files:
+        path = os.path.join(base, name)
+        mode = os.lstat(path).st_mode
+        if stat.S_ISLNK(mode):
+            continue
+        if mode & 0o022:
+            raise SystemExit(f"unsafe group/world-write mode {mode & 0o777:o}: {path}")
+PYMODE
 ARCHIVE="$OUT/hermes-payload-$TARGET-v2026.9.21.tar.gz"
-tar czf "$ARCHIVE" -C "$OUT" "hermes-payload-$TARGET"
+tar --mode='go-w' -czf "$ARCHIVE" -C "$OUT" "hermes-payload-$TARGET"
+# Audit archive-declared modes too, after packing, so tar metadata cannot drift.
+python3 - "$ARCHIVE" <<'PYMODE'
+import sys, tarfile
+bad=[]
+with tarfile.open(sys.argv[1], "r:gz") as tf:
+    for member in tf.getmembers():
+        if member.mode & 0o022:
+            bad.append(f"{member.mode:o} {member.name}")
+if bad:
+    raise SystemExit("unsafe group/world-write archive entries:\n" + "\n".join(bad))
+PYMODE
 echo "$(sha256_of "$ARCHIVE")  $(basename "$ARCHIVE")" >> "$OUT/SHA256SUMS.txt"
 echo "    archive: $(du -h "$ARCHIVE" | cut -f1)  unpacked: $(du -sh "$PAYLOAD" | cut -f1)"
 
