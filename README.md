@@ -201,15 +201,15 @@ See [MCP server setup and tool reference](docs/mcp-server.md).
 
 ## Quick start
 
-**Installers - one download per desktop OS** (links always resolve to the [newest release](https://github.com/somdipto/dani-desktop/releases/latest); the versioned filenames bump with each release):
+**Installers - one download per desktop OS** (stable names, always resolving to the [newest release](https://github.com/somdipto/dani-desktop/releases/latest)):
 
 | Platform | Download |
 |---|---|
-| macOS, Apple silicon | [DaniBot-0.1.55-arm64.dmg](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-arm64.dmg) |
-| macOS, Intel | [DaniBot-0.1.55-x64.dmg](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-x64.dmg) |
-| Windows | [DaniBot-0.1.55-setup.exe](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-setup.exe) |
-| Ubuntu, AppImage | [DaniBot-0.1.55-x86_64.AppImage](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-x86_64.AppImage) |
-| Ubuntu, .deb | [DaniBot-0.1.55-amd64.deb](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-0.1.55-amd64.deb) |
+| macOS, Apple silicon | [DaniBot-Silicon.dmg](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-Silicon.dmg) |
+| macOS, Intel | [DaniBot-Intel.dmg](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-Intel.dmg) |
+| Windows | [DaniBot-setup.exe](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot-setup.exe) |
+| Ubuntu, AppImage | [DaniBot.AppImage](https://github.com/somdipto/dani-desktop/releases/latest/download/DaniBot.AppImage) |
+| Ubuntu, .deb | [danibot-amd64.deb](https://github.com/somdipto/dani-desktop/releases/latest/download/danibot-amd64.deb) |
 
 The Windows installer is unsigned, so SmartScreen shows an "unknown publisher" prompt on first run. First launch opens the setup wizard on every platform.
 
