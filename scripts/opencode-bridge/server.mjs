@@ -3,6 +3,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { isIP } from 'node:net';
+import { buildOpenCodePrompt } from './request-shaping.mjs';
 
 const HOST=process.env.OPENCODE_BRIDGE_HOST||'127.0.0.1';
 const PORT=Number(process.env.OPENCODE_BRIDGE_PORT||4110);
@@ -41,7 +42,7 @@ async function completion(input){
  let create;try{create=await fetchUp('/session',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})}catch(e){throw safeError(e?.name==='TimeoutError'?'OpenCode session timeout':'OpenCode session unavailable',502)}
  if(!create.ok)throw safeError(`OpenCode session failed (${create.status})`,502);const session=await create.json();if(typeof session.id!=='string')throw safeError('OpenCode session response invalid',502);
  const system=input.messages.filter(m=>m.role==='system').map(textOf).join('\n\n');const transcript=input.messages.filter(m=>m.role!=='system').map(m=>`${m.role.toUpperCase()}: ${textOf(m)}`).join('\n\n');
- let r;try{r=await fetchUp(`/session/${encodeURIComponent(session.id)}/message`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:{providerID,modelID},...(system?{system}:{}),parts:[{type:'text',text:transcript}]})})}catch(e){throw safeError(e?.name==='TimeoutError'?'OpenCode prompt timeout':'OpenCode prompt unavailable',502)}
+ let r;try{r=await fetchUp(`/session/${encodeURIComponent(session.id)}/message`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(buildOpenCodePrompt({providerID,modelID,system,transcript}))})}catch(e){throw safeError(e?.name==='TimeoutError'?'OpenCode prompt timeout':'OpenCode prompt unavailable',502)}
  if(!r.ok)throw safeError(`OpenCode prompt failed (${r.status})`,502);const out=await r.json();
  if(out.info?.error)throw safeError('OpenCode free route rejected the request',502,'provider_error');
  if(out.info?.providerID!==providerID||out.info?.modelID!==modelID||out.info?.cost!==0||out.info?.finish!=='stop')throw safeError('free-route invariant failed',502,'route_invariant');
