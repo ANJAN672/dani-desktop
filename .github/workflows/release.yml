@@ -98,11 +98,14 @@ jobs:
           version=${{ needs.prepare.outputs.version }}
           cp "release/DaniBot-$version-x86_64.AppImage" release/DaniBot.AppImage
           cp "release/DaniBot-$version-amd64.deb" release/danibot-amd64.deb
+          test -s release/DaniBot.AppImage
+          test -s release/danibot-amd64.deb
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-release
           path: |
             release/DaniBot-*.AppImage
+            release/DaniBot.AppImage
             release/DaniBot-*.deb
             release/danibot-amd64.deb
             release/latest-linux.yml
@@ -144,6 +147,8 @@ jobs:
           version=${{ needs.prepare.outputs.version }}
           cp "release/DaniBot-$version-setup.exe" release/DaniBot-setup.exe
           cp "release/DaniBot-$version-x64.zip" release/DaniBot-Windows-Portable.zip
+          test -s release/DaniBot-setup.exe
+          test -s release/DaniBot-Windows-Portable.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-release
@@ -201,13 +206,21 @@ jobs:
           cp "release/DaniBot-$version-arm64.dmg" release/DaniBot-Silicon.dmg
           cp "release/DaniBot-$version-x64.zip" release/DaniBot-Intel-Portable.zip
           cp "release/DaniBot-$version-arm64.zip" release/DaniBot-Silicon-Portable.zip
+          for file in \
+            DaniBot-Intel.dmg DaniBot-Silicon.dmg \
+            DaniBot-Intel-Portable.zip DaniBot-Silicon-Portable.zip; do
+            test -s "release/$file"
+          done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-release
           path: |
             release/DaniBot-*.dmg
             release/DaniBot-*.dmg.blockmap
-            release/DaniBot-*.zip
+            release/DaniBot-${{ needs.prepare.outputs.version }}-arm64.zip
+            release/DaniBot-${{ needs.prepare.outputs.version }}-x64.zip
+            release/DaniBot-Intel-Portable.zip
+            release/DaniBot-Silicon-Portable.zip
             release/DaniBot-*.zip.blockmap
             release/latest-mac.yml
           if-no-files-found: error
@@ -231,6 +244,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "Downloaded release asset inventory:"
+          find release-assets -maxdepth 2 -type f -printf '%P\n' | sort
           required=(
             "DaniBot-$VERSION-x86_64.AppImage"
             "DaniBot-$VERSION-amd64.deb"
