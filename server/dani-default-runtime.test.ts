@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectDaniDefault } from "./dani-default-runtime.ts";
+import { rejectsNonHermesSelection, selectDaniDefault } from "./dani-default-runtime.ts";
 
 describe("Dani Hermes default", () => {
   it("selects available Hermes even when another engine is first", () => {
@@ -24,5 +24,21 @@ describe("Dani Hermes default", () => {
       { instanceId: "hermes", driverKind: "hermesAgent", models: { default: "" }, snapshot: { state: "unavailable", reason: "down" } },
       { instanceId: "other", driverKind: "grok", models: { default: "" }, snapshot: { state: "available" } },
     ])).toMatchObject({ state: "no-model", instanceId: "", model: "" });
+  });
+});
+
+describe("production harness enforcement", () => {
+  it("rejects another harness in a production build", () => {
+    expect(rejectsNonHermesSelection("claudeAgent", true)).toBe(true);
+  });
+  it("accepts Hermes in a production build", () => {
+    expect(rejectsNonHermesSelection("hermesAgent", true)).toBe(false);
+  });
+  it("fails closed on an instance that resolves to no driver", () => {
+    expect(rejectsNonHermesSelection(undefined, true)).toBe(true);
+  });
+  it("leaves dev, CLI and test fleets alone", () => {
+    expect(rejectsNonHermesSelection("claudeAgent", false)).toBe(false);
+    expect(rejectsNonHermesSelection(undefined, false)).toBe(false);
   });
 });

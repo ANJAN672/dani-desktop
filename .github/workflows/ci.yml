@@ -74,6 +74,9 @@ jobs:
       - name: production UI build
         if: matrix.os == 'ubuntu-latest'
         run: pnpm build
+      - name: No harness UI in the release bundle (spec 110 R-UI-001)
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm check:release-ui
 
   control-plane:
     name: control-plane check + workerd tests + dry run

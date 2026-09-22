@@ -1,147 +1,30 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Check, AlertTriangle, Loader2, Mic } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check, Mic } from "lucide-react";
 import { DaniAvatar } from "./Avatar";
 import { identifyEmail, setEmailGateDone, track } from "@/lib/analytics";
 import { useDesktopCapabilities } from "./DesktopCapabilities";
-import { EngineSetup } from "./EngineSetup";
-import { ProviderMark } from "./ProviderIcons";
 import { PhoneSetupFlow } from "./PhoneSetupFlow";
-import type { InstanceInfo } from "@/state/store";
+import { RuntimePreparation } from "./RuntimePreparation";
 import { brand } from "../lib/brand";
 
-// First-run onboarding: who you are (email), what's installed (live engine
-// checks from the harness), what the app may use (TCC), then an optional
-// phone setup that can always be resumed from Settings → Remote access.
-// Every check is skippable — onboarding must never brick the app.
-
-type InstanceRow = InstanceInfo;
-
-function StatusRow({
-  ok,
-  warn,
-  title,
-  detail,
-  mark,
-  children,
-}: {
-  ok: boolean;
-  warn?: boolean;
-  title: string;
-  detail?: string;
-  mark?: ReactNode;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-3 rounded-xl bg-card p-3.5">
-      <span
-        className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full ${
-          ok ? "bg-success/15 text-success" : warn ? "bg-warning/15 text-warning" : "bg-raised text-ink-secondary"
-        }`}
-      >
-        {ok ? <Check size={14} /> : <AlertTriangle size={13} />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-[14px] font-medium text-ink">
-          {mark}
-          <span className="min-w-0 truncate">{title}</span>
-        </div>
-        {detail && <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink-secondary">{detail}</div>}
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/** One engine on the setup screen: what it's called, what the harness
- * found, and the one-liner to show when it's good to go. Ready states get
- * a sentence; anything the user has to act on gets the shared setup UI, so
- * the instructions come from the driver and are correct for this platform. */
-interface EngineEntry {
-  instance: InstanceRow;
-  label: string;
-  readyNote: string;
-}
-
-export function engineReady(instance: InstanceRow): boolean {
-  if (instance.snapshot.state !== "available") return false;
-  if (instance.access === "custom") return true;
-  // Key-based engines carry a live verification state (spec 040 R2): only a
-  // successful probe counts as ready - a stored key alone never does.
-  const verification = instance.snapshot.verification;
-  if (verification) return verification.status === "verified";
-  return instance.snapshot.authenticated !== false;
-}
-
-/** The one-liner under a ready engine. Cost class comes from the live
- * snapshot so a metered engine never reads as free (spec 010 R8, spec 080
- * R2): "metered" bills the account per run, "subscription" is included. */
-export function readyNoteFor(instance: InstanceRow): string {
-  if (instance.access === "custom") return "Installed — ready for a local model.";
-  const billing = instance.snapshot.billing;
-  if (billing === "metered") return "Ready — metered: bot runs bill this account.";
-  if (billing === "subscription") return "Ready — included with this subscription.";
-  return "Installed — ready to power bots.";
-}
-
-function engineTitle({ instance, label }: EngineEntry): string {
-  const version = instance?.snapshot.version ? ` · ${instance.snapshot.version.split(" ")[0]}` : "";
-  return `${label}${version}`;
-}
-
-/** A ready engine needs no attention: a small tile in the grid, so five
- * engines don't read as one long list where the good news and the setup
- * work look the same. */
-function ReadyTile(entry: EngineEntry) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-xl bg-card p-3">
-      <ProviderMark driverKind={entry.instance.driverKind} size={17} />
-      <div className="min-w-0">
-        <div className="truncate text-[13.5px] font-medium text-ink">{engineTitle(entry)}</div>
-        <div className="mt-0.5 text-[12px] leading-snug text-ink-secondary">{entry.readyNote}</div>
-      </div>
-    </div>
-  );
-}
-
-/** An engine that still needs installing or signing in keeps the full-width
- * row: the command box and terminal button need the room. */
-function SetupRow(entry: EngineEntry) {
-  return (
-    <StatusRow
-      ok={false}
-      warn
-      title={engineTitle(entry)}
-      mark={<ProviderMark driverKind={entry.instance.driverKind} size={16} />}
-    >
-      <EngineSetup
-        instance={entry.instance}
-        className="mt-0.5"
-        intent={entry.instance.access === "custom" ? "inject" : "cloud"}
-      />
-    </StatusRow>
-  );
-}
-
-/** Shown when the engine check finished and nothing is usable. Never a
- * silent green path: the user hears bots cannot run yet and what to do
- * (spec 080 R3/R5). */
-export function ZeroReadyNotice({ hasSetupRows }: { hasSetupRows: boolean }) {
-  return (
-    <div className="rounded-xl border border-warning/25 bg-warning/5 p-3 text-[12.5px] leading-relaxed text-ink">
-      <span className="font-semibold">No engine is ready yet.</span>{" "}
-      {hasSetupRows
-        ? "Bots can’t run until one is installed and set up — pick one below, or finish later from Settings."
-        : "Bots can’t run until an engine is installed. You can finish setup later from Settings."}
-    </div>
-  );
-}
+// First-run onboarding: who you are (email), Dani preparing its own runtime,
+// what the app may use (TCC), then an optional phone setup that can always be
+// resumed from Settings → Remote access.
+//
+// There is no engine step. Dani Bot has exactly one runtime and installs it
+// itself (spec 110 R-UI-001): a normal user should never have to understand
+// the provider registry, pick a harness, or run a command to finish first run.
+// Every step stays skippable — onboarding must never brick the app.
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { capabilities } = useDesktopCapabilities();
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [instances, setInstances] = useState<InstanceRow[] | null>(null);
+  // What the runtime bootstrap step concluded, for the completion event only.
+  // It is never the gate: RuntimePreparation advances on the server's live
+  // readiness probe, not on anything this component believes.
+  const [runtimeOutcome, setRuntimeOutcome] = useState<"ready" | "limited" | "unknown">("unknown");
   const [perms, setPerms] = useState<{ mic: string } | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -189,25 +72,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   }, [step]);
 
   useEffect(() => {
-    if (step !== 1) return;
-    let active = true;
-    let latestRequest = 0;
-    const refresh = () => {
-      const request = ++latestRequest;
-      fetch("/api/instances")
-        .then((r) => r.json())
-        .then((d) => active && request === latestRequest && setInstances(d.instances ?? []))
-        .catch(() => active && request === latestRequest && setInstances([]));
-    };
-    refresh();
-    window.addEventListener("focus", refresh);
-    return () => {
-      active = false;
-      window.removeEventListener("focus", refresh);
-    };
-  }, [step]);
-
-  useEffect(() => {
     if (step === 2 && capabilities.dictation.available) {
       const poll = () => window.dani?.permStatus?.().then(setPerms).catch(() => {});
       poll();
@@ -219,31 +83,30 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   const finish = () => {
     track("onboarding_completed", {
-      engines_available: instances?.filter((i) => i.snapshot.state === "available").length ?? -1,
+      runtime: runtimeOutcome,
       mic: perms?.mic ?? "n/a",
     });
     setEmailGateDone("submitted");
     onDone();
   };
 
-  const engines: EngineEntry[] = (instances ?? [])
-    .filter((instance) => instance.install)
-    .map((instance) => ({
-      instance,
-      label: instance.displayName,
-      readyNote: readyNoteFor(instance),
-    }));
-  const readyEngines = engines.filter((e) => engineReady(e.instance));
-  const setupEngines = engines.filter((e) => !engineReady(e.instance));
+  // Permissions are macOS-only in practice; skip straight to pairing where
+  // there is nothing to ask for.
+  const leaveRuntimeStep = useCallback(
+    (outcome: "ready" | "limited") => {
+      setRuntimeOutcome(outcome);
+      setStep(capabilities.dictation.available ? 2 : 3);
+    },
+    [capabilities.dictation.available],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-app p-8">
-      {/* the engines step lays tiles out two across, so it gets more room —
-          but never more than the window: the panel caps at the viewport and
-          the engine list scrolls inside it, so the header and Continue stay
-          put and nothing runs into the edges */}
+      {/* the pairing step carries a QR code and needs the room; every other
+          step is a single narrow card. The panel caps at the viewport so the
+          header and Continue stay put and nothing runs into the edges */}
       <div
-        className={`flex max-h-full w-full flex-col rounded-2xl border border-hairline/40 bg-panel p-8 ${step === 1 ? "max-w-[680px]" : step === 3 ? "max-w-[620px]" : "max-w-[460px]"}`}
+        className={`flex max-h-full w-full flex-col rounded-2xl border border-hairline/40 bg-panel p-8 ${step === 3 ? "max-w-[620px]" : "max-w-[460px]"}`}
       >
         {step === 0 && (
           <div className="flex flex-col items-center">
@@ -294,53 +157,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         )}
 
         {step === 1 && (
-          <div className="flex min-h-0 flex-col">
-            <h1 className="text-[18px] font-semibold text-ink">Your engines</h1>
-            <p className="mt-1 text-[13.5px] text-ink-secondary">
-              Bots run on AI tools installed on this computer — here&rsquo;s what we found.
-            </p>
-            <div className="mt-4 flex min-h-0 flex-col gap-2.5 overflow-y-auto pr-1 [scrollbar-width:thin]">
-              {!instances ? (
-                <div className="flex items-center gap-2 py-6 text-ink-secondary">
-                  <Loader2 size={16} className="animate-spin" /> Checking…
-                </div>
-              ) : (
-                <>
-                  {readyEngines.length > 0 && (
-                    <>
-                      <div className="text-[11.5px] font-medium uppercase tracking-wide text-ink-secondary">Ready</div>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {readyEngines.map((e) => (
-                          <ReadyTile key={e.label} {...e} />
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {setupEngines.length > 0 && (
-                    <>
-                      <div className={`text-[11.5px] font-medium uppercase tracking-wide text-ink-secondary ${readyEngines.length ? "mt-2" : ""}`}>
-                        Needs setup
-                      </div>
-                      {setupEngines.map((e) => (
-                        <SetupRow key={e.label} {...e} />
-                      ))}
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-            {instances && readyEngines.length === 0 && (
-              <div className="mt-3 shrink-0">
-                <ZeroReadyNotice hasSetupRows={setupEngines.length > 0} />
-              </div>
-            )}
-            <button
-              onClick={() => setStep(capabilities.dictation.available ? 2 : 3)}
-              className="mt-5 w-full shrink-0 rounded-lg bg-accent py-2.5 text-[15px] font-medium text-white"
-            >
-              Continue
-            </button>
-          </div>
+          <RuntimePreparation
+            onReady={() => leaveRuntimeStep("ready")}
+            onContinueLimited={() => leaveRuntimeStep("limited")}
+          />
         )}
 
         {step === 2 && (

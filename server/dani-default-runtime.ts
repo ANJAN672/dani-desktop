@@ -37,3 +37,22 @@ export function selectDaniDefault(
   }
   return { state: "no-model", instanceId: "", model: "", reason: hermes.snapshot.reason || "Hermes runtime is unavailable" };
 }
+
+/** Whether a production build must refuse this bot selection (spec 110
+ * R-RUNTIME-004, acceptance criterion 5).
+ *
+ * A release app dispatches Hermes and nothing else, so neither a stale config
+ * nor a crafted local request can name another harness. An unknown instance
+ * fails closed for the same reason: an unresolvable driver is not a Hermes
+ * driver.
+ *
+ * `productBuild` is false for dev, CLI, headless and test boots, which keep
+ * their adapters and hermetic fixtures exactly as before — the same
+ * compatibility carve-out the execution kernel already relies on.
+ */
+export function rejectsNonHermesSelection(
+  driverKind: string | undefined | null,
+  productBuild: boolean,
+): boolean {
+  return productBuild && driverKind !== "hermesAgent";
+}

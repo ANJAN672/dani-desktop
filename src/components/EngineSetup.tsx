@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Copy, Download, ExternalLink, Loader2, LogIn, TerminalSquare } from "lucide-react";
 import { api, type EngineInstall, type InstanceInfo, useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { HARNESS_UI } from "@/lib/release-ui";
 
 type Platform = "darwin" | "win32" | "linux";
 
@@ -232,7 +233,11 @@ export function EngineUpdateNotice({
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-secondary">{update.message}</p>
         </div>
       </div>
-      <CommandRow command={update.command} actionLabel="Open update in Terminal" compact />
+      {/* The notice itself is honest product information: a newer runtime is
+          available, and the current one still works. The shell command behind
+          it is not, so a release build states the fact and stops there
+          (spec 110 R-UI-001). Dani owns the update. */}
+      {HARNESS_UI && <CommandRow command={update.command} actionLabel="Open update in Terminal" compact />}
     </div>
   );
 }
@@ -355,6 +360,51 @@ function ManagedEngineSetup({ instance, signInOnly }: { instance: InstanceInfo; 
   );
 }
 
+/** What a release build shows instead of an install command (spec 110
+ * R-UI-001). Dani owns its runtime, so the only honest user action is to let
+ * it try again — never a pasted shell pipeline, a Terminal, or a setup guide.
+ *
+ * `/api/runtime/bootstrap` is the same source of truth first run uses, so this
+ * card and the onboarding step can never disagree about readiness. */
+function ProductRuntimeSetup({ className }: { className?: string }) {
+  const { refreshInstances } = useStore();
+  const [busy, setBusy] = useState(false);
+  const retry = async () => {
+    setBusy(true);
+    try {
+      await api("/api/runtime/bootstrap", { method: "POST", body: "{}" });
+      await refreshInstances();
+    } catch {
+      /* the next snapshot reports the real state either way */
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={cn("rounded-xl border border-hairline/40 bg-control/30 p-3", className)}>
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-inset text-ink-secondary">
+          <AlertTriangle size={14} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[13px] font-semibold text-ink">Dani isn’t ready yet</div>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-ink-secondary">
+            Dani is still preparing what it needs to run. You can try again now, or keep using the rest of the app.
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => void retry()}
+        disabled={busy}
+        className="mt-3 w-full rounded-md bg-control px-2 py-1.5 text-[12px] font-medium text-ink disabled:opacity-50"
+      >
+        {busy ? "Trying again…" : "Try again"}
+      </button>
+    </div>
+  );
+}
+
 export function EngineSetup({
   instance,
   className,
@@ -365,6 +415,11 @@ export function EngineSetup({
   /** `inject` installs the CLI but deliberately skips cloud sign-in. */
   intent?: "cloud" | "inject";
 }) {
+  // Release builds ship one runtime and no way to install another by hand.
+  // The guard is build-time, so none of the command/Terminal/docs markup below
+  // reaches a packaged bundle at all.
+  if (!HARNESS_UI) return <ProductRuntimeSetup className={className} />;
+
   const install = instance.install;
   const installCommand = installCommandFor(install);
   const signInCommand = install?.signInCommand;

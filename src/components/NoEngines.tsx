@@ -13,6 +13,7 @@ import { ProviderMark } from "@/components/ProviderIcons";
 import { splitEngineRail } from "@/lib/engine-rail";
 import { t } from "@/lib/i18n";
 import { brand } from "../lib/brand";
+import { HARNESS_UI } from "@/lib/release-ui";
 
 export function NoEngines() {
   const { state, refreshInstances } = useStore();
@@ -37,6 +38,30 @@ export function NoEngines() {
           </p>
           <button onClick={() => void recheck()} disabled={rechecking} className="mt-5 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-60">
             {rechecking ? "Checking…" : "Check again"}
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // A release build has no engine list to show: Dani manages one runtime and
+  // the only honest action is to let it try again (spec 110 R-UI-001). The
+  // guard is build-time, so the engine cards below are absent from a packaged
+  // bundle rather than hidden inside it.
+  if (!HARNESS_UI) {
+    return (
+      <main className="flex h-full min-w-0 flex-1 items-center justify-center bg-app px-6">
+        <div className="max-w-[520px] rounded-2xl border border-hairline/40 bg-card p-6 text-center">
+          <h1 className="text-[20px] font-semibold text-ink">{brand().name} isn’t ready yet</h1>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-ink-secondary">
+            {brand().name} is still preparing what it needs to run bots. Everything else in the app keeps working.
+          </p>
+          <button
+            onClick={() => void recheck()}
+            disabled={rechecking}
+            className="mt-5 rounded-lg bg-raised px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-60"
+          >
+            {rechecking ? "Checking…" : "Try again"}
           </button>
         </div>
       </main>

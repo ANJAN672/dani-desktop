@@ -28,7 +28,7 @@ import {
 } from "../shared/credential-request.ts";
 
 import { autoVerdict, rememberableApprovalKey } from "./auto-approve.ts";
-import { selectDaniDefault } from "./dani-default-runtime.ts";
+import { rejectsNonHermesSelection, selectDaniDefault } from "./dani-default-runtime.ts";
 import { requestReview, resolveAutoReviewMode, shouldReview } from "./auto-review.ts";
 import { updateClaudeCli } from "./claude-update.ts";
 import {
@@ -143,6 +143,7 @@ import {
 } from "./secret-store.ts";
 import { MAX_REMOTE_COMMAND_LENGTH } from "./remote-computer.ts";
 import { augmentedPath, findCliCandidates, resetPathCache } from "./env-path.ts";
+import { bootstrapStatus, type BootstrapCandidate, type BootstrapStatus } from "./runtime-bootstrap.ts";
 import { classifyCliProbe } from "./cli-probe-guard.ts";
 import { describeSpawnFailure, execCli } from "./procs.ts";
 import { blockedTarget, buildNotification, type Notification } from "./notify.ts";
@@ -384,6 +385,11 @@ const ENVIRONMENT_ID = loadEnvironmentId(DATA_DIR);
 const sessions = new SessionRegistry({ file: join(DATA_DIR, "sessions.json") });
 const SESSION_COOKIE = sessionCookieName(PORT, ENVIRONMENT_ID);
 const DESKTOP_MANAGED = (process.env.DANI_DESKTOP_PARENT ?? process.env.OMB_DESKTOP_PARENT) === "1";
+// Spec 110 R-RUNTIME-004 / acceptance criterion 5. Set only by a packaged
+// desktop build (electron/main.mjs), which is the one context that is a
+// release product: a dev run, a CLI boot and every e2e fixture keep their
+// adapters and fake drivers, exactly as the execution kernel already allows.
+const PRODUCT_HARNESS_LOCK = process.env.DANI_PRODUCT_HARNESS_LOCK === "1";
 // Empty is deliberately a deny-all bootstrap state. Only Electron's private
 // utility-process port can replace it with the per-launch owner capability.
 let desktopMutationToken: string | undefined = DESKTOP_MANAGED ? "" : resolveOwnerCapability();
@@ -1141,6 +1147,56 @@ async function defaultSelection() {
   return { instanceId: selected.instanceId, model: selected.model };
 }
 
+// ── product runtime bootstrap (spec 110 R-UI-002, R-RUNTIME-003) ──
+// One repair at a time. First run, a retry click and a restart can all arrive
+// together, and two concurrent activations of the same runtime is exactly the
+// race the spec calls out.
+let runtimeRepair: Promise<void> | null = null;
+
+async function bootstrapCandidates(): Promise<BootstrapCandidate[]> {
+  return (await registry.describe()).map((instance) => ({
+    driverKind: instance.driverKind,
+    // A shadowed (unloadable) driver reports no version at all, which is the
+    // same structured signal as "nothing answered".
+    snapshot: { state: instance.snapshot.state, version: "version" in instance.snapshot ? instance.snapshot.version : null },
+    models: { default: instance.models.default },
+    // A driver that owns a managed install can repair itself; one that cannot
+    // must not be offered a retry that does nothing.
+    managedInstall: Boolean(registry.get(instance.instanceId)?.installRuntime),
+  }));
+}
+
+async function runtimeBootstrap(): Promise<BootstrapStatus> {
+  return bootstrapStatus(await bootstrapCandidates(), runtimeRepair !== null);
+}
+
+/** Re-detect, and repair through the driver when it owns a managed install.
+ * Never rejects: a failed repair is a reported state, not a 500, because the
+ * next probe is what decides readiness either way. */
+function startRuntimeRepair(): Promise<void> {
+  if (runtimeRepair) return runtimeRepair;
+  const hermesId = registry.instances().find((instance) => instance.driverKind === "hermesAgent")?.instanceId;
+  runtimeRepair = (async () => {
+    // A runtime installed since launch stays invisible until the cache is
+    // dropped: Windows never pushes a PATH change into a live process.
+    resetPathCache();
+    if (!hermesId) return;
+    try {
+      await registry.installRuntime(hermesId);
+    } catch (error) {
+      console.warn(`[runtime] repair failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      await registry.refreshModels(hermesId);
+    } catch {
+      /* the next probe is the answer */
+    }
+  })().finally(() => {
+    runtimeRepair = null;
+  });
+  return runtimeRepair;
+}
+
 function checkedModelSelection(
   raw: unknown,
   current?: { selection: ModelSelection; busy: boolean },
@@ -1160,6 +1216,11 @@ function checkedModelSelection(
     instanceId: value.instanceId.trim(),
     model: value.model.trim(),
   };
+  // One harness in a packaged release. Dev, CLI and hermetic test fleets are
+  // unaffected: only a packaged Electron build sets the lock.
+  if (rejectsNonHermesSelection(registry.get(selection.instanceId)?.driverKind, PRODUCT_HARNESS_LOCK)) {
+    return { ok: false, status: 400, error: "this app runs Dani's own runtime; another engine cannot be selected" };
+  }
   if (value.effort !== undefined) {
     if (!isEffortLevel(value.effort)) {
       return { ok: false, status: 400, error: `effort "${String(value.effort)}" is not recognized` };
@@ -11752,6 +11813,19 @@ const server = createServer(async (req, res) => {
       if (!executionKernel) return json(res, 503, { error: "execution kernel unavailable" });
       try { return json(res, 200, executionKernel.diagnostic(m[1])); }
       catch (error) { return json(res, 404, { error: error instanceof Error ? error.message : String(error) }); }
+    }
+
+    // ── product runtime bootstrap (spec 110 R-UI-001/R-UI-002) ──
+    // Read-only truth for first run: what the live probe found, and nothing
+    // else. The renderer receives structured status, never a command.
+    if (method === "GET" && path === "/api/runtime/bootstrap") {
+      return json(res, 200, await runtimeBootstrap());
+    }
+    // Idempotent start/resume/repair, behind the same owner mutation gate as
+    // every other POST here. Returns immediately; the client polls the GET.
+    if (method === "POST" && path === "/api/runtime/bootstrap") {
+      void startRuntimeRepair();
+      return json(res, 200, await runtimeBootstrap());
     }
 
     // ── provider instances (model picker) ──

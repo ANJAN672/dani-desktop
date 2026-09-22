@@ -7,6 +7,7 @@ import { api, useStore, type Bot, type InstanceInfo, type ModelSelection } from 
 import { filterCustomModels, partitionCustomModels, suggestedModels } from "@/lib/custom-models";
 import { isCustomOnly } from "@/lib/engine-rail";
 import { EngineSetup, EngineUpdateNotice, needsCli, needsSignIn } from "./EngineSetup";
+import { HARNESS_UI } from "@/lib/release-ui";
 import { EngineGroupLabel } from "./EngineGroupLabel";
 import { cn } from "@/lib/cn";
 
@@ -22,7 +23,9 @@ function modelProvider(instance: InstanceInfo | undefined, model: string): strin
 }
 
 function engineStatus(instance: InstanceInfo): string {
-  if (needsCli(instance)) return "Not installed";
+  // "Not installed" is a harness install-state claim, and a release build has
+  // no install to offer here (spec 110 R-UI-001, acceptance criterion 2).
+  if (needsCli(instance)) return HARNESS_UI ? "Not installed" : "Not ready";
   if (needsSignIn(instance)) return "Sign-in required";
   return instance.snapshot.version ?? "Ready";
 }
@@ -357,7 +360,7 @@ export function ModelPicker({
         <div
           data-model-picker-content
           role="dialog"
-          aria-label="Choose model"
+          aria-label={HARNESS_UI ? "Choose model" : "Model"}
           className={cn(
             "flex overflow-hidden rounded-2xl border border-hairline/50 bg-card",
             contained
@@ -370,7 +373,12 @@ export function ModelPicker({
               <>
                 <div className="shrink-0 px-4 pb-2 pt-3.5">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="truncate text-[14px] font-semibold text-ink">Choose model</div>
+                    {/* Never a harness decision: a release build reaches this
+                        rail only for the one runtime Dani manages, so the
+                        title names the model, not the choice of engine. */}
+                    <div className="truncate text-[14px] font-semibold text-ink">
+                      {HARNESS_UI ? "Choose model" : "Model"}
+                    </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
@@ -402,7 +410,7 @@ export function ModelPicker({
                     </div>
                   </div>
                   <div className="mt-0.5 text-[11.5px] text-ink-secondary">
-                    {pane === "custom"
+                    {pane === "custom" && HARNESS_UI
                       ? "Run this agent with a model already on your machine."
                       : "Choose a model for this bot."}
                   </div>
@@ -463,7 +471,9 @@ export function ModelPicker({
                     <p className="mt-2 text-center text-[11.5px] text-ink-secondary/70">
                       {pane === "main" && official.length > 0
                         ? `${official.length} ${official.length === 1 ? "model" : "models"} will appear after setup.`
-                        : "Local models will appear as soon as the agent is installed."}
+                        : HARNESS_UI
+                          ? "Local models will appear as soon as the agent is installed."
+                          : "Models will appear as soon as Dani is ready."}
                     </p>
                   </div>
                 ) : (

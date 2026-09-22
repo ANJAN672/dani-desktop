@@ -1053,6 +1053,11 @@ async function startServerOn(port) {
     // process sends the private in-memory connection after spawn.
     DANI_DESKTOP_PARENT: "1",
     OMB_DESKTOP_PARENT: "1",
+    // Spec 110 R-RUNTIME-004: a release app dispatches Dani's own runtime and
+    // nothing else, so neither a stale config nor a crafted local request can
+    // select another harness. Only a packaged build sets this; dev runs, the
+    // CLI and hermetic test fixtures keep their adapters.
+    ...(app.isPackaged ? { DANI_PRODUCT_HARNESS_LOCK: "1" } : {}),
     DANI_STATIC_DIR: path.join(process.resourcesPath, "ui"),
     OMB_STATIC_DIR: path.join(process.resourcesPath, "ui"),
     DANI_RESOURCES_PATH: process.resourcesPath,

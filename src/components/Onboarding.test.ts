@@ -16,51 +16,49 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { readyNoteFor, ZeroReadyNotice } from "./Onboarding";
-import type { InstanceInfo } from "@/state/store";
+import { RuntimePreparation } from "./RuntimePreparation";
 
-const baseInstance: InstanceInfo = {
-  instanceId: "test",
-  driverKind: "test-driver",
-  displayName: "Test Engine",
-  snapshot: { state: "available" },
-  models: { default: "m", options: [] },
-} as InstanceInfo;
+/** Everything the release first run must never say (spec 110 R-UI-001,
+ * acceptance criterion 2) — harness vocabulary, install commands, and the
+ * Terminal/setup-guide escape hatches. */
+const FORBIDDEN = [
+  "hermes",
+  "engine",
+  "harness",
+  "curl",
+  "powershell",
+  "iex",
+  "terminal",
+  "setup guide",
+  "not installed",
+  "choose model",
+  "cli",
+];
 
-describe("readyNoteFor", () => {
-  it("labels a metered engine as billed per run, never as free", () => {
-    const note = readyNoteFor({ ...baseInstance, access: "subscription", snapshot: { state: "available", billing: "metered" } } as InstanceInfo);
-    expect(note).toContain("metered");
-    expect(note).toContain("bill");
-    expect(note).not.toContain("free");
+function firstRunMarkup(): string {
+  return renderToStaticMarkup(
+    createElement(RuntimePreparation, { onReady: () => {}, onContinueLimited: () => {} }),
+  );
+}
+
+describe("first-run runtime preparation", () => {
+  it("speaks product language while preparing", () => {
+    expect(firstRunMarkup()).toContain("Preparing");
   });
 
-  it("labels a subscription engine as included", () => {
-    const note = readyNoteFor({ ...baseInstance, access: "subscription", snapshot: { state: "available", billing: "subscription" } } as InstanceInfo);
-    expect(note).toContain("subscription");
+  it("exposes no harness choice, install command or terminal escape", () => {
+    const markup = firstRunMarkup().toLowerCase();
+    for (const phrase of FORBIDDEN) expect(markup).not.toContain(phrase);
   });
 
-  it("keeps the local-model note for custom-access engines", () => {
-    const note = readyNoteFor({ ...baseInstance, access: "custom" } as InstanceInfo);
-    expect(note).toContain("local model");
-  });
-
-  it("falls back to the neutral note when billing class is unknown", () => {
-    const note = readyNoteFor({ ...baseInstance, access: "subscription", snapshot: { state: "available" } } as InstanceInfo);
-    expect(note).toBe("Installed — ready to power bots.");
-  });
-});
-
-describe("ZeroReadyNotice", () => {
-  it("points at the setup rows when engines need setup", () => {
-    const markup = renderToStaticMarkup(createElement(ZeroReadyNotice, { hasSetupRows: true }));
-    expect(markup).toContain("No engine is ready yet.");
-    expect(markup).toContain("pick one below");
-  });
-
-  it("says an install is needed when nothing was found at all", () => {
-    const markup = renderToStaticMarkup(createElement(ZeroReadyNotice, { hasSetupRows: false }));
-    expect(markup).toContain("No engine is ready yet.");
-    expect(markup).toContain("until an engine is installed");
+  it("does not report readiness before the live probe answers", () => {
+    let ready = 0;
+    renderToStaticMarkup(
+      createElement(RuntimePreparation, { onReady: () => { ready += 1; }, onContinueLimited: () => {} }),
+    );
+    expect(ready).toBe(0);
+    // Continue stays disabled until the server answers, so no one can click
+    // past preparation into a runtime that was never verified.
+    expect(firstRunMarkup()).toContain("disabled");
   });
 });
