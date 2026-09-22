@@ -395,6 +395,10 @@ async function applySetting(
   }
 }
 
+export function hermesSpawnArgs(managedExecutable = process.env.DANI_MANAGED_HERMES_EXECUTABLE): string[] {
+  return /(?:^|[\\/])hermes-acp(?:\.cmd)?$/i.test(managedExecutable ?? "") ? [] : ["acp"];
+}
+
 const support: AcpSupport = {
   driverKind: "hermesAgent",
   displayName: "Hermes",
@@ -428,7 +432,11 @@ const support: AcpSupport = {
     docsUrl: "https://hermes-agent.nousresearch.com/docs/getting-started/quickstart",
     signInCommand: "hermes setup",
   },
-  spawnArgs: () => ["acp"],
+  // The signed managed payload's executable is already the native
+  // `hermes-acp` entrypoint. Appending the source-install subcommand (`acp`)
+  // makes argparse reject every real turn even though the readiness probe
+  // succeeds. Unmanaged `hermes` still needs that subcommand.
+  spawnArgs: () => /(?:^|[\\/])hermes-acp(?:\.cmd)?$/i.test(process.env.DANI_MANAGED_HERMES_EXECUTABLE ?? "") ? [] : ["acp"],
   snapshot: async (env, config) => await new Promise((resolve) => {
     const cli = process.env.DANI_MANAGED_HERMES_EXECUTABLE || config.cli;
     execFile(cli, ["--version"], { env: env as NodeJS.ProcessEnv, timeout: 8_000 }, (error, stdout) => {

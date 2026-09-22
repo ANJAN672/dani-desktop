@@ -11,6 +11,7 @@ import {
   bindHermesScreenshotCompat,
   hermesAcpModelId,
   hermesConfiguredModel,
+  hermesSpawnArgs,
   HERMES_PINNED_VERSION,
   HERMES_PINNED_RELEASE,
   HermesAgentDriver,
@@ -221,5 +222,17 @@ describe("hermesAcpModelId", () => {
 });
 });
 
+
+describe("hermesSpawnArgs", () => {
+  it("does not append the source CLI subcommand to the signed managed ACP entrypoint", () => {
+    expect(hermesSpawnArgs("/managed/bin/hermes-acp")).toEqual([]);
+    expect(hermesSpawnArgs("C:\\managed\\bin\\hermes-acp.cmd")).toEqual([]);
+  });
+
+  it("keeps the acp subcommand for an ordinary hermes CLI", () => {
+    expect(hermesSpawnArgs("/usr/local/bin/hermes")).toEqual(["acp"]);
+    expect(hermesSpawnArgs(undefined)).toEqual(["acp"]);
+  });
+});
 
 describe("Hermes release pin",()=>{it("pins a traceable upstream release",()=>{expect(HERMES_PINNED_VERSION).toBe("0.21.4");expect(HERMES_PINNED_RELEASE).toBe("https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.21");expect(HermesAgentDriver.install?.docsUrl).toContain("hermes-agent.nousresearch.com")})});
