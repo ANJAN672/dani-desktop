@@ -360,8 +360,7 @@ No code needed at all for your own engines: any ACP-speaking CLI or OpenAI-compa
 plugs in through config — see [`docs/custom-engines.md`](docs/custom-engines.md).
 Users can add their own MCP tool servers with zero code via [`docs/custom-mcp-servers.md`](docs/custom-mcp-servers.md).
 
-Dani Bot starts a webhook-only receiver on `127.0.0.1:8800` by default (or one port above `DANI_PORT`).
-Set `DANI_WEBHOOK_PORT` to choose another port.## License
+## License
 
 [Apache License 2.0](LICENSE) © 2026 Dani and Dani Bot contributors.
 
