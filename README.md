@@ -25,12 +25,6 @@ Talk to them like contacts. Watch them work. Approve what matters.
 
 <br>
 
-<a href="https://buy.polar.sh/polar_cl_EEzWmormSVBD151HkmkyId9j0GPXina0KurfS1fYYcO">
-  <img src="https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F%20%20Support%20Dani%20Bot-any%20amount%20%C2%B7%20or%20monthly-38d591?style=for-the-badge&labelColor=070707" alt="Support Dani Bot — one-time any amount or monthly, via Polar" height="40">
-</a>
-
-<br>
-<br>
 
 <img src="docs/screenshots/hero.png" alt="Dani Bot — a Telegram-style chat app where every chat is a real AI agent" width="900">
 
@@ -156,7 +150,7 @@ Bring your own ElevenLabs key — paste it once in App Settings, pick a voice, a
 Give a bot its own voice and a channel stops sounding like one person.
 
 **Also in the box:** streaming replies with tool-run activity chips · native macOS dictation from the
-composer mic (on-device Apple speech recognition — desktop app) · SupaMaus cursor mascots with role-aware
+composer mic (on-device Apple speech recognition — desktop app) · cursor mascots with role-aware
 expressions · screenshots of the bot's work folded into the transcript.
 
 ## How it works
@@ -311,8 +305,8 @@ The existing duration field remains calendar/display metadata. Webhook triggers 
 but reuse the same queued task executor and calendar
 receipts.
 
-Dani Bot starts a webhook-only receiver on `127.0.0.1:8800` by default (or one port above `OMB_PORT`).
-Set `OMB_WEBHOOK_PORT` to choose another port. A webhook secret is shown once when the trigger is created
+Dani Bot starts a webhook-only receiver on `127.0.0.1:8800` by default (or one port above `DANI_PORT`).
+Set `DANI_WEBHOOK_PORT` to choose another port. A webhook secret is shown once when the trigger is created
 or rotated. Bearer authentication is recommended so the secret stays out of request URLs and most access
 logs; a single capability URL remains available for senders that cannot configure headers. The receiver
 exposes only `/health` and secret `/hooks/...` endpoints; it never exposes the app's broader API.
@@ -366,14 +360,8 @@ No code needed at all for your own engines: any ACP-speaking CLI or OpenAI-compa
 plugs in through config — see [`docs/custom-engines.md`](docs/custom-engines.md).
 Users can add their own MCP tool servers with zero code via [`docs/custom-mcp-servers.md`](docs/custom-mcp-servers.md).
 
-## Support the project
-
-Dani Bot is free and open source. If it does real work for you, you can
-[buy the project a coffee or become a monthly supporter](https://buy.polar.sh/polar_cl_EEzWmormSVBD151HkmkyId9j0GPXina0KurfS1fYYcO) —
-one-time any amount, or monthly. Payments are handled by [Polar](https://polar.sh/supamaus),
-which takes care of receipts and taxes; nothing about the app ever sits behind a paywall.
-
-## License
+Dani Bot starts a webhook-only receiver on `127.0.0.1:8800` by default (or one port above `DANI_PORT`).
+Set `DANI_WEBHOOK_PORT` to choose another port.## License
 
 [Apache License 2.0](LICENSE) © 2026 Dani and Dani Bot contributors.
 
