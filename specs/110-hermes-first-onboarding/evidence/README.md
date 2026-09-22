@@ -162,6 +162,31 @@ secrets or large unredacted logs.
 - What this does NOT prove: any other target, any packaged installer, any
   clean machine, and not readiness, which additionally needs a model.
 
+## E-CI-001 - this branch is no worse than the base it started from
+
+- Class: CI, on the fork, across Linux, macOS and Windows.
+- Branch run: <https://github.com/ANJAN672/dani-desktop/actions/runs/35752036006>
+  at `7154ab6`. Base run: <https://github.com/somdipto/dani-desktop/actions/runs/35718448691>
+  at `74807af2`, the commit this branch starts from.
+- The same four jobs fail in both: package and smoke on Ubuntu, and typecheck
+  plus test on each of the three platforms. The failing test files are
+  identical, file for file:
+  - Windows, both: browser-closed-shadow, diagnostics, ipc-sandbox,
+    install-commands, cli-probe-guard, secret-store.
+  - Ubuntu, both: diagnostics only. That run is otherwise 4140 passed.
+  - macOS, both: diagnostics and cli-probe-guard.
+- So this branch introduces no new failure on any platform. Those failures are
+  audit finding AUD-01 and predate it.
+- CI found one real defect that local runs could not: both new scripts opened
+  with a shebang, and a shebang followed by the CRLF line endings git hands a
+  Windows checkout makes the module fail to parse, so two suites ran zero
+  tests. Fixed, and verified under both line endings.
+- Upstream cannot run this PR's checks yet: every run against it sits at
+  `action_required`, awaiting maintainer approval for a first-time
+  contributor. The fork run above is the substitute.
+- What this does NOT prove: that the four pre-existing failures are harmless,
+  or anything about packaged or clean-machine behaviour.
+
 ## Open blockers before issue 18 can close
 
 Recorded here so the gap between "this branch is done" and "the issue is done"
