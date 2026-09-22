@@ -45,9 +45,19 @@ jobs:
           set -euo pipefail
           sha=$(git rev-parse HEAD)
           version=$(node -p "require('./package.json').version")
+          release_tag="v$version"
+
+          # Branch pushes release the exact commit that caused the run. Only a
+          # tag-triggered run has a tag whose name must match package.json.
           if [[ "$GITHUB_EVENT_NAME" == push ]]; then
-            test "$GITHUB_REF" = "refs/tags/v$version" || {
-              echo "::error::tag must be v$version to match package.json"
+            test "$sha" = "$GITHUB_SHA" || {
+              echo "::error::checkout $sha does not match triggering commit $GITHUB_SHA"
+              exit 1
+            }
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            test "$GITHUB_REF" = "refs/tags/$release_tag" || {
+              echo "::error::tag must be $release_tag to match package.json"
               exit 1
             }
           fi
