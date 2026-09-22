@@ -105,6 +105,24 @@ secrets or large unredacted logs.
 - What this does NOT prove: anything about a packaged installer on any target,
   and nothing about the ready path, which needs a real runtime.
 
+## Open blockers before issue 18 can close
+
+Recorded here so the gap between "this branch is done" and "the issue is done"
+stays explicit.
+
+1. No runtime payload exists for any target in this repository, so acceptance
+   criteria 1 and 3 cannot be demonstrated. T-BOOT-001 is unfinished: the spike
+   reports linux-x64 proven, mac-arm64 and win-x64 built but unproven, and
+   mac-x64 degraded.
+2. No packaged or clean-machine run exists on any of the five published
+   installer targets, which criterion 11 requires with pixel evidence.
+3. The separate profile-save defect that criterion 8 requires to be linked has
+   not been filed, so there is nothing to link and nothing to cover.
+4. T-MODEL-001, T-PRIV-001, T-LAYA-001, T-UI-002, T-SEC-004 and T-CUA-001
+   remain open, covering criteria 6, 7, 9 and 10.
+5. CI has not run on this branch at all, and the base commit was already failing
+   (audit finding AUD-01).
+
 ## Known-failing at this base
 
 `pnpm test` fails on this base before any of these changes: `server/secret-store.test.ts`,
