@@ -29,6 +29,7 @@ import {
 
 import { autoVerdict, rememberableApprovalKey } from "./auto-approve.ts";
 import { rejectsNonHermesSelection, selectDaniDefault } from "./dani-default-runtime.ts";
+import { migrateSelections } from "./harness-migration.ts";
 import { requestReview, resolveAutoReviewMode, shouldReview } from "./auto-review.ts";
 import { updateClaudeCli } from "./claude-update.ts";
 import {
@@ -1349,8 +1350,38 @@ function reportProactiveJob(threadId: string, jobId: string, status: "completed"
     },
   });
 }
+/** Move bots off a harness a release build will not dispatch (issue #18).
+ *
+ * Runs once at boot, after the fleet is loaded so the decision sees real
+ * availability. Only `modelSelection` is rewritten: threads, tasks and
+ * transcripts are untouched, and a bot that cannot be moved yet is left exactly
+ * as it was rather than being deleted or silently repointed. Its turns then
+ * fail through the existing unavailable-provider path, which already says so.
+ */
+async function migrateStaleHarnessSelections(): Promise<void> {
+  if (!PRODUCT_HARNESS_LOCK) return;
+  const fleet = (await registry.describe()).map((instance) => ({
+    instanceId: instance.instanceId,
+    driverKind: instance.driverKind,
+    snapshot: { state: instance.snapshot.state },
+    models: { default: instance.models.default, options: instance.models.options },
+  }));
+  const { migrated, blocked } = migrateSelections(store.bots, fleet, PRODUCT_HARNESS_LOCK);
+  for (const entry of migrated) {
+    store.patchBot(entry.id, { modelSelection: entry.selection });
+  }
+  if (migrated.length) {
+    const kept = migrated.filter((entry) => entry.keptModel).length;
+    console.log(`[harness-migration] moved ${migrated.length} bot(s) to the product runtime (${kept} kept their model)`);
+  }
+  if (blocked.length) {
+    console.warn(`[harness-migration] ${blocked.length} bot(s) cannot be moved yet (${blocked[0]!.code}); they remain intact and unavailable until the runtime is ready`);
+  }
+}
+
 const sendSequencer = new SendSequencer();
 bootSelection = await defaultSelection();
+await migrateStaleHarnessSelections();
 store.seedIfEmpty();
 attachProactiveProposalListener();
 reconcileProactiveProposalCards();
