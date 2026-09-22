@@ -5,7 +5,7 @@ const valid = {
   manifestVersion: 1, name: "hermes-runtime-payload", target: "linux-x64", version: "0.21.4",
   upstreamCommit: "d337b736aa1e8ebecfab043842d13e4a2d2f48a3", archiveSha256: "b".repeat(64),
   archiveSize: 86_596_540, unpackedSize: 250_270_424, format: "tar.gz", executableRelPath: "bin/hermes-acp",
-  probe: { argv: ["probe/run-probe.sh"], protocol: "acp-jsonrpc-stdio: initialize", expectedVersion: "0.21.4" },
+  probe: { argv: ["probe/run-probe.sh"], protocol: "acp-jsonrpc-stdio: initialize", expectedVersion: "0.21.4", expectedAgentName: "hermes-agent" },
   noticeRelPath: "NOTICE", sbomRelPath: "SBOM.cdx.json", degradations: ["no-pillow-heif"],
 };
 describe("managed runtime manifest", () => {
@@ -19,6 +19,10 @@ describe("managed runtime manifest", () => {
       const payload = { ...valid } as Record<string, unknown>; delete payload[field];
       expect(() => parseManagedRuntimeManifest(payload), field).toThrow();
     }
+  });
+  it("requires an explicit runtime-specific ACP agent name", () => {
+    expect(() => parseManagedRuntimeManifest({ ...valid, probe: { ...valid.probe, expectedAgentName: undefined } })).toThrow();
+    expect(parseManagedRuntimeManifest({ ...valid, name: "opencode-runtime-payload", probe: { ...valid.probe, expectedAgentName: "OpenCode" } })).toMatchObject({ probe: { expectedAgentName: "OpenCode" } });
   });
   it("rejects unsafe payload paths", () => {
     for (const path of ["../hermes", "bin/../hermes", "/bin/hermes", "C:\\hermes.exe", "bin//hermes"]) expect(() => safeManagedRuntimeRelativePath(path), path).toThrow();

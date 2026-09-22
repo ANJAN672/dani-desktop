@@ -21,8 +21,8 @@ PY
 A="$ROOT/dist-native/managed-runtimes/archives"; M="$ROOT/dist-native/managed-runtimes/manifests"
 mkdir -p "$A" "$M"
 cp "$ARCHIVE" "$A/opencode-runtime-payload-linux-x64.tar.gz"
-cp "$MANIFEST" "$M/opencode-runtime-payload-linux-x64.manifest.json"
+cp "$MANIFEST" "$M/opencode-linux-x64.manifest.json"
 # Verify staged bytes independently, not only the sources.
 [ "$(sha256sum "$A/opencode-runtime-payload-linux-x64.tar.gz" | cut -d' ' -f1)" = "$(sha256sum "$ARCHIVE" | cut -d' ' -f1)" ]
-[ "$(sha256sum "$M/opencode-runtime-payload-linux-x64.manifest.json" | cut -d' ' -f1)" = "$(sha256sum "$MANIFEST" | cut -d' ' -f1)" ]
+[ "$(sha256sum "$M/opencode-linux-x64.manifest.json" | cut -d' ' -f1)" = "$(sha256sum "$MANIFEST" | cut -d' ' -f1)" ]
 echo "staged OpenCode runtime payload under dist-native/managed-runtimes"

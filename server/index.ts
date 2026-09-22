@@ -12927,6 +12927,7 @@ const gracefulShutdown = createGracefulShutdown({
     () => releaseAllBrowserCapabilities(),
     () => { clearInterval(proactiveReleaseTimer); return executionKernel?.close(); },
     () => registry.disposeAll(),
+    () => managedRuntimes.stop(),
   ],
   // Cleanup jobs run concurrently. Release only after they settle (or reach
   // the shutdown deadline), immediately before the process exits, so no new

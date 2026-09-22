@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmod, lstat, mkdir, open, readlink, readdir, rename, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readFile, readlink, readdir, rename, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import extractZip from "extract-zip";
@@ -19,6 +20,7 @@ export type RuntimeBootstrapStatus = {
     runtime: { state: "checking" | "ready" | "error"; hermes: boolean; opencode: boolean };
     modelRoute: { state: "checking" | "ready" | "error" };
     taskReady: boolean;
+    activeRuntime: ManagedRuntimeKind | null;
   };
   canRetry: boolean;
   canContinueLimited: boolean;
@@ -45,6 +47,7 @@ const runtimeSchema = z.object({
     argv: z.array(z.string()).min(1),
     protocol: z.string().startsWith("acp-jsonrpc-stdio"),
     expectedVersion: z.string().min(1),
+    expectedAgentName: z.string().min(1),
   }),
   noticeRelPath: z.string().min(1),
   sbomRelPath: z.string().min(1),
@@ -198,6 +201,28 @@ async function run(command: string, args: string[], timeoutMs: number, input?: s
 }
 
 
+async function freeLoopbackPort(): Promise<number> {
+  return await new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(error => error ? reject(error) : resolvePort(port));
+    });
+  });
+}
+async function requireReady(url: string, timeoutMs: number) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  const body = await response.json() as { ok?: unknown; model?: unknown; cost?: { input?: unknown; output?: unknown; cache?: { read?: unknown; write?: unknown } }; paidFallback?: unknown };
+  if (!response.ok || body.ok !== true || body.model !== "opencode/big-pickle" || body.paidFallback !== false || body.cost?.input !== 0 || body.cost.output !== 0 || body.cost.cache?.read !== 0 || body.cost.cache.write !== 0) throw new Error("exact free model route is not ready");
+}
+async function waitForReady(url: string, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) { try { await requireReady(url, 2_000); return; } catch { await new Promise(resolveWait => setTimeout(resolveWait, 250)); } }
+  throw Object.assign(new Error("model route readiness timed out"), { code: "model-route-failed" });
+}
+
 export class ManagedRuntimeService {
   private readonly resourcesRoot: string;
   private readonly installRoot: string;
@@ -205,6 +230,11 @@ export class ManagedRuntimeService {
   private run: Partial<Record<ManagedRuntimeKind, Promise<void>>> = {};
   private bootstrapRun: Promise<void> | null = null;
   private modelRouteState: "checking" | "ready" | "error" = "checking";
+  private activePhases: Partial<Record<ManagedRuntimeKind, RuntimeBootstrapStatus["phase"]>> = {};
+  private bridge: ReturnType<typeof spawn> | null = null;
+  private opencodeServer: ReturnType<typeof spawn> | null = null;
+  private routeMonitor: ReturnType<typeof setInterval> | null = null;
+  private bridgeUrl: string | null = null;
   private status: RuntimeBootstrapStatus = this.statusValue("checking", "detect");
   constructor(options: { resourcesRoot: string; dataDir: string }) {
     this.resourcesRoot = join(options.resourcesRoot, "managed-runtimes");
@@ -242,7 +272,7 @@ export class ManagedRuntimeService {
     if (!this.bootstrapRun) {
       this.status = this.statusValue("installing", "verify-bundled");
       this.bootstrapRun = Promise.all([this.install("hermes"), this.install("opencode")])
-        .then(() => { this.refreshReadyStatus(); })
+        .then(async () => { await this.startModelRoute(); this.refreshReadyStatus(); })
         .catch(error => {
           const code = this.errorCode(error, "activation-failed");
           this.status = this.statusValue(code === "payload-missing" ? "blocked-error" : "repairable-error", null, safeError(code, productMessage(code)));
@@ -258,15 +288,62 @@ export class ManagedRuntimeService {
     return {
       schemaVersion: 1, state: taskReady ? "ready" : state, phase, progress: null,
       runtime: { kind: "hermes", version: hermes ? this.activeVersion("hermes") : null, source: hermes ? "managed" : null },
-      readiness: { runtime: { state: runtimeReady ? "ready" : state === "checking" || state === "installing" ? "checking" : "error", hermes, opencode }, modelRoute: { state: this.modelRouteState }, taskReady },
+      readiness: { runtime: { state: runtimeReady ? "ready" : state === "checking" || state === "installing" ? "checking" : "error", hermes, opencode }, modelRoute: { state: this.modelRouteState }, taskReady, activeRuntime: this.activeRuntime() },
       canRetry: state === "repairable-error", canContinueLimited: !taskReady, error,
     };
   }
   private refreshReadyStatus() { this.status = this.statusValue("checking", null); }
+  private activeRuntime(): ManagedRuntimeKind | null { return this.activePhases.hermes ? "hermes" : this.activePhases.opencode ? "opencode" : null; }
+  private setPhase(kind: ManagedRuntimeKind, phase: RuntimeBootstrapStatus["phase"]) {
+    if (phase) this.activePhases[kind] = phase; else delete this.activePhases[kind];
+    if (this.bootstrapRun) this.status = this.statusValue("installing", phase);
+  }
   private activeVersion(kind: ManagedRuntimeKind): string | null {
     try { return (JSON.parse(readFileSync(this.pointer(kind), "utf8")) as { version?: string }).version ?? null; } catch { return null; }
   }
   private errorCode(error: unknown, fallback: string) { return typeof (error as { code?: unknown })?.code === "string" ? String((error as { code: string }).code) : fallback; }
+  async stop() {
+    if (this.routeMonitor) clearInterval(this.routeMonitor);
+    this.routeMonitor = null; this.modelRouteState = "checking"; this.bridgeUrl = null;
+    const children = [this.bridge, this.opencodeServer].filter((child): child is ReturnType<typeof spawn> => Boolean(child));
+    this.bridge = null; this.opencodeServer = null;
+    for (const child of children) if (child.exitCode === null) child.kill("SIGTERM");
+    await Promise.all(children.map(async child => {
+      if (child.exitCode !== null) return;
+      await Promise.race([new Promise<void>(resolveStop => child.once("exit", () => resolveStop())), new Promise<void>(resolveStop => setTimeout(resolveStop, 5_000))]);
+      if (child.exitCode === null) child.kill("SIGKILL");
+    }));
+  }
+  private async startModelRoute() {
+    await this.stop();
+    const opencode = this.active.opencode, hermes = this.active.hermes;
+    if (!opencode || !hermes) throw Object.assign(new Error("managed runtimes are incomplete"), { code: "model-route-failed" });
+    const [upstreamPort, bridgePort] = await Promise.all([freeLoopbackPort(), freeLoopbackPort()]);
+    if (upstreamPort === bridgePort) throw Object.assign(new Error("route port collision"), { code: "model-route-failed" });
+    const bridgeScript = join(this.resourcesRoot, "opencode-bridge", "server.mjs");
+    const bridgeTemplate = join(this.resourcesRoot, "opencode-bridge", "hermes-config.yaml");
+    const hermesHome = join(this.installRoot, "hermes-home"); await mkdir(hermesHome, { recursive: true });
+    const bridgeUrl = `http://127.0.0.1:${bridgePort}`;
+    const config = (await readFile(bridgeTemplate, "utf8")).replaceAll("http://127.0.0.1:4110", bridgeUrl);
+    writeFileAtomic(join(hermesHome, "config.yaml"), config, { mode: 0o600 });
+    process.env.HERMES_HOME = hermesHome;
+    this.opencodeServer = spawn(opencode, ["serve", "--pure", "--hostname", "127.0.0.1", "--port", String(upstreamPort)], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+    this.opencodeServer.once("exit", () => { this.setModelRouteReadiness("error"); });
+    this.bridge = spawn(process.execPath, [bridgeScript], {
+      stdio: ["ignore", "ignore", "pipe"], windowsHide: true,
+      env: { ...process.env, OPENCODE_BIN: opencode, OPENCODE_SERVER_URL: `http://127.0.0.1:${upstreamPort}`, OPENCODE_BRIDGE_HOST: "127.0.0.1", OPENCODE_BRIDGE_PORT: String(bridgePort), OPENCODE_FREE_MODEL: "opencode/big-pickle" },
+    });
+    this.bridge.once("exit", () => { this.setModelRouteReadiness("error"); });
+    this.bridgeUrl = bridgeUrl;
+    await waitForReady(`${bridgeUrl}/ready`, 30_000);
+    this.setModelRouteReadiness("ready");
+    this.routeMonitor = setInterval(() => { void this.checkRoute(); }, 10_000); this.routeMonitor.unref?.();
+  }
+  private async checkRoute() {
+    if (!this.bridgeUrl) return;
+    try { await requireReady(`${this.bridgeUrl}/ready`, 5_000); }
+    catch { this.setModelRouteReadiness("error"); }
+  }
   private pointer(kind: ManagedRuntimeKind) { return join(this.installRoot, kind, "current.json"); }
   private recoverActive(kind: ManagedRuntimeKind) {
     try {
@@ -286,11 +363,14 @@ export class ManagedRuntimeService {
     return parsed.data;
   }
   private async activate(kind: ManagedRuntimeKind) {
-    const entry = this.manifestEntry(kind);
+    this.setPhase(kind, "verify-bundled");
+    try {
+      const entry = this.manifestEntry(kind);
       const archive = join(this.resourcesRoot, "archives", archiveName(entry));
       const archiveInfo = await lstat(archive);
       if (!archiveInfo.isFile() || archiveInfo.isSymbolicLink() || archiveInfo.size !== entry.archiveSize) throw Object.assign(new Error("runtime archive size mismatch"), { code: "verification-failed" });
       if (await digestFile(archive) !== entry.archiveSha256) throw Object.assign(new Error("runtime archive digest mismatch"), { code: "verification-failed" });
+      this.setPhase(kind, "activate");
       const kindRoot = join(this.installRoot, kind); await mkdir(kindRoot, { recursive: true });
       const manifestDigest = createHash("sha256").update(JSON.stringify(entry)).digest("hex");
       const installation = `${entry.version}-${manifestDigest.slice(0, 12)}`;
@@ -306,6 +386,7 @@ export class ManagedRuntimeService {
           const info = await lstat(safeJoin(staging, relPath));
           if (!info.isFile() || info.isSymbolicLink()) throw Object.assign(new Error("runtime legal metadata is missing"), { code: "verification-failed" });
         }
+        this.setPhase(kind, "probe");
         await this.probe(kind, stagedExecutable, entry, staging);
         if (!existsSync(finalRoot)) await rename(staging, finalRoot);
         if (await inspectExtracted(finalRoot) !== entry.unpackedSize) throw Object.assign(new Error("existing activation size mismatch"), { code: "verification-failed" });
@@ -316,6 +397,7 @@ export class ManagedRuntimeService {
         if (kind === "hermes") process.env.DANI_MANAGED_HERMES_EXECUTABLE = executable;
         else process.env.DANI_MANAGED_OPENCODE_EXECUTABLE = executable;
       } finally { await rm(staging, { recursive: true, force: true }).catch(() => undefined); }
+    } finally { this.setPhase(kind, null); }
   }
   private async verifyRecovered(kind: ManagedRuntimeKind) {
     const executable = this.active[kind];
@@ -341,11 +423,13 @@ export class ManagedRuntimeService {
       : await run(command, args, 100_000);
     const passAt = result.stdout.indexOf("PROBE RESULT:");
     const structured = (passAt < 0 ? result.stdout : result.stdout.slice(0, passAt)).trim();
-    let agentVersion: unknown;
-    try { agentVersion = (JSON.parse(structured) as { result?: { agentInfo?: { version?: unknown } } }).result?.agentInfo?.version; }
-    catch { throw Object.assign(new Error("runtime probe output was not structured JSON"), { code: "probe-failed" }); }
-    const exactPass = `PROBE RESULT: PASS (hermes-agent ${entry.probe.expectedVersion}, ACP initialize)`;
-    if (agentVersion !== entry.probe.expectedVersion || !result.stdout.split("\n").some(line => line.trim() === exactPass)) {
+    let agentVersion: unknown, agentName: unknown;
+    try {
+      const info = (JSON.parse(structured) as { result?: { agentInfo?: { name?: unknown; version?: unknown } } }).result?.agentInfo;
+      agentVersion = info?.version; agentName = info?.name;
+    } catch { throw Object.assign(new Error("runtime probe output was not structured JSON"), { code: "probe-failed" }); }
+    const exactPass = `PROBE RESULT: PASS (${entry.probe.expectedAgentName} ${entry.probe.expectedVersion}, ACP initialize)`;
+    if (agentName !== entry.probe.expectedAgentName || agentVersion !== entry.probe.expectedVersion || !result.stdout.split("\n").some(line => line.trim() === exactPass)) {
       throw Object.assign(new Error("runtime probe did not report an exact PASS"), { code: "probe-failed" });
     }
   }

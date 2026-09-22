@@ -86,6 +86,13 @@ extraResources:
   # are staged separately once reviewed for every supported target.
   - from: dist-native/speech-models
     to: speech-models
+  # Authoritative signed-app manifests and hash-pinned offline runtime archives.
+  - from: dist-native/managed-runtimes/archives
+    to: managed-runtimes/archives
+  - from: dist-native/managed-runtimes/manifests
+    to: managed-runtimes/manifests
+  - from: scripts/opencode-bridge
+    to: managed-runtimes/opencode-bridge
 
 mac:
   # Two single-arch artifacts rather than one universal binary: the app is
