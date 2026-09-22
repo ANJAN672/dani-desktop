@@ -63,3 +63,46 @@ describe("runtime bootstrap status", () => {
     }
   });
 });
+
+describe("activation failure reporting", () => {
+  const absent = [hermes({ snapshot: { state: "unavailable" }, models: { default: "" } })];
+
+  it("reports why preparing the runtime failed, not just that it is missing", () => {
+    const status = bootstrapStatus(absent, false, "runtime.digest-mismatch");
+    expect(status.code).toBe("runtime.digest-mismatch");
+    expect(status.phase).toBe("activate");
+    expect(status.state).toBe("repairable-error");
+  });
+
+  it("offers no retry where retrying cannot possibly help", () => {
+    for (const code of ["runtime.unsupported-platform", "runtime.payload-missing", "runtime.manifest-invalid"]) {
+      const status = bootstrapStatus(absent, false, code);
+      expect(status.state, code).toBe("blocked-error");
+      expect(status.canContinueLimited, code).toBe(true);
+    }
+  });
+
+  it("never lets an activation failure contradict a runtime that is actually ready", () => {
+    expect(bootstrapStatus([hermes()], false, "runtime.digest-mismatch")).toMatchObject({ state: "ready" });
+  });
+
+  it("ignores an activation code it does not recognise rather than echoing it", () => {
+    const status = bootstrapStatus(absent, false, "runtime.something-new");
+    expect(status.code).toBe("runtime.absent");
+  });
+
+  it("keeps activation copy free of commands, paths and engine vocabulary", () => {
+    const forbidden = /hermes|cli|curl|powershell|terminal|iex|harness|engine|sha256|\//i;
+    for (const code of Object.keys({
+      "runtime.unsupported-platform": 0,
+      "runtime.payload-missing": 0,
+      "runtime.manifest-invalid": 0,
+      "runtime.digest-mismatch": 0,
+      "runtime.archive-unsafe": 0,
+      "runtime.executable-missing": 0,
+      "runtime.activation-failed": 0,
+    })) {
+      expect(bootstrapStatus(absent, false, code).message, code).not.toMatch(forbidden);
+    }
+  });
+});

@@ -30,6 +30,7 @@ import {
 import { autoVerdict, rememberableApprovalKey } from "./auto-approve.ts";
 import { rejectsNonHermesSelection, selectDaniDefault } from "./dani-default-runtime.ts";
 import { migrateSelections } from "./harness-migration.ts";
+import { activateBundledRuntime, HermesRuntimeError, selectTarget } from "./hermes-runtime.ts";
 import { requestReview, resolveAutoReviewMode, shouldReview } from "./auto-review.ts";
 import { updateClaudeCli } from "./claude-update.ts";
 import {
@@ -1168,7 +1169,7 @@ async function bootstrapCandidates(): Promise<BootstrapCandidate[]> {
 }
 
 async function runtimeBootstrap(): Promise<BootstrapStatus> {
-  return bootstrapStatus(await bootstrapCandidates(), runtimeRepair !== null);
+  return bootstrapStatus(await bootstrapCandidates(), runtimeRepair !== null, runtimeActivationCode);
 }
 
 /** Re-detect, and repair through the driver when it owns a managed install.
@@ -1181,6 +1182,10 @@ function startRuntimeRepair(): Promise<void> {
     // A runtime installed since launch stays invisible until the cache is
     // dropped: Windows never pushes a PATH change into a live process.
     resetPathCache();
+    // Repair is the same operation as first preparation: verify the bundled
+    // payload and activate it. A corrupt or interrupted install is detected as
+    // absent and replaced, which is what makes retry idempotent.
+    runtimeActivationCode = await activateManagedHermes();
     if (!hermesId) return;
     try {
       await registry.installRuntime(hermesId);
@@ -1350,6 +1355,50 @@ function reportProactiveJob(threadId: string, jobId: string, status: "completed"
     },
   });
 }
+// Where the packaged app keeps its per-target runtime payload. Empty outside a
+// packaged build unless a developer points at a staged payload explicitly, so
+// dev runs, the CLI and the test suite never touch activation.
+const HERMES_PAYLOAD_DIR = (process.env.DANI_HERMES_PAYLOAD_DIR ?? "").trim()
+  || (process.env.DANI_RESOURCES_PATH ? join(process.env.DANI_RESOURCES_PATH, "runtimes", "hermes") : "");
+/** Last activation failure, so bootstrap can report a cause instead of a shrug. */
+let runtimeActivationCode: string | null = null;
+
+/**
+ * Prepare the product's own runtime from the bundled payload (issue #18
+ * acceptance criteria 1 and 3).
+ *
+ * Idempotent and cheap once installed: a completed activation for the same
+ * digest is detected and reused, so this is a directory check on every launch
+ * after the first. On success the resolved absolute executable is written into
+ * the instance config, because a GUI process does not inherit a terminal's
+ * PATH and must never depend on one.
+ */
+async function activateManagedHermes(): Promise<string | null> {
+  if (!HERMES_PAYLOAD_DIR) return "runtime.payload-missing";
+  const target = selectTarget(process.platform, process.arch);
+  // No payload is published for this machine. That is a truthful, permanent
+  // state, not something a retry can change.
+  if (!target) return "runtime.unsupported-platform";
+  try {
+    const layout = await activateBundledRuntime({ payloadDir: HERMES_PAYLOAD_DIR, dataDir: DATA_DIR, target });
+    const hermesId = registry.instances().find((instance) => instance.driverKind === "hermesAgent")?.instanceId ?? "hermes";
+    if (registry.cliTarget(hermesId)?.cli !== layout.executable) {
+      const updated = withInstanceCli(cfg, hermesId, layout.executable);
+      if (updated.ok) {
+        saveConfig({ instances: updated.config.instances });
+        Object.assign(cfg, loadConfig());
+        await reloadProviders();
+      }
+    }
+    return null;
+  } catch (error) {
+    const code = error instanceof HermesRuntimeError ? error.code : "runtime.activation-failed";
+    // Redacted on purpose: the cause is a stable code, never a path or stderr.
+    console.warn(`[runtime] activation failed (${code})`);
+    return code;
+  }
+}
+
 /** Move bots off a harness a release build will not dispatch (issue #18).
  *
  * Runs once at boot, after the fleet is loaded so the decision sees real
@@ -1380,6 +1429,7 @@ async function migrateStaleHarnessSelections(): Promise<void> {
 }
 
 const sendSequencer = new SendSequencer();
+if (HERMES_PAYLOAD_DIR) runtimeActivationCode = await activateManagedHermes();
 bootSelection = await defaultSelection();
 await migrateStaleHarnessSelections();
 store.seedIfEmpty();

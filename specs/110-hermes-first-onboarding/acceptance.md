@@ -2,7 +2,7 @@
 
 | AC ID | Requirement | Minimum evidence | Status | Evidence identity |
 |---|---|---|---|---|
-| AC-BOOT-001 | R-BOOT-001,R-BOOT-002,R-RUNTIME-001,R-RUNTIME-002,R-RUNTIME-003 | PACKAGED,CLEAN_MACHINE | NOT DONE | none |
+| AC-BOOT-001 | R-BOOT-001,R-BOOT-002,R-RUNTIME-001,R-RUNTIME-002,R-RUNTIME-003 | PACKAGED,CLEAN_MACHINE | NOT DONE | partial: E-BOOT-ACTIVATE-001 (no real payload staged; not packaged, not clean-machine) |
 | AC-RUNTIME-001 | R-RUNTIME-004 | REAL_SERVING_PATH | NOT DONE | partial: E-RUNTIME-LOCK-001 (local server, not packaged; stale-selection migration missing) |
 | AC-UI-001 | R-UI-001,R-UI-002 | PACKAGED,VISUAL | NOT DONE | partial: E-UI-BUNDLE-001, E-UI-UNIT-001 (neither is PACKAGED or VISUAL) |
 | AC-PAIR-001 | R-UI-003 | PACKAGED | NOT DONE | none |

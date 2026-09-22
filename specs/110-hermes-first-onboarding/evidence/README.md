@@ -58,6 +58,31 @@ secrets or large unredacted logs.
   runtime; a fake Hermes fixture would be exactly the fake-green the
   constitution forbids as product evidence.
 
+## E-BOOT-ACTIVATE-001 - trusted activation and recovery
+
+- Requirement: R-BOOT-002, R-RUNTIME-001, R-RUNTIME-002, R-RUNTIME-003
+  (partial evidence for AC-BOOT-001).
+- Class: UNIT plus REAL_SERVING_PATH on a locally spawned server.
+  **Not** PACKAGED and **not** CLEAN_MACHINE.
+- Commands: `pnpm exec vitest run server/hermes-runtime.test.ts
+  server/hermes-activation.e2e.test.ts scripts/prepare-hermes-payload.test.mjs`.
+- Result: 41 passed. Covers the validation list issue 18 names for this
+  service: manifest parsing, platform selection, digest and size mismatch,
+  archive traversal/symlink/checksum/oversize rejection, interrupted
+  activation, lock contention, rollback to the last verified runtime, and
+  repair. The end-to-end cases boot a real server and assert it resolves the
+  runtime to an absolute managed path, reports a failed verification as its own
+  cause, and reports a missing payload as a blocked state offering limited mode.
+- The archives are built inside the tests from real gzip and tar bytes, so the
+  extractor is exercised rather than stood in for. The executable inside them is
+  a placeholder: these tests never assert `ready`, because asserting readiness
+  off a placeholder is the fake green criterion 12 forbids.
+- What this does NOT prove: that a real Hermes payload exists for any target,
+  that a packaged installer carries one, or that a clean machine reaches a
+  usable app. No payload is staged in this repository; `dist-native/hermes` is
+  empty and a packaged build will truthfully report that it carries no runtime.
+  AC-BOOT-001 stays NOT DONE.
+
 ## Known-failing at this base
 
 `pnpm test` fails on this base before any of these changes: `server/secret-store.test.ts`,

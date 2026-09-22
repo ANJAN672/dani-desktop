@@ -48,6 +48,12 @@ files:
 asar: true
 
 extraResources:
+  # The product's own runtime payload (issue #18). scripts/prepare-hermes-payload.mjs
+  # always creates this directory and verifies whatever is staged in it, so
+  # packaging never fails over an absent payload: the app then reports that this
+  # installation carries no runtime for the system it is on, which is the truth.
+  - from: dist-native/hermes
+    to: runtimes/hermes
   # Ship the app's own license terms in every desktop distribution.
   - from: LICENSE
     to: licenses/DaniBot-LICENSE.txt
