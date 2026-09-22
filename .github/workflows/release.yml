@@ -143,12 +143,14 @@ jobs:
           set -euo pipefail
           version=${{ needs.prepare.outputs.version }}
           cp "release/DaniBot-$version-setup.exe" release/DaniBot-setup.exe
+          cp "release/DaniBot-$version-x64.zip" release/DaniBot-Windows-Portable.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-release
           path: |
             release/DaniBot-*.exe
             release/DaniBot-*.exe.blockmap
+            release/DaniBot-Windows-Portable.zip
             release/latest.yml
           if-no-files-found: error
           retention-days: 7
@@ -197,6 +199,8 @@ jobs:
           version=${{ needs.prepare.outputs.version }}
           cp "release/DaniBot-$version-x64.dmg" release/DaniBot-Intel.dmg
           cp "release/DaniBot-$version-arm64.dmg" release/DaniBot-Silicon.dmg
+          cp "release/DaniBot-$version-x64.zip" release/DaniBot-Intel-Portable.zip
+          cp "release/DaniBot-$version-arm64.zip" release/DaniBot-Silicon-Portable.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-release
@@ -238,8 +242,11 @@ jobs:
             DaniBot.AppImage
             danibot-amd64.deb
             DaniBot-setup.exe
+            DaniBot-Windows-Portable.zip
             DaniBot-Intel.dmg
+            DaniBot-Intel-Portable.zip
             DaniBot-Silicon.dmg
+            DaniBot-Silicon-Portable.zip
             latest-linux.yml latest.yml latest-mac.yml
           )
           for file in "${required[@]}"; do
@@ -258,22 +265,27 @@ jobs:
           set -euo pipefail
           tag="v$VERSION"
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
-          ## Dani Bot $VERSION
+          ## Downloads
 
-          Native desktop packages built from commit \`$SHA\`:
+          | Operating system | Variant | Download |
+          | --- | --- | --- |
+          | Windows x64 | Installer | [DaniBot-setup.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot-setup.exe) |
+          | Windows x64 | Portable zip | [DaniBot-Windows-Portable.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot-Windows-Portable.zip) |
+          | macOS Intel | DMG | [DaniBot-Intel.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot-Intel.dmg) |
+          | macOS Intel | Portable zip | [DaniBot-Intel-Portable.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot-Intel-Portable.zip) |
+          | macOS Apple silicon | DMG | [DaniBot-Silicon.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot-Silicon.dmg) |
+          | macOS Apple silicon | Portable zip | [DaniBot-Silicon-Portable.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot-Silicon-Portable.zip) |
+          | Linux x64 | AppImage | [DaniBot.AppImage](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DaniBot.AppImage) |
+          | Linux x64 | Debian package | [danibot-amd64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/danibot-amd64.deb) |
 
-          - Linux x64: AppImage and Debian package
-          - Windows x64: NSIS setup executable
-          - macOS: dmg and zip for Apple silicon and Intel
-          - Auto-update metadata: \`latest-linux.yml\`, \`latest.yml\`, and \`latest-mac.yml\`
+          ## Notes
 
-          ### Signing status
+          - Built from commit \`$SHA\` on native GitHub-hosted Windows, macOS, and Linux runners.
+          - Windows builds are unsigned and may show a SmartScreen warning.
+          - macOS uses hardened runtime but is not signed with an Apple Developer ID or notarized, so Gatekeeper may block it.
+          - The workflow verifies that the expected packages exist. Test installers on clean machines before publishing this draft.
 
-          These are pre-signing builds. Windows is unsigned and may show a SmartScreen warning. macOS has hardened runtime enabled but is not signed with an Apple Developer ID and is not notarized; Gatekeeper may block it. Apple Developer ID credentials and notarization must be added before a public production release.
-
-          ### Validation
-
-          The packages were built by electron-builder on native GitHub-hosted Linux, Windows, and macOS runners. The workflow verified that every expected installer and updater metadata file exists. Keep this release as a draft until the installers have been tested on clean machines.
+          Blockmap files and \`latest.yml\`, \`latest-mac.yml\`, and \`latest-linux.yml\` are auto-update metadata, not manual downloads.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
