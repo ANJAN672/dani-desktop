@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Spec 110 acceptance criterion 2, enforced against the built bundle.
 //
 // A release build must contain no harness chooser, no raw install command, no

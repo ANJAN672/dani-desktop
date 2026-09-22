@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Stage the bundled Hermes runtime payload for packaging (issue #18
 // acceptance criteria 1 and 3).
 //
