@@ -1,12 +1,14 @@
-// Compact model picker: providers live on a Cloud/Local rail. Ready engines
-// show a short suggested list with search and an explicit all-models view;
-// engines that need setup show one focused action instead of a disabled wall.
+// Compact Hermes model picker (issue #18): one runtime, one control. Ready
+// Hermes shows a short suggested list with search and an explicit all-models
+// view; a not-ready Hermes shows the managed-runtime status surface - never
+// another driver, never an install command.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search } from "lucide-react";
 import { api, useStore, type Bot, type InstanceInfo, type ModelSelection } from "@/state/store";
 import { filterCustomModels, partitionCustomModels, suggestedModels } from "@/lib/custom-models";
 import { isCustomOnly } from "@/lib/engine-rail";
-import { EngineSetup, EngineUpdateNotice, needsCli, needsSignIn } from "./EngineSetup";
+import { EngineUpdateNotice, needsCli, needsSignIn } from "./EngineSetup";
+import { RuntimePreparation } from "./RuntimePreparation";
 import { EngineGroupLabel } from "./EngineGroupLabel";
 import { cn } from "@/lib/cn";
 
@@ -22,7 +24,7 @@ function modelProvider(instance: InstanceInfo | undefined, model: string): strin
 }
 
 function engineStatus(instance: InstanceInfo): string {
-  if (needsCli(instance)) return "Not installed";
+  if (needsCli(instance)) return "Not ready";
   if (needsSignIn(instance)) return "Sign-in required";
   return instance.snapshot.version ?? "Ready";
 }
@@ -357,7 +359,7 @@ export function ModelPicker({
         <div
           data-model-picker-content
           role="dialog"
-          aria-label="Choose model"
+          aria-label="Hermes model"
           className={cn(
             "flex overflow-hidden rounded-2xl border border-hairline/50 bg-card",
             contained
@@ -370,7 +372,7 @@ export function ModelPicker({
               <>
                 <div className="shrink-0 px-4 pb-2 pt-3.5">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="truncate text-[14px] font-semibold text-ink">Choose model</div>
+                    <div className="truncate text-[14px] font-semibold text-ink">Hermes model</div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
@@ -403,7 +405,7 @@ export function ModelPicker({
                   </div>
                   <div className="mt-0.5 text-[11.5px] text-ink-secondary">
                     {pane === "custom"
-                      ? "Run this agent with a model already on your machine."
+                      ? "Run this bot with a local model through Hermes."
                       : "Choose a model for this bot."}
                   </div>
                 </div>
@@ -458,12 +460,10 @@ export function ModelPicker({
                     </div>
                   </div>
                 ) : blocked ? (
-                  <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
-                    <EngineSetup instance={railInstance} intent={pane === "custom" ? "inject" : "cloud"} />
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 pt-1">
+                    <RuntimePreparation variant="compact" />
                     <p className="mt-2 text-center text-[11.5px] text-ink-secondary/70">
-                      {pane === "main" && official.length > 0
-                        ? `${official.length} ${official.length === 1 ? "model" : "models"} will appear after setup.`
-                        : "Local models will appear as soon as the agent is installed."}
+                      Models appear here as soon as setup finishes.
                     </p>
                   </div>
                 ) : (

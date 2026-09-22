@@ -36,7 +36,7 @@ import {
   type InstanceInfo,
   type Message,
 } from "@/state/store";
-import { EngineSetup } from "./EngineSetup";
+import { RuntimePreparation } from "./RuntimePreparation";
 import { BotAvatar, DaniAvatar } from "./Avatar";
 import { TurnPresence, isFreeModel } from "./TurnPresence";
 import { showToolCallsEnabled } from "@/lib/feature-flags";
@@ -196,7 +196,9 @@ function ErrorRow({
         </div>
         {setupInstance &&
         !(setupInstance.snapshot.state === "available" && setupInstance.snapshot.authenticated !== false) ? (
-          <EngineSetup instance={setupInstance} className="mt-2 text-ink-secondary" />
+          <div className="mt-2 text-ink-secondary">
+            <RuntimePreparation variant="compact" onReady={onRetry} />
+          </div>
         ) : (
           onRetry && (
             <button
