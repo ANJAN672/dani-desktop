@@ -1,0 +1,10 @@
+{
+  "comment": "Digest-pinned license texts for packages whose wheel AND locked sdist both ship no license file. The URL is pinned by content sha256: any upstream change fails the build. Only packages whose license obligations require the text belong here.",
+  "fallbacks": {
+    "pywin32": {
+      "url": "https://raw.githubusercontent.com/mhammond/pywin32/b311/win32/License.txt",
+      "sha256": "fa810629bba5fecc9ffc3acb3e9961dfd86bdc6f9aff4a7c3bbecadc94584a28",
+      "note": "pywin32 311 declares License: PSF; text pinned to the b311 tag of the upstream repo."
+    }
+  }
+}
