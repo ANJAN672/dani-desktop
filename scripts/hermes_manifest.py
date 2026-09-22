@@ -3,7 +3,7 @@
 
 Schema v1:
   {manifestVersion, name, target, version, upstreamCommit, archiveSha256, archiveSize,
-   unpackedSize, format, executableRelPath, probe:{argv, protocol, expectedVersion},
+   unpackedSize, format, executableRelPath, probe:{argv, protocol, expectedVersion, expectedAgentName},
    noticeRelPath, sbomRelPath, degradations[]}
 
 Run AFTER the archive is built: archive hash/size are computed here, so the manifest
@@ -54,6 +54,7 @@ def main():
                         "{protocolVersion:1, clientCapabilities:{fs:{readTextFile:false,"
                         "writeTextFile:false}, terminal:false}}, expect result.agentInfo",
             "expectedVersion": "0.21.4",
+            "expectedAgentName": "hermes-agent",
         },
         "noticeRelPath": "NOTICE",
         "sbomRelPath": "SBOM.cdx.json",
