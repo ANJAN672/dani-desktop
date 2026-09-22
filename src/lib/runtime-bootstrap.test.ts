@@ -8,6 +8,7 @@ import {
   bootstrapDiagnostics,
   bootstrapView,
   parseBootstrapStatus,
+  startBootstrap,
   type RuntimeBootstrapStatus,
 } from "./runtime-bootstrap";
 
@@ -121,6 +122,28 @@ describe("bootstrapView", () => {
       for (const banned of ["harness", "engine", "cli", "curl", "powershell", "provider registry", "model rail"]) {
         expect(text).not.toContain(banned);
       }
+    }
+  });
+});
+
+
+describe("startBootstrap", () => {
+  it("uses the server mutation contract so automatic setup and Retry can start activation", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push([input, init]);
+      return new Response(JSON.stringify(base), { status: 202, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      await expect(startBootstrap()).resolves.toEqual(base);
+      expect(calls).toEqual([["/api/runtime/bootstrap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }]]);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

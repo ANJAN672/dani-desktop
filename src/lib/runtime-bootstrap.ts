@@ -157,7 +157,11 @@ export async function fetchBootstrapStatus(signal?: AbortSignal): Promise<Runtim
  * effect at once is safe. */
 export async function startBootstrap(): Promise<RuntimeBootstrapStatus> {
   try {
-    const res = await fetch("/api/runtime/bootstrap", { method: "POST" });
+    const res = await fetch("/api/runtime/bootstrap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
     if (!res.ok) return BOOTSTRAP_UNAVAILABLE;
     return parseBootstrapStatus(await res.json().catch(() => null)) ?? BOOTSTRAP_UNAVAILABLE;
   } catch {
