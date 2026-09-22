@@ -83,11 +83,45 @@ describe("pinned cloudflared packaging", () => {
     expect(() => targetForCurrentHost("linux", "arm64")).toThrow(/unsupported/);
   });
 
-  it("accepts only the documented current-target CLI option", () => {
+  it("accepts current-host or explicit release targets from the CLI", () => {
     expect(parsePrepareCloudflaredArgs([])).toEqual({ current: false });
     expect(parsePrepareCloudflaredArgs(["--current"])).toEqual({ current: true });
+    expect(parsePrepareCloudflaredArgs(["--target", "win32-x64"])).toEqual({
+      current: false,
+      targets: ["win32-x64"],
+    });
+    expect(
+      parsePrepareCloudflaredArgs([
+        "--target",
+        "darwin-arm64",
+        "--target",
+        "darwin-x64",
+      ]),
+    ).toEqual({ current: false, targets: ["darwin-arm64", "darwin-x64"] });
     expect(() => parsePrepareCloudflaredArgs(["--all"])).toThrow(/Usage:/);
+    expect(() => parsePrepareCloudflaredArgs(["--target"])).toThrow(/Usage:/);
     expect(() => parsePrepareCloudflaredArgs(["--current", "--current"])).toThrow(/Usage:/);
+  });
+
+  it("stages an explicit verified target regardless of the host platform", () => {
+    expect(
+      targetsForPreparation({
+        targets: ["win32-x64"],
+        platform: "linux",
+        arch: "x64",
+      }),
+    ).toEqual(["win32-x64"]);
+    expect(
+      targetsForPreparation({
+        targets: ["darwin-arm64", "darwin-x64", "darwin-arm64"],
+        platform: "linux",
+        arch: "x64",
+      }),
+    ).toEqual(["darwin-arm64", "darwin-x64"]);
+    expect(() => targetsForPreparation({ targets: ["freebsd-x64"] })).toThrow(/unsupported/);
+    expect(() =>
+      targetsForPreparation({ current: true, targets: ["linux-x64"] }),
+    ).toThrow(/cannot be combined/);
   });
 
   it("stages the current target for development without narrowing package preparation", () => {

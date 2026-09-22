@@ -68,16 +68,39 @@ export function targetForCurrentHost(platform = process.platform, arch = process
 
 export function targetsForPreparation({
   current = false,
+  targets = [],
   platform = process.platform,
   arch = process.arch,
 } = {}) {
+  if (current && targets.length > 0) {
+    throw new Error("--current cannot be combined with an explicit cloudflared target");
+  }
+  if (targets.length > 0) {
+    for (const target of targets) {
+      if (!Object.hasOwn(CLOUDFLARED_ASSETS, target)) {
+        throw new Error(`Cloudflare Tunnel packaging is unsupported for ${target}`);
+      }
+    }
+    return [...new Set(targets)];
+  }
   return current ? [targetForCurrentHost(platform, arch)] : targetsForHost(platform);
 }
 
 export function parsePrepareCloudflaredArgs(args = []) {
   if (args.length === 0) return { current: false };
   if (args.length === 1 && args[0] === "--current") return { current: true };
-  throw new Error("Usage: node scripts/prepare-cloudflared.mjs [--current]");
+
+  const targets = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== "--target" || !args[index + 1]) {
+      throw new Error(
+        "Usage: node scripts/prepare-cloudflared.mjs [--current | --target <platform-arch> ...]",
+      );
+    }
+    targets.push(args[index + 1]);
+    index += 1;
+  }
+  return { current: false, targets };
 }
 
 export function sha256(value) {
@@ -277,8 +300,9 @@ export async function prepareCloudflared({
   platform = process.platform,
   arch = process.arch,
   current = false,
+  targets = [],
 } = {}) {
-  for (const target of targetsForPreparation({ current, platform, arch })) {
+  for (const target of targetsForPreparation({ current, targets, platform, arch })) {
     await stageTarget(root, target);
   }
 }
