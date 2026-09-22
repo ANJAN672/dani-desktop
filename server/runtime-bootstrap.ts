@@ -41,18 +41,29 @@ const READY: BootstrapStatus = {
   canContinueLimited: false,
 };
 
+/**
+ * `canRetry` is a separate decision from `repairable`, not a rename of it.
+ *
+ * Repairable says another attempt could fix the install. Retryable says the
+ * button in front of the user can do something. Those differ: a runtime that is
+ * simply absent is not repairable by this app, yet a retry re-probes and finds
+ * one the user installed in the meantime, while a payload this installer never
+ * carried will not appear no matter how many times the button is pressed.
+ * Offering a retry that cannot work is a lie with a spinner on it.
+ */
 function failure(
   code: string,
   message: string,
   repairable: boolean,
   phase: BootstrapPhase = "detect",
+  canRetry = true,
 ): BootstrapStatus {
   return {
     state: repairable ? "repairable-error" : "blocked-error",
     phase,
     code,
     message,
-    canRetry: true,
+    canRetry,
     canContinueLimited: true,
   };
 }
@@ -117,8 +128,9 @@ export function bootstrapStatus(
 
   // Hermes is the sole product runtime. Its absence from the registry is a
   // build/config fault, not something a retry on this machine can repair.
+  // A reinstall is the only fix, so there is nothing to retry here.
   if (!hermes) {
-    return failure("runtime.not-configured", "This installation is missing its Dani runtime. Reinstall Dani Bot to repair it.", false);
+    return failure("runtime.not-configured", "This installation is missing its Dani runtime. Reinstall Dani Bot to repair it.", false, "detect", false);
   }
 
   if (hermes.snapshot.state === "available") {
@@ -133,7 +145,7 @@ export function bootstrapStatus(
   // A failed activation is the more specific truth: the runtime is missing
   // because preparing it failed, and saying which failure beats "not ready".
   const cause = activationCode ? ACTIVATION_CAUSES[activationCode] : undefined;
-  if (cause) return failure(activationCode!, cause.message, cause.repairable, "activate");
+  if (cause) return failure(activationCode!, cause.message, cause.repairable, "activate", cause.repairable);
 
   // A version string means the runtime ran and answered — it is present but
   // the wrong build. No version means nothing answered at all. This is the
@@ -143,7 +155,7 @@ export function bootstrapStatus(
   const message = present
     ? "Dani's runtime needs an update before it can run."
     : "Dani's runtime isn't ready on this computer yet.";
-  return failure(code, message, hermes.managedInstall, present ? "verify-bundled" : "detect");
+  return failure(code, message, hermes.managedInstall, present ? "verify-bundled" : "detect", true);
 }
 
 /** Redacted diagnostics the user can copy from a failure state. */

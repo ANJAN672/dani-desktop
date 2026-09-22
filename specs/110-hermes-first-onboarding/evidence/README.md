@@ -83,6 +83,28 @@ secrets or large unredacted logs.
   empty and a packaged build will truthfully report that it carries no runtime.
   AC-BOOT-001 stays NOT DONE.
 
+## E-UI-VISUAL-001 - first-run preparation screens, rendered
+
+- Requirement: R-UI-001, R-UI-002 (partial evidence for AC-UI-001).
+- Class: VISUAL, against the development UI driven in a real browser.
+  **Not** PACKAGED, so AC-UI-001 remains NOT DONE.
+- Method: a server booted against a throwaway home with a staged payload, the
+  Vite UI at 127.0.0.1:5199 proxying `/api` to it, and the onboarding flow
+  driven by clicking through it. Two runtime states were captured.
+- Observed, digest-mismatch state: heading "Preparing Dani Bot", body "Dani's
+  files failed their safety check and were not used.", actions Try again,
+  Copy diagnostics, the code `runtime.digest-mismatch`, and Continue anyway.
+- Observed, missing-payload state: "This installation is missing the files Dani
+  needs. Reinstall Dani Bot to repair it.", no Try again button, code
+  `runtime.payload-missing`, and Continue anyway.
+- No engine matrix, install command, Terminal action or setup-guide link
+  appears on any captured screen.
+- Two defects were found by looking rather than by testing, and fixed:
+  a blocked state offered a Try again button that could not work, and its
+  supporting sentence still said "You can try again" after the button was gone.
+- What this does NOT prove: anything about a packaged installer on any target,
+  and nothing about the ready path, which needs a real runtime.
+
 ## Known-failing at this base
 
 `pnpm test` fails on this base before any of these changes: `server/secret-store.test.ts`,

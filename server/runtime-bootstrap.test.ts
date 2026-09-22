@@ -78,6 +78,8 @@ describe("activation failure reporting", () => {
     for (const code of ["runtime.unsupported-platform", "runtime.payload-missing", "runtime.manifest-invalid"]) {
       const status = bootstrapStatus(absent, false, code);
       expect(status.state, code).toBe("blocked-error");
+      // No retry button: nothing on this machine can change the answer.
+      expect(status.canRetry, code).toBe(false);
       expect(status.canContinueLimited, code).toBe(true);
     }
   });
@@ -104,5 +106,18 @@ describe("activation failure reporting", () => {
     })) {
       expect(bootstrapStatus(absent, false, code).message, code).not.toMatch(forbidden);
     }
+  });
+
+  it("still offers a retry when a re-probe could find a runtime installed since", () => {
+    const status = bootstrapStatus(absent);
+    expect(status.code).toBe("runtime.absent");
+    expect(status.canRetry).toBe(true);
+  });
+
+  it("offers no retry when the runtime is not registered at all", () => {
+    const status = bootstrapStatus([]);
+    expect(status.state).toBe("blocked-error");
+    expect(status.canRetry).toBe(false);
+    expect(status.canContinueLimited).toBe(true);
   });
 });

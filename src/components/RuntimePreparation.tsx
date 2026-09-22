@@ -137,7 +137,11 @@ export function RuntimePreparation({
           </div>
           {failed && (
             <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink-secondary">
-              You can try again, or continue with limited features and finish this later.
+              {/* Must agree with the buttons below. Offering "try again" in
+                  prose while the button is absent reads as a broken screen. */}
+              {status.canRetry
+                ? "You can try again, or continue with limited features and finish this later."
+                : "You can continue with limited features in the meantime."}
             </div>
           )}
         </div>
