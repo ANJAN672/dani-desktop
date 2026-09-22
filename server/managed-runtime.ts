@@ -348,7 +348,7 @@ export class ManagedRuntimeService {
     this.opencodeServer.once("exit", () => { this.setModelRouteReadiness("error"); });
     this.bridge = spawn(process.execPath, [bridgeScript], {
       stdio: ["ignore", "ignore", "pipe"], windowsHide: true,
-      env: { ...process.env, OPENCODE_BIN: opencode, OPENCODE_SERVER_URL: `http://127.0.0.1:${upstreamPort}`, OPENCODE_BRIDGE_HOST: "127.0.0.1", OPENCODE_BRIDGE_PORT: String(bridgePort), OPENCODE_FREE_MODEL: "opencode/big-pickle" },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", OPENCODE_BIN: opencode, OPENCODE_SERVER_URL: `http://127.0.0.1:${upstreamPort}`, OPENCODE_BRIDGE_HOST: "127.0.0.1", OPENCODE_BRIDGE_PORT: String(bridgePort), OPENCODE_FREE_MODEL: "opencode/big-pickle" },
     });
     this.bridge.once("exit", () => { this.setModelRouteReadiness("error"); });
     this.bridgeUrl = bridgeUrl;
