@@ -55,18 +55,25 @@ minimal one over 0.6.1 implementing exactly the contract
 
 ```bash
 uv venv .venv-kokoro
-uv pip install --python .venv-kokoro/Scripts/python.exe scripts/local-speech
+uv pip install --python .venv-kokoro/Scripts/python.exe --require-hashes -r scripts/local-speech/requirements.txt
+uv pip install --python .venv-kokoro/Scripts/python.exe --no-deps scripts/local-speech
 cp .venv-kokoro/Scripts/kokoro-cli.exe dist-native/speech-runtime/<platform>-<arch>/
 ```
 
-The console script is a self-contained executable that the server can spawn
-directly, which matters because the runtime spawns the configured path without
-a shell.
+`requirements.txt` is hash-locked, so the install is verified rather than
+resolved afresh. The console script is a self-contained executable the server
+can spawn directly, which matters because the runtime spawns the configured
+path without a shell.
 
-`third_party/local-speech/README.md` still describes the pinned model as "the
-payload shape consumed by that CLI". That sentence is wrong and the pin needs a
-product decision: adopt a CLI built on a current `kokoro-onnx`, or pin the older
-model that 0.3.9 actually consumes.
+Then check the two halves still agree before trusting them:
+
+```bash
+dist-native/speech-runtime/<platform>-<arch>/kokoro-cli --selftest   --model dist-native/speech-models/kokoro/kokoro-v1.0.int8.onnx   --voices dist-native/speech-models/kokoro/voices/voices-v1.0.bin
+```
+
+It prints the model's declared inputs and synthesizes a sample, so a model or
+library that moves is caught here rather than at the first attempt to speak.
+Confirmed to fail, loudly and with the reason, against `kokoro-onnx` 0.3.9.
 
 ## Checking it
 
