@@ -44,8 +44,8 @@ async function completion(input){
  const system=input.messages.filter(m=>m.role==='system').map(textOf).join('\n\n');const transcript=input.messages.filter(m=>m.role!=='system').map(m=>`${m.role.toUpperCase()}: ${textOf(m)}`).join('\n\n');
  let r,settled=false;
  const permissionGuard=rejectNativePermissions({sessionID:session.id,done:()=>settled,
-  list:async()=>{const x=await fetchUp('/permission');return x.ok?x.json():[]},
-  reject:async id=>{await fetchUp(`/permission/${encodeURIComponent(id)}/reply`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reply:'reject',message:'Hermes is the sole tool and permission harness for this managed route.'})})}});
+  list:async()=>{const x=await fetchUp('/permission',{},1000);return x.ok?x.json():[]},
+  reject:async id=>{await fetchUp(`/permission/${encodeURIComponent(id)}/reply`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reply:'reject',message:'Hermes is the sole tool and permission harness for this managed route.'})},1000)}});
  try{r=await fetchUp(`/session/${encodeURIComponent(session.id)}/message`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(buildOpenCodePrompt({providerID,modelID,system,transcript}))})}catch(e){throw safeError(e?.name==='TimeoutError'?'OpenCode prompt timeout':'OpenCode prompt unavailable',502)}finally{settled=true;await permissionGuard}
  if(!r.ok)throw safeError(`OpenCode prompt failed (${r.status})`,502);const out=await r.json();
  if(out.info?.error)throw safeError('OpenCode free route rejected the request',502,'provider_error');
