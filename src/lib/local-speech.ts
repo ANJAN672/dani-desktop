@@ -275,6 +275,8 @@ export class LocalStreamingTts implements StreamingTts {
   private playing: AudioBufferSourceNode | null = null;
   /** Settles the clip currently being awaited, however it ends. */
   private finishPlaying: (() => void) | null = null;
+  /** Abandons the clause in flight, synthesis included. */
+  private cancelSpeaking: (() => void) | null = null;
 
   constructor(private readonly synthesize: SynthesizeText = synthesizeViaServer) {}
 
@@ -285,6 +287,31 @@ export class LocalStreamingTts implements StreamingTts {
 
   async speak(text: string, signal: AbortSignal): Promise<void> {
     if (signal.aborted || !text.trim()) return;
+    // Most of a clause's life is spent waiting for synthesis, not playing:
+    // generating a sentence locally takes seconds. A barge-in during that
+    // window has nothing playing to cut, so without its own handle `stop`
+    // would let the request finish and then speak over the person who
+    // interrupted. This aborts the request too, and makes `stop` mean the same
+    // thing whenever it is called.
+    const own = new AbortController();
+    this.cancelSpeaking?.();
+    this.cancelSpeaking = () => own.abort();
+    const linkCaller = () => own.abort();
+    signal.addEventListener("abort", linkCaller, { once: true });
+    try {
+      await this.speakUntil(text, own.signal);
+    } catch (error) {
+      // Being interrupted is the feature, not a failure. Synthesis in flight
+      // rejects when its request is aborted, and reporting that upwards would
+      // put the call into an error state every time someone talked over it.
+      if (!own.signal.aborted) throw error;
+    } finally {
+      signal.removeEventListener("abort", linkCaller);
+      if (this.cancelSpeaking && own.signal.aborted === false) this.cancelSpeaking = null;
+    }
+  }
+
+  private async speakUntil(text: string, signal: AbortSignal): Promise<void> {
     const wav = await this.synthesize(text, signal);
     if (signal.aborted) return;
     const context = this.audio();
@@ -324,6 +351,10 @@ export class LocalStreamingTts implements StreamingTts {
   }
 
   stop(): void {
+    // Abort first: the clause may still be synthesizing, in which case there
+    // is no node yet and this is the only thing that stops it being spoken.
+    this.cancelSpeaking?.();
+    this.cancelSpeaking = null;
     const node = this.playing;
     const finish = this.finishPlaying;
     this.playing = null;

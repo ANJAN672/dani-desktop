@@ -1,0 +1,12 @@
+[project]
+name = "dani-kokoro-cli"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["kokoro-onnx==0.6.1", "soundfile>=0.13.0"]
+
+[project.scripts]
+kokoro-cli = "dani_kokoro_cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
