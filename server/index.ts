@@ -1303,7 +1303,12 @@ bootSelection = await defaultSelection();
 if (bootSelection.instanceId && bootSelection.model) store.seedIfEmpty();
 managedRuntimes.setTaskReadyHandler(async () => {
   managedRuntimes.useManagedExecutables();
-  await registry.load(instanceConfigs(cfg));
+  // Rebuild through the same path as a settings change: dispose the boot
+  // fleet, load the managed executables, and re-attach the event bus. A bare
+  // registry.load() here replaced the instances without subscribing the bus,
+  // so a fresh install's first turns completed in the runtime but never
+  // reached the message folder or the room orchestrator.
+  await reloadProviders();
   const readySelection = await defaultSelection();
   if (!readySelection.instanceId || !readySelection.model) {
     throw Object.assign(new Error("managed Hermes has no live model route"), { code: "model-route-failed" });
