@@ -273,6 +273,8 @@ export class LocalStreamingStt implements StreamingStt {
 export class LocalStreamingTts implements StreamingTts {
   private context: AudioContext | null = null;
   private playing: AudioBufferSourceNode | null = null;
+  /** Settles the clip currently being awaited, however it ends. */
+  private finishPlaying: (() => void) | null = null;
 
   constructor(private readonly synthesize: SynthesizeText = synthesizeViaServer) {}
 
@@ -299,6 +301,7 @@ export class LocalStreamingTts implements StreamingTts {
         node.onended = null;
         signal.removeEventListener("abort", cancel);
         if (this.playing === node) this.playing = null;
+        if (this.finishPlaying === finish) this.finishPlaying = null;
         resolve();
       };
       const cancel = () => {
@@ -312,13 +315,19 @@ export class LocalStreamingTts implements StreamingTts {
       node.onended = finish;
       signal.addEventListener("abort", cancel, { once: true });
       this.playing = node;
+      // Held so `stop` can settle this clip too. Playback also stalls with no
+      // `onended` at all when the page is hidden and the audio context is
+      // suspended, and a clip that can never resolve would wedge the turn.
+      this.finishPlaying = finish;
       node.start();
     });
   }
 
   stop(): void {
     const node = this.playing;
+    const finish = this.finishPlaying;
     this.playing = null;
+    this.finishPlaying = null;
     if (!node) return;
     node.onended = null;
     try {
@@ -326,5 +335,10 @@ export class LocalStreamingTts implements StreamingTts {
     } catch {
       /* already stopped */
     }
+    // Settle the awaiting `speak` by hand. Clearing `onended` above is what
+    // stops the clip reporting its own end, so without this the caller waits
+    // on a promise nothing will ever resolve — and the controller awaits every
+    // clip, so one barge-in would end the call's ability to speak again.
+    finish?.();
   }
 }
