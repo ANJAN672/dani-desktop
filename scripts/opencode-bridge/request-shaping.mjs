@@ -1,29 +1,23 @@
-// The OpenCode process is a supporting model route, not Dani's tool harness.
-// Hermes owns tools, permissions, and the working directory. If OpenCode tools
-// stay enabled, a free model can pause its HTTP response on an OpenCode-native
-// permission request that no UI is connected to answer.
-export const OPENCODE_MODEL_ONLY_TOOLS = Object.freeze({
-  invalid: false,
-  question: false,
-  bash: false,
-  read: false,
-  glob: false,
-  grep: false,
-  edit: false,
-  write: false,
-  task: false,
-  webfetch: false,
-  todowrite: false,
-  websearch: false,
-  skill: false,
-  apply_patch: false,
-});
-
+// OpenCode is the supporting model route. The official free route rejects
+// per-request `tools` overrides, so preserve its normal request identity and
+// fail closed by rejecting any native permission request for this session.
 export function buildOpenCodePrompt({ providerID, modelID, system, transcript }) {
   return {
     model: { providerID, modelID },
     ...(system ? { system } : {}),
-    tools: OPENCODE_MODEL_ONLY_TOOLS,
     parts: [{ type: 'text', text: transcript }],
   };
+}
+
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+export async function rejectNativePermissions({ sessionID, list, reject, done, intervalMs=100 }) {
+  while(!done()) {
+    let requests=[];
+    try { requests=await list(); } catch { /* prompt result owns route failure */ }
+    for(const request of Array.isArray(requests)?requests:[]) {
+      if(request?.sessionID!==sessionID||typeof request?.id!=='string')continue;
+      try { await reject(request.id); } catch { /* retry while prompt remains active */ }
+    }
+    if(!done())await delay(intervalMs);
+  }
 }
